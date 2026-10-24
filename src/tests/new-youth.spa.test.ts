@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
+import { extractFn, SITE_TIME_SRC, withPlain } from './helpers/extract-fn';
 import { LABELS } from '../services/elvanto-forms';
 
 const html = readFileSync('public/index.html', 'utf8');
 const listOf = (name: string) => JSON.parse(new RegExp(`const ${name} = (\\[[^\\]]*\\]);`).exec(html)![1]!);
-const nyMessage = new Function(`${extractFn(html, '_nyMessage')}; return _nyMessage;`)() as (r: any) => { tone: string; retryParent: boolean; lines: string[] };
-const nyErrorText = new Function(`${extractFn(html, '_nyErrorText')}; return _nyErrorText;`)() as (e: any) => { unsent: boolean; text: string };
+const nyMessage = new Function(`var S = { user: { role: 'admin' } };\n${withPlain(extractFn(html, '_nyMessage'))}; return _nyMessage;`)() as (r: any) => { tone: string; retryParent: boolean; lines: string[] };
+const nyErrorText = new Function(`var S = { user: { role: 'admin' } };\n${withPlain(extractFn(html, '_nyErrorText'))}; return _nyErrorText;`)() as (e: any) => { unsent: boolean; text: string };
 
 describe('New youth SPA', () => {
   it('checkbox labels match the server lists exactly', () => {
@@ -90,7 +90,7 @@ function harness(post: (path: string, body: any, ms?: number) => Promise<any>, h
     'getMyLeaderId', '_lkMyName', '_lkIamPick', '_gradeList', 'NY_ERR_IDS',
     `let NY = ${FRESH};
     ${SITE_TIME_SRC}
-    ${FNS.map((n) => extractFn(html, n)).join('\n')}
+    ${withPlain(FNS.map((n) => extractFn(html, n)).join('\n'))}
     return { nySend, nyOpen, nyReset, nyBack, nySibling, renderNewYouth, get NY() { return NY; }, set NY(v) { NY = v; } };`);
   const h = factory(S, { post }, (m: string, d?: number) => toasts.push([m, d]), doc, { setItem() {}, getItem: () => '' },
     (x: string) => pages.push(x), (x: string) => x, (x: any) => String(x), (p: string) => { S.page = p; if (p === 'new-youth') ref.h.renderNewYouth(); }, { scrollTo() {} },
@@ -308,7 +308,7 @@ const modeOf = (mode: any, role: string, bus = false) => ({ user: { role }, page
 const nyOnFn = (S: any) => new Function('S', `${extractFn(html, '_nyModeOf')}; ${extractFn(html, '_nyMode')}; ${extractFn(html, '_nyOn')}; return _nyOn;`)(S) as () => boolean;
 const NAV_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', '_busOn', '_prayersOn', 'moreItems', '_navItemsBase', '_navSlots', 'navItems', 'bottomNavItems', '_navClick', 'openMore'];
 type NavFns = { navItems: () => any[]; bottomNavItems: () => any[]; _navClick: (it: any) => string; moreItems: () => any[]; openMore: () => void };
-const navFns = (S: any, modal: (h: string) => void = () => {}) => new Function('S', 'L', 'modal', 'icN', 'esc', `${NAV_FNS.map((n) => extractFn(html, n)).join('\n')}; return { navItems, bottomNavItems, _navClick, moreItems, openMore };`)(
+const navFns = (S: any, modal: (h: string) => void = () => {}) => new Function('S', 'L', 'modal', 'icN', 'esc', `${withPlain(NAV_FNS.map((n) => extractFn(html, n)).join('\n'))}; return { navItems, bottomNavItems, _navClick, moreItems, openMore };`)(
   S, (k: string) => (k === 'busMinistry' ? 'Bus Ministry' : k), modal, (k: string) => `<i ${k}>`, (x: string) => x,
 ) as NavFns;
 const ids = (xs: any[]) => xs.map((i) => i.id);

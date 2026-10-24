@@ -1,7 +1,7 @@
 // Elvanto link SPA (plan Tasks F1.1–F1.4). Extract-and-run: the REAL functions from public/index.html run against
 // small stubs (localStorage, API, modal). No server: /link routes are stubbed with the spec's response shapes.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { loadIndexHtml, extractFn, loadFns, SITE_TIME_SRC, ES_FNS } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, loadFns, SITE_TIME_SRC, withPlain, ES_FNS } from './helpers/extract-fn';
 
 const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'setMyLeaderId', '_vgSnap', '_vgActive',
   '_lkFresh', '_lkTime', '_lkDay', 'fmtDay', '_lkSvcLabel', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
@@ -29,7 +29,7 @@ const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: 
   name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' };
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
-const BODY = SITE_TIME_SRC + '\n' + [...FNS, ...ES_FNS].map((n) => extractFn(loadIndexHtml(), n)).join('\n');
+const BODY = withPlain(SITE_TIME_SRC + '\n' + [...FNS, ...ES_FNS].map((n) => extractFn(loadIndexHtml(), n)).join('\n'), FNS);
 // APP-49: the real constant, read from the page (a copy here would hide a change).
 const LK_DOOR_TYPES_SRC = ['LK_DOOR_TYPES', 'LK_MEM_TYPES', 'LK_GROUP_TYPES', 'LK_FLOW_TYPES', 'LK_FF', 'LK_CATS', 'LK_OFFLINE_MS']
   .map((n) => loadIndexHtml().match(new RegExp(`^const ${n} = .*;`, 'm'))![0]).join('\n');
@@ -222,13 +222,13 @@ describe('F1.1 _lkBanner', () => {
   it('offline shows the last-seen time', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-16T09:00:00.000Z'));
     try {
-      expect(strip(makeEnv().fns._lkBanner(['checkIn'], st({ online: false })))).toContain('No link to Elvanto since 4:12 pm. Your taps send later. Use the kiosk too.'); // fix16 F-12 wording
+      expect(strip(makeEnv({ role: 'admin' }).fns._lkBanner(['checkIn'], st({ online: false })))).toContain('No link to Elvanto since 4:12 pm. Your taps send later. Use the kiosk too.'); // fix16 F-12 wording
     } finally { vi.useRealTimers(); }
   });
   it('T-17 / APP-52: a last-seen time on another day carries the day', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-19T00:00:00.000Z')); // Mon 10:00 Brisbane
     try {
-      expect(strip(makeEnv().fns._lkBanner(['checkIn'], st({ online: false })))).toContain('No link to Elvanto since Fri 16 Oct, 4:12pm.'); // fix16 F-12 wording
+      expect(strip(makeEnv({ role: 'admin' }).fns._lkBanner(['checkIn'], st({ online: false })))).toContain('No link to Elvanto since Fri 16 Oct, 4:12pm.'); // fix16 F-12 wording
       const h = makeEnv();
       h.get().LINK.status = st({ online: false });
       expect(h.fns._lkLastSeen()).toBe('Fri 16 Oct, 4:12pm');
@@ -393,7 +393,7 @@ describe('F1.2 queue', () => {
     expect(q[0].payload.personId).toBe(P(1));
     expect(h.calls.toasts).toContain('Too many taps. Wait a minute.');
     const row = h.fns._lkRowHtml(h.get().LINK.people[SVC.serviceTimeId].people[1]);
-    expect(strip(row)).toContain('Tell the admin.'); // fix16 F-35: a grade login is told to pass it on
+    expect(strip(row)).toMatch(/tell the admin\./i); // fix16 F-35: a grade login is told to pass it on (plain pass 2026-10-25)
     expect(strip(row)).toContain('Check in');
   });
   it('network errors back off 5 s, 15 s, 45 s, then 60 s; the pill turns red after the 45 s step fails', async () => {
@@ -406,10 +406,10 @@ describe('F1.2 queue', () => {
     await vi.advanceTimersByTimeAsync(1); expect(h.calls.posts).toHaveLength(2);
     await vi.advanceTimersByTimeAsync(14999); expect(h.calls.posts).toHaveLength(2);
     await vi.advanceTimersByTimeAsync(1); expect(h.calls.posts).toHaveLength(3);
-    expect(h.fns._lkPill()).toContain('1 waiting to send');
+    expect(h.fns._lkPill()).toContain('1 saving…'); // plain pass: a grade login
     await vi.advanceTimersByTimeAsync(44999); expect(h.calls.posts).toHaveLength(3);
     await vi.advanceTimersByTimeAsync(1); expect(h.calls.posts).toHaveLength(4);
-    expect(strip(h.fns._lkPill())).toBe('Not saved — tap to retry');
+    expect(strip(h.fns._lkPill())).toBe("Couldn't save. Tap to try again"); // plain pass: a grade login
     await vi.advanceTimersByTimeAsync(60000); expect(h.calls.posts).toHaveLength(5);
     await vi.advanceTimersByTimeAsync(60000); expect(h.calls.posts).toHaveLength(6);
     expect(h.fns._lkQGet()).toHaveLength(1);
@@ -421,7 +421,7 @@ describe('F1.2 queue', () => {
     const ci = (n: number) => ({ kind: 'action', v: 1, id: P(60 + n), type: 'checkIn', payload: { serviceTimeId: SVC.serviceTimeId, serviceId: SVC.serviceId, personId: P(n) }, note: null, leaderId: null });
     h.fns._lkQSet([ci(1), ci(2), { kind: 'identity', id: P(70), at: '2026-10-16T08:00:00.000Z', from: null, to: P(8) }]);
     await h.fns._lkFlush();
-    expect(h.calls.toasts).toContain('Check-in is switched off. Use the kiosk. 2 taps were not sent.');
+    expect(h.calls.toasts).toContain("Check-in isn't available right now. Use the kiosk."); // plain pass: a grade login
     expect(h.calls.gos).toContain('home');
     await vi.advanceTimersByTimeAsync(300000);
     expect(h.calls.posts).toHaveLength(1);
@@ -644,7 +644,7 @@ describe('F1.2 logout guard', () => {
     h.fns._lkQSet([item]);
     h.answers.push(true);
     expect(await h.fns._lkLogoutGuard()).toBe(true);
-    expect(h.calls.asks[0]).toBe('1 action is waiting to send. Send it now? | Send now | Stay');
+    expect(h.calls.asks[0]).toBe("1 check-in hasn't saved yet. Send it now? | Send now | Stay"); // plain pass: a grade login
     expect(h.calls.posts).toHaveLength(1);
   });
   it('Stay keeps the login', async () => {
@@ -662,8 +662,8 @@ describe('F1.2 logout guard', () => {
     const p = h.fns._lkLogoutGuard();
     await vi.advanceTimersByTimeAsync(10000);
     expect(await p).toBe(true);
-    expect(h.calls.asks[0]).toMatch(/^2 actions are waiting to send/);
-    expect(h.calls.asks[1]).toBe('2 actions are still waiting to send. | Log out anyway (they may not be sent) | Stay');
+    expect(h.calls.asks[0]).toMatch(/^2 check-ins haven't saved yet/);
+    expect(h.calls.asks[1]).toBe("2 check-ins haven't saved yet. | Log out anyway (they may not be sent) | Stay");
   });
   it('B14 / APP-22: 160 queued items drain in under 2 s on a good network (300 ms between batches)', async () => {
     vi.useFakeTimers();
@@ -775,7 +775,7 @@ describe('F1.3 door', () => {
     const out = h.fns._lkListHtml();
     const due = strip(out.slice(0, out.indexOf('class="lk-done"')));
     expect(due).toContain('Hana Invented');
-    expect(due).toContain('In Elvanto.');
+    expect(due).toContain('Checked in'); // plain pass: a grade login
     expect(due).toContain('Check out');
     expect(strip(out)).not.toContain('Nobody here by that name.');
     expect(strip(out)).toContain('Checked in · 3');
@@ -784,6 +784,7 @@ describe('F1.3 door', () => {
   });
   it('R2-G1 G0: "Kiosk check-ins as of h:mm" from the services push; amber when over 10 min old on the service day', () => {
     const h = setup();
+    h.get().S.user.role = 'admin'; // plain pass 2026-10-25: the kiosk freshness chip is admin/director only
     const at = (minAgo: number) => ({ mirrors: { services: { takenAt: new Date(Date.now() - minAgo * 60000).toISOString(), ageSeconds: minAgo * 60 } } });
     expect(strip(h.fns._lkListHtml())).not.toContain('Kiosk check-ins');
     h.get().LINK.status = at(3);
@@ -924,7 +925,7 @@ describe('F1.3 door', () => {
   });
   it('a kiosk check-in reads "In Elvanto."', () => {
     const h = setup();
-    expect(strip(h.fns._lkRowHtml(people[4]))).toContain('In Elvanto.');
+    expect(strip(h.fns._lkRowHtml(people[4]))).toContain('Checked in'); // plain pass: a grade login
   });
   it('every name passes through esc()', () => {
     const h = setup();
@@ -1069,7 +1070,7 @@ describe('B9 / T-32 wrong service (D3)', () => {
     expect(h.get().LINK.svc).toBe(SVC.serviceTimeId); // a past service is selected: no banner (T9)
     expect(h.fns._lkNoTonight()).toBe('');
     h.get().LINK.svc = null;
-    expect(strip(h.fns._lkNoTonight())).toContain("Tonight's service isn't here yet. Use the kiosk.");
+    expect(strip(h.fns._lkNoTonight())).toContain('No service to check in to yet. Use the kiosk.'); // plain pass: a grade login
     const h2 = setupDay('2026-10-16T09:00:00.000Z');
     expect(h2.fns._lkNoTonight()).toBe('');
   });
@@ -1087,7 +1088,7 @@ describe('F1.4 leader sheet', () => {
   const rowsOf = (h: any) => h.fns._lkLeadersHtml().split('lk-lq-row').slice(1);
   it('B11 / APP-56: one line when there are unlinked leaders; none when all are linked', () => {
     const h = setup();
-    expect(strip(h.fns._lkLeadersHtml())).toContain('Not linked: not found in Elvanto by this exact name (or more than one match). Ask the admin to fix the name.');
+    expect(strip(h.fns._lkLeadersHtml())).toContain("Some names can't be checked in. Tell the admin."); // plain pass: a non-boss login
     const h2 = makeEnv(); door(h2, [], [leaders[1]]); h2.get().LINK.lq = {};
     expect(strip(h2.fns._lkLeadersHtml())).not.toContain('Not linked:');
   });
@@ -1111,7 +1112,7 @@ describe('F1.4 leader sheet', () => {
   });
   it('checked in = Done (no box); no personId = greyed Not linked (no box); the rest get a box', () => {
     const r = rowsOf(setup());
-    expect(r[1]).toContain('lk-done-ic'); expect(r[1]).not.toContain('lk-box'); expect(strip('<' + r[1])).toContain('In Elvanto'); expect(r[1]).toContain('data-ic="check"');
+    expect(r[1]).toContain('lk-done-ic'); expect(r[1]).not.toContain('lk-box'); expect(strip('<' + r[1])).toContain('Saved'); expect(r[1]).toContain('data-ic="check"');
     expect(r[3]).toContain(' dis"'); expect(r[3]).toContain('Not linked'); expect(r[3]).not.toContain('class="lk-box"');
     expect(r[0]).toContain('class="lk-box"'); expect(r[2]).toContain('class="lk-box"');
   });
@@ -1168,7 +1169,7 @@ describe('F1 fix: no Unicode symbols in the LINK block', () => {
   it('no arrow or tick glyphs; the sent tick is the SVG check icon', () => {
     const block = html.slice(html.indexOf('/* ── LINK MODULE ──'), html.indexOf('/* ── END LINK MODULE ── */'));
     expect(block).not.toMatch(/[←-⇿☀-➿]/);
-    const h = makeEnv();
+    const h = makeEnv({ role: 'admin' });
     expect(h.fns._lkStatusHtml({ status: 'sent', reason: 'already' })).toBe('<svg data-ic="check"></svg> Already in Elvanto');
     expect(h.fns._lkStatusHtml({ status: 'pending', reason: null })).toBe('Waiting for Elvanto.');
     expect(h.fns._lkStatusHtml({ status: 'refused', reason: 'report-exists' })).toBe('There&#39;s already a report for that date. Edit it.');
@@ -1184,7 +1185,7 @@ describe('F1 fix: "I am" switch guard (ledger 18)', () => {
     h.fns._lkQSet([act(1), act(2), { kind: 'identity', id: P(9), at: '2026-10-16T08:00:00.000Z', from: null, to: 'L1' }]);
     h.answers.push(true);
     expect(await h.fns._lkSwitchLeader('L2')).toBe(true);
-    expect(h.calls.asks).toEqual(['2 actions are still waiting to send. Send them first? | Send first | Cancel']);
+    expect(h.calls.asks).toEqual(["2 check-ins haven't saved yet. Send them first? | Send first | Cancel"]);
     expect(h.calls.posts).toHaveLength(1);
     expect(atPost).toBeUndefined(); // the flush went out before the switch
     expect(h.calls.posts[0].b.items.filter((i: any) => i.kind === 'action').map((i: any) => i.leaderId)).toEqual(['L1', 'L1']);
@@ -1195,7 +1196,7 @@ describe('F1 fix: "I am" switch guard (ledger 18)', () => {
     h.fns._lkQSet([act(1)]);
     h.answers.push(false);
     expect(await h.fns._lkSwitchLeader(null)).toBe(false);
-    expect(h.calls.asks).toEqual(['1 action is still waiting to send. Send it first? | Send first | Cancel']);
+    expect(h.calls.asks).toEqual(["1 check-in hasn't saved yet. Send it first? | Send first | Cancel"]);
     expect(h.calls.posts).toHaveLength(0);
     expect(h.env.storage.has('yap_leader_id')).toBe(false);
     expect(h.fns._lkQGet()).toHaveLength(1);
@@ -1309,7 +1310,7 @@ describe('F2 lifegroup report', () => {
     const b = setup('L1', { lastReport: { ...grp().lastReport, editable: false, blocked: 'multi-service' } });
     const off = b.fns._lkReportHtml(b.get().LINK.groups[0], b.get().LINK.groups[0].lastReport);
     expect(off).not.toContain('_lkEditReport');
-    expect(off).toContain('Edit this report in Elvanto.');
+    expect(off).toContain('Tell the admin.'); // plain pass: a non-boss login
   });
   it('"Group did not meet" clears and hides ticks and service', () => {
     vi.useFakeTimers();
@@ -1511,7 +1512,7 @@ describe('F2 lifegroup report', () => {
     h.get().LINK.status = { console: { capabilities: { submitReport: 'off', editReport: 'off' } } };
     const out = h.fns._lkGroupHtml(h.get().LINK.groups[0]);
     expect(out).not.toContain('_lkEditReport(');
-    expect(out).toContain('Edit this report in Elvanto.');
+    expect(out).toContain('Tell the admin.'); // plain pass: a non-boss login
     h.get().LINK.gwk = 0;
     expect(h.fns._lkGroupHtml(h.get().LINK.groups[0])).not.toContain('_lkNewReport(');
   });
@@ -1627,11 +1628,11 @@ describe('F3 flow steps', () => {
     const el = setup('L1', [row(1, { assignedTo: 'Sam <i>Example</i>', currentLeaderId: null })]);
     el.fns._lkOpenStep(F(1));
     expect(el.calls.modals[0]).toContain('Assigned to: Sam &lt;i&gt;Example&lt;/i&gt;');
-    expect(strip(el.calls.modals[0]!)).toContain('Elvanto will pick who gets the next step. Ask the admin to change it.');
+    expect(strip(el.calls.modals[0]!)).toContain('The system will pick who gets the next step. Ask the admin to change it.');
     // a known app leader with no Elvanto person: Elvanto still picks (Q9)
     const un = setup('L1', [row(1, { assignedLeaderId: 'L4', assignedLeaderName: 'Una Unlinked', currentLeaderId: 'L4', currentLeaderLinked: false })]);
     un.fns._lkOpenStep(F(1));
-    expect(strip(un.calls.modals[0]!)).toContain('Elvanto will pick who gets the next step. Ask the admin to change it.');
+    expect(strip(un.calls.modals[0]!)).toContain('The system will pick who gets the next step. Ask the admin to change it.');
     const nob = setup('L1', [row(1, { assignedTo: null })]);
     nob.fns._lkOpenStep(F(1));
     expect(strip(nob.calls.modals[0]!)).toContain('Assigned to: Nobody');
@@ -1640,7 +1641,7 @@ describe('F3 flow steps', () => {
     expect(strip(par.calls.modals[0]!)).toContain('Text Parent · 0412 345 678');
     const none = setup('L1', [row(1, { personId: null })]);
     none.fns._lkOpenStep(F(1));
-    expect(strip(none.calls.modals[0]!)).toContain('cannot be assigned');
+    expect(strip(none.calls.modals[0]!)).toContain("can't be assigned yet"); // plain pass: a grade login
     expect(none.calls.modals[0]).not.toContain('Assigned to');
   });
   // 2026-10-24 flows reassign: admin/director pick from leaders who fit the person (no grades = anyone), Reassign or Complete.
@@ -1788,7 +1789,7 @@ describe('F3 flow steps', () => {
   it('a row with an open action (or one still on the phone) cannot be completed', () => {
     const h = setup('L1', [row(1, { openAction: { id: P(90), type: 'completeStep', status: 'pending', reason: null } }), row(2)]);
     const rows = h.fns._lkFlowsHtml().split('lk-row').slice(1);
-    expect(strip(rows[0])).toContain('Waiting for Elvanto.');
+    expect(strip(rows[0])).toContain('Saving…');
     // the detail sheet still opens (text, assign) but offers no Complete
     h.fns._lkOpenStep(F(1));
     expect(h.calls.modals).toHaveLength(1);
@@ -1907,7 +1908,7 @@ describe('F3 flow steps', () => {
     h.fns._lkQSet([{ kind: 'action', id: P(80), type: 'completeStep', payload: { rowId: F(1) }, note: null, leaderId: 'L1', _f: F(1) }]);
     await h.fns._lkFlush();
     expect(h.calls.posts[0].b.items[0]._f).toBeUndefined();
-    expect(strip(h.fns._lkFlowsHtml())).toContain('This step changed in Elvanto. Reload and try again.'); // fix16 F-35; r21 L6b: reload, no Elvanto step
+    expect(strip(h.fns._lkFlowsHtml())).toContain('This step changed. Reload and try again.'); // fix16 F-35; r21 L6b: reload, no Elvanto step
     expect(h.calls.toasts).toEqual([]);
     const k = setup('L1', [row(1)], reply('saved', { action: { id: P(81), type: 'completeStep', status: 'pending', reason: null } }));
     k.fns._lkQSet([{ kind: 'action', id: P(81), type: 'completeStep', payload: { rowId: F(1) }, note: null, leaderId: 'L1', _f: F(1) }]);
@@ -2397,7 +2398,7 @@ describe('T-46 UI minors', () => {
 
 describe('incident 18 Oct: no-room refusal text', () => {
   it('does not blame Elvanto setup', () => {
-    const h = makeEnv();
+    const h = makeEnv({ role: 'admin' }); // plain pass: a non-boss reads the generic line
     door(h, [{ personId: P(1), name: 'Ava Example', grade: 7, leader: false, checkedIn: false, action: { id: P(5), type: 'checkIn', status: 'refused', reason: 'no-room' }, mine: false }]);
     expect(strip(h.fns._lkRowHtml(h.get().LINK.people[SVC.serviceTimeId].people[0]))).toContain("No check-in room found for this person.");
   });
@@ -2408,7 +2409,7 @@ describe('impeccable #9 check-in with no service: one message, no broken-looking
     const h = makeEnv();
     h.get().LINK.services = [];
     const body = strip(h.fns._lkPickHtml()), foot = h.fns._lkPickFoot();
-    expect(body).toBe('Pick a serviceNo services in the last 7 days. Check in on the kiosk or in Elvanto.');
+    expect(body).toBe('Pick a serviceNo services in the last 7 days. Check in on the kiosk.'); // plain pass: a grade login
     expect(body).not.toContain("isn't here yet");
     expect(foot).toContain('>Close</button>');
     expect(foot).not.toContain('disabled');

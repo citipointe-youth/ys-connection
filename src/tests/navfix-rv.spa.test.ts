@@ -1,7 +1,7 @@
 // Review fixes (RV-*) for the nav/save fix round 2026-10-16: intake queue, logout, consents, notices.
 // Extract-and-run: the REAL functions from public/index.html run against small stubs.
 import { describe, it, expect } from 'vitest';
-import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, SITE_TIME_SRC, withPlain } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -40,7 +40,7 @@ function ikEnv(o: { post?: PostFn; fns?: string[]; prelude?: string } = {}) {
     function _still(h) { return !!h && h.k === (LINK.ik ? LINK.ik.key : null) && h.p === S.page; }
     ${o.prelude ?? ''}
     ${SITE_TIME_SRC}`;
-  const f = new Function('__ls', '__post', '__calls', `${prelude}\n${avail.map((n) => extractFn(HTML, n)).join('\n')}
+  const f = new Function('__ls', '__post', '__calls', `${prelude}\n${withPlain(avail.map((n) => extractFn(HTML, n)).join('\n'))}
     return { ${avail.join(', ')}, get S() { return S; }, get LINK() { return LINK; } };`)(ls, post, calls);
   return { f, calls, store };
 }
@@ -132,7 +132,7 @@ describe('RV-R8 expired session keeps that login\'s queue; another login signing
 });
 
 // New person harness (copied from navfix-n4.spa.test.ts).
-const fns = (names: string[]) => names.map((n) => extractFn(HTML, n)).join('\n');
+const fns = (names: string[]) => withPlain(names.map((n) => extractFn(HTML, n)).join('\n'));
 // The real New person functions against small stubs (pattern from new-youth.spa.test.ts).
 const NY_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_nyDobMask', '_nyDobIso', '_nyDobShow', '_nyDobError', '_nyToday', '_nyDobProblem', '_nyHost', '_nyHostHtml', '_nyHostDraw', '_nyPickHost', '_nyMessage', '_nyErrorText', 'toAuMobile', 'tidyName', '_nyFieldMsgs', '_nyRaw', '_nyShowMsgs', 'nySend', 'nyReset', 'nyOpen', 'nyBack', 'nySibling', 'renderNewYouth', '_nyReqDismiss'];
 function nyHarness(post: (path: string, body: any, ...rest: any[]) => Promise<any>, store: Record<string, string> = {}, lsOverride?: any) {

@@ -14,7 +14,7 @@ const NAMES = [...SITE_TIME_FNS, 'esc', 'progBar', 'fmtDay', '_lkDay', '_lkAddDa
 function spa(structure?: Record<string, unknown>) {
   (globalThis as any).__y3b = structure;
   return loadFns(NAMES, `
-    const S = { get settings() { const s = globalThis.__y3b; return s ? { ministryConfig: { structure: s } } : null; } };
+    const S = { user: { role: 'admin' }, get settings() { const s = globalThis.__y3b; return s ? { ministryConfig: { structure: s } } : null; } };
     const _ik = () => ({ tab: 'consent', nr: {} });
     const icS = () => '<i>'; const _laFilterUsers = () => [], _laOrder = (x) => x, _laGroup = () => []; let _laMode = 'all';
     ${SITE_TIME_CONSTS}

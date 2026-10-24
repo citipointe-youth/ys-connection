@@ -1095,7 +1095,9 @@ const API = (() => {
       }
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
-        const err = new Error(e.message || e.error || res.statusText || 'Request failed');
+        const said = e.message || e.error || res.statusText || 'Request failed';
+        const err = new Error(_plainErr(method, res.status, e.code, said));
+        err.serverMessage = said; // the server's own words (a non-boss sees plain text in err.message)
         err.status = res.status;
         err.code = e.code;
         err.hint = e.hint;
@@ -1946,7 +1948,7 @@ async function _ntPushFinish(permP, publicKey) {
     await API.post('/notices/push', { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth } });
     toast('Alerts are on for this phone');
   } catch (e) {
-    toast('Could not turn on alerts' + (e && e.message ? ': ' + e.message : ''));
+    toast(_lkSay('Could not turn on alerts' + (e && e.message ? ': ' + e.message : ''), "Couldn't turn on alerts. Try again."));
   } finally { _ntPushBusy = false; _ntPushDraw(); }
 }
 // S4 (2026-10-15): first-login alerts popup for the four quad logins. Once per device; "Not now" asks again 7+ days later.
@@ -3179,7 +3181,8 @@ function HOME_PATHS() {
 }
 function _homeError(err) {
   const msg = err instanceof Error ? err.message : String(err);
-  setApp(shell(`<div class="alert al-error" style="margin:16px">Home failed to load: ${esc(msg)}<br><small style="opacity:.7">(open browser console for details)</small></div>`));
+  setApp(shell(_lkBoss() ? `<div class="alert al-error" style="margin:16px">Home failed to load: ${esc(msg)}<br><small style="opacity:.7">(open browser console for details)</small></div>`
+    : `<div class="alert al-error" style="margin:16px">Couldn't load. Try again.</div>`));
   console.error('[renderHome]', err);
 }
 // Returns home from cache without ever blocking on a spinner when we have data:
@@ -9843,7 +9846,7 @@ let _busConsentPoll = null;
 // Repaint like busRefresh does: only while Bus is showing, and not over a field being typed in.
 function _busConsentRepaint() { if (S.page === 'bus') { if (_busEditing()) BUS.pendingRepaint = true; else { BUS.pendingRepaint = false; renderBus(); } } }
 async function busConsentCheck() {
-  try { await _busSend('POST', '/bus/consent/check', {}); } catch (e) { toast(e.code === 'LINK_UNAVAILABLE' ? "The console can't check right now. Try again later." : e.message); return; }
+  try { await _busSend('POST', '/bus/consent/check', {}); } catch (e) { toast(e.code === 'LINK_UNAVAILABLE' ? _lkSay("The console can't check right now. Try again later.", "Couldn't check just now. Try again later.") : e.message); return; }
   BUS.consentStatus = Object.assign({}, BUS.consentStatus, { checking: true }); _busConsentRepaint();
   const until = Date.now() + 180000; clearInterval(_busConsentPoll);
   _busConsentPoll = setInterval(() => _busConsentPollTick(until), 5000);
@@ -9854,7 +9857,7 @@ async function _busConsentPollTick(until) {
   if (S.page !== 'bus') { clearInterval(_busConsentPoll); return; }
   if (Date.now() > until) {
     clearInterval(_busConsentPoll); BUS.consentStatus = Object.assign({}, BUS.consentStatus, { checking: false });
-    toast("Console didn't respond, try again later"); _busConsentRepaint();
+    toast(_lkSay("Console didn't respond, try again later", "Couldn't check just now. Try again later.")); _busConsentRepaint();
   }
 }
 // Task D (owner, 2026-10-08): no saved address at all (addressId null) vs a saved address Google
@@ -10004,6 +10007,10 @@ function _nyHostDraw() { const el = document.getElementById('ny-hostc'); if (el)
 // The shared "I am" picker (it runs _lkSwitchGuard before the switch).
 function _nyPickHost(then) { _lkIamPick(() => { _nyHostDraw(); if (then) then(); }); }
 function _nyMessage(r) {
+  const m = _nyMessageRaw(r);
+  return Object.assign(m, { lines: m.lines.map(_lkSys) }); // E: a non-boss reads "the system", not Elvanto
+}
+function _nyMessageRaw(r) {
   if (r.dryRun) return { tone: 'good', retryParent: false, lines: ['Test mode: nothing was sent to Elvanto.'] };
   if (r.result !== undefined && r.student === undefined) { // bus consent form (one form, no parent step)
     const bl = [];
@@ -10027,7 +10034,7 @@ function _nyMessage(r) {
 // Vercel itself answers a bare 502 when a function dies, possibly after the student POST. Anything else may have landed in Elvanto.
 function _nyErrorText(e) {
   if (['BAD_REQUEST', 'MODULE_DISABLED', 'RATE_LIMITED', 'ELVANTO_UNREACHABLE', 'ELVANTO_FORM_CHANGED', 'ELVANTO_NOT_SET'].includes(e.code)) return { unsent: true, text: e.message };
-  return { unsent: false, text: "We don't know if the forms went in. Check the forms list in Elvanto before sending again." };
+  return { unsent: false, text: _lkSys("We don't know if the forms went in. Check the forms list in Elvanto before sending again.") };
 }
 // Date of birth (T11): typed as DD/MM/YYYY, slashes added as you type. The server still gets YYYY-MM-DD,
 // the same value the old date picker sent. Digits only are kept, so backspace works the normal way.
@@ -10131,7 +10138,7 @@ function renderNewYouth() {
   const who = NY.last ? `${NY.last.firstName} ${NY.last.lastName}` : '';
   if (NY.sending) { // the host left mid-send and came back: the reply is still on its way
     setApp(shell(`<div class="ph"><h1>New person</h1></div>
-      <div class="card" style="border-left:4px solid var(--warn)">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}<p>Sending to Elvanto...</p><p>Stay on this screen until it says whether the forms went in.</p></div>`));
+      <div class="card" style="border-left:4px solid var(--warn)">${who ? `<p><strong>${esc(who)}</strong></p>` : ''}<p>${_lkSys('Sending to Elvanto...')}</p><p>Stay on this screen until it says whether the forms went in.</p></div>`));
     return;
   }
   if (NY.unknown) { // an unknown outcome is a result page, not a pre-filled form with a ready Send button
@@ -10169,7 +10176,7 @@ function renderNewYouth() {
   if (!pend || !pend.id || !(Date.now() - pend.at < 864e5)) pend = null;
   const pendAt = pend ? new Date(pend.at).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' }) : '';
   setApp(shell(`<div class="ph"><h1>New person</h1></div>
-    ${pend ? `<div class="card" style="border-left:4px solid var(--warn)"><p>A send for ${esc(pend.first || 'someone')} at ${esc(pendAt)} didn't finish on this phone. Check Elvanto before sending again.</p><button type="button" class="btn btn-secondary btn-sm" onclick="_nyReqDismiss()">Dismiss</button></div>` : ''}
+    ${pend ? `<div class="card" style="border-left:4px solid var(--warn)"><p>A send for ${esc(pend.first || 'someone')} at ${esc(pendAt)} didn't finish on this phone. ${_lkSys('Check Elvanto before sending again.')}</p><button type="button" class="btn btn-secondary btn-sm" onclick="_nyReqDismiss()">Dismiss</button></div>` : ''}
     ${NY.sibling ? `<div class="card">Brother or sister of the last student. Only the student form will be sent: the parent form was sent with the last student.</div>` : ''}
     <form id="ny-form" onsubmit="nySend(event)" novalidate autocomplete="off">
     <div class="card lk-svc" id="ny-hostc">${_nyHostHtml()}</div>
@@ -10197,7 +10204,7 @@ function renderNewYouth() {
       <p class="fl">The student has texted or called their parent to say where they are.</p>
     </div>
     ${NY.error ? `<div class="card" id="ny-err" style="border-left:4px solid var(--danger)"><p>${esc(NY.error)}</p></div>` : ''}
-    <button class="btn btn-primary btn-full" id="ny-send" type="submit">Send to Elvanto</button>
+    <button class="btn btn-primary btn-full" id="ny-send" type="submit">${_lkSys('Send to Elvanto')}</button>
     </form>`));
   // setApp keeps the scroll position, and a failed send leaves the host at the bottom: bring the card into view.
   const errEl = NY.error && document.getElementById('ny-err');
@@ -10349,7 +10356,7 @@ function _lkNoTonight() {
   const sel = (LINK.services || []).find((x) => x.serviceTimeId === LINK.svc);
   if (sel && sel.ymd !== day) return ''; // a past service is selected on purpose: no "tonight" banner
   return LINK.services && !LINK.services.some((s) => s.ymd === day)
-    ? `<div class="lk-alert warn">${icS('info')}<div>${esc("Tonight's service isn't here yet. Use the kiosk.")}</div></div>` : '';
+    ? `<div class="lk-alert warn">${icS('info')}<div>${esc(_lkSay("Tonight's service isn't here yet. Use the kiosk.", 'No service to check in to yet. Use the kiosk.'))}</div></div>` : '';
 }
 // The day changed since the services were loaded (the phone was left open): drop the services, default, pick and
 // people, keep the queue. True when something was dropped; the caller reloads.
@@ -10414,11 +10421,8 @@ function _lkStatusText(row, lastSeen) {
 // The status line as HTML: the contract's tick is the SVG check icon (the SPA has no Unicode symbols).
 function _lkStatusHtml(row, lastSeen) {
   let t = _lkStatusText(row, lastSeen);
-  // F-35: only the admin logins work in Elvanto; everyone else is told to pass it on.
-  const role = S.user && S.user.role;
-  if (t && role !== 'admin' && role !== 'director') t = t.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
-    .replace(/(Edit this report|Remove a leader) in Elvanto\./, 'Tell the admin.')
-    .replace(/^Pick who gets the next step, .*Complete again\.$/, 'Tell the admin.'); // r21: only admin/director have the picker
+  // F-35 + plain-language pass: only the admin logins work in Elvanto; everyone else gets plain words.
+  if (t && !_lkBoss()) t = _lkPlainStatus(row, t);
   return t ? (row.status === 'sent' ? icS('check') + ' ' : '') + esc(t) : '';
 }
 function _lkStatusTone(row) {
@@ -10457,7 +10461,8 @@ function _lkBanner(types, st) {
   if ((!c || !c.online) && (_lkBoss() || door)) {
     const off = _lkBoss() ? _lkOfflineSince(st, Date.now()) : '';
     const at = c && c.lastSeenAt;
-    out.push([off ? 'bad' : 'warn', (at ? 'No link to Elvanto since ' + _lkSeen(at) : 'No link to Elvanto yet') + '. Your taps send later.' + (door ? ' Use the kiosk too.' : '')]);
+    out.push([off ? 'bad' : 'warn', _lkSay((at ? 'No link to Elvanto since ' + _lkSeen(at) : 'No link to Elvanto yet') + '. Your taps send later.' + (door ? ' Use the kiosk too.' : ''),
+      "Taps are saved on this phone and will send shortly. Use the kiosk if it's urgent.")]);
   }
   if (S.user && S.user.role === 'admin' && c && c.consoles > 1) out.push(['warn', c.consoles + ' consoles are running']);
   // Y6c: Flow steps only (its types carry completeStep). The server sends dncReady to admin/director only; missing = say nothing.
@@ -10474,6 +10479,47 @@ function _lkOfflineSince(st, now) {
 }
 function _lkDncText() { return "Do not contact isn't fully on yet. Finish Matching in Admin > Elvanto link."; }
 function _lkBoss() { const r = S.user && S.user.role; return r === 'admin' || r === 'director'; }
+// Leader plain-language pass (operator 2026-10-25): bosses (admin, director) keep every technical word; everyone else
+// gets the plain line. _lkSay(boss, plain) picks one; _lkSys swaps Elvanto for "the system" (new person, bus forms).
+function _lkSay(boss, plain) { return _lkBoss() ? boss : plain; }
+function _lkSys(t) { return _lkBoss() || !t ? t : String(t).replace(/(^|[.!?] )Elvanto\b/g, '$1The system').replace(/\bElvanto\b/g, 'the system'); }
+// The API wrapper's error text: a non-boss gets a plain line for a 5xx or a technical code; plain 4xx business
+// messages ("There's already a report for that date. Edit it.") pass through. Elvanto form errors keep their meaning.
+function _plainErr(method, status, code, msg) {
+  if (_lkBoss()) return msg;
+  code = String(code || '');
+  if (/^ELVANTO_/.test(code)) return _lkSys(msg);
+  if (code === 'LINK_BUSY_ROW') return 'Already saving. Wait a moment.';
+  if (status >= 500 || /^(VALIDATION_ERROR|MODULE_DISABLED|INTERNAL|LINK_)/.test(code)) return method === 'GET' ? "Couldn't load. Try again." : "Couldn't save. Try again.";
+  return msg;
+}
+// A refused batch toast for a non-boss (A10): the F-35 rewrite; a line that still names Elvanto or the console is
+// technical, so it reads "Couldn't save. Try again." Plain business lines ("Still sending, try again in a minute.") stay.
+function _lkPlainToast(say) {
+  const t = say.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
+    .replace(/(Edit this report|Remove a leader|Check them out) in Elvanto\./, 'Tell the admin.');
+  return /Elvanto|console|validation|error/i.test(t) ? "Couldn't save. Try again." : t;
+}
+// A status line in plain words for a non-boss (A2-A4, A8): saving / saved / couldn't save, no Elvanto.
+function _lkPlainStatus(row, t) {
+  const s = row.status;
+  if (s === 'mirror') return 'Checked in';
+  if (s === 'claimed' || (s === 'pending' && row.reason !== 'awaiting-approval')) return /^(Queued|Not sent)/.test(t) ? 'Still saving…' : 'Saving…';
+  if (s === 'sent' && row.type === 'removeFromFlowStep' && row.reason !== 'already') return 'Removed from the step';
+  if (s === 'sent' && !(row.reason === 'already' && row.type === 'completeStep')) return 'Saved';
+  if (s === 'refused' && row.code === 'LINK_BUSY_ROW') return 'Already saving. Wait a moment.';
+  if (s === 'refused' && row.code === 'CONSENT_CHECK_FIRST') return 'Tell the admin.';
+  // An unmapped reason shows the server's own line only when it is plain (no Elvanto/console words), e.g. "Already in this group."
+  const unmapped = s === 'refused' && _lkStatusText(Object.assign({}, row, { message: '' })) === 'This did not go through. Do it in Elvanto.'
+    && !/^(unknown|console-cannot-read)$/.test(row.reason || '');
+  if (unmapped && row.message && !/Elvanto|console|validation|error/i.test(row.message)) return row.message;
+  if ((s === 'unclear' || unmapped || (s === 'refused' && /^(lease-lost|not-landed|stale|group-unknown|person-unknown|no-room|unknown|console-cannot-read)$/.test(row.reason || '')))
+    && !(row.reason === 'no-room' && row.type === 'checkOut')) return "Couldn't save. Try again, or tell the admin.";
+  return t.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
+    .replace(/(Edit this report|Remove a leader) in Elvanto\./, 'Tell the admin.')
+    .replace(/^Pick who gets the next step, .*Complete again\.$/, 'Tell the admin.') // r21: only admin/director have the picker
+    .replace(/ in Elvanto\b/g, '').replace(/^Elvanto\b/, 'The system').replace(/\bElvanto\b/g, 'the system');
+}
 function _lkOfflineHtml() {
   const at = _lkBoss() ? _lkOfflineSince(LINK.status, Date.now()) : '';
   return at ? `<div class="lk-alert bad" role="status">${icS('alert')}<div>No link to Elvanto since ${esc(_lkSeen(at))}. Your taps send later.</div></div>` : ''; // F-12 wording, F-51 status
@@ -10597,7 +10643,7 @@ function _lkSwitchedOff() {
   LINK.fails = 0; LINK.red = false;
   let n = 0;
   try { n = _lkQGet().filter((it) => it.kind !== 'identity').length; } catch (e) {}
-  toast('Check-in is switched off. Use the kiosk. ' + n + (n === 1 ? ' tap was' : ' taps were') + ' not sent.', 8000);
+  toast(_lkSay('Check-in is switched off. Use the kiosk. ' + n + (n === 1 ? ' tap was' : ' taps were') + ' not sent.', "Check-in isn't available right now. Use the kiosk."), 8000);
   (async () => {
     try {
       const before = _navSig();
@@ -10693,8 +10739,7 @@ function _lkResults(items, results) {
   LINK.fails = 0; LINK.red = false;
   if (rate) toast('Too many taps. Wait a minute.', 4000);
   // B10 (F-35, same rewrite as _lkStatusHtml): refused check-out / undo toasts tell a leader to tell the admin.
-  else if (say) toast(_lkBoss() ? say : say.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
-    .replace(/(Edit this report|Remove a leader|Check them out) in Elvanto\./, 'Tell the admin.'), 5000);
+  else if (say) toast(_lkBoss() ? say : _lkPlainToast(say), 5000);
   // A good batch with more left (none rate-limited, all answered) goes again in 300 ms: a 160-tap backlog drains in
   // about a second, not 15 s steps (B14 / APP-22).
   if (left.length) _lkSchedule(rate || unanswered ? 15000 : 300);
@@ -10704,13 +10749,13 @@ function _lkResults(items, results) {
 function _lkPill() {
   let n = 0;
   try { n = _lkQGet().filter((it) => it.kind !== 'identity').length; } catch (e) {}
-  if (LINK.red && n) return `<button type="button" class="lk-pill bad" onclick="_lkRetry()">Not saved — tap to retry</button>`;
-  if (n) return `<span class="lk-pill wait">${n} waiting to send</span>`;
+  if (LINK.red && n) return `<button type="button" class="lk-pill bad" onclick="_lkRetry()">${_lkSay('Not saved — tap to retry', "Couldn't save. Tap to try again")}</button>`;
+  if (n) return `<span class="lk-pill wait">${n} ${_lkSay('waiting to send', 'saving…')}</span>`;
   // F-13: off the phone is not in Elvanto: while any of my rows still waits for the console, no "All saved".
   const acts = [];
   Object.keys(LINK.people || {}).forEach((k) => { const d = LINK.people[k] || {}; [].concat(d.people || [], d.leaders || []).forEach((p) => { if (p.mine) acts.push(p.action); }); });
   [LINK.gres, LINK.fres, LINK.mres].forEach((m) => Object.keys(m || {}).forEach((k) => acts.push(m[k])));
-  if (acts.some((a) => a && (a.status === 'pending' || a.status === 'claimed'))) { LINK.flash = false; return '<span class="lk-pill wait">Sent. Waiting for Elvanto.</span>'; }
+  if (acts.some((a) => a && (a.status === 'pending' || a.status === 'claimed'))) { LINK.flash = false; return `<span class="lk-pill wait">${_lkSay('Sent. Waiting for Elvanto.', 'Saving…')}</span>`; }
   if (LINK.flash) { LINK.flash = false; return `<span class="lk-pill ok fade">All saved</span>`; }
   return '';
 }
@@ -10746,17 +10791,18 @@ async function _lkDrain(ms) {
   }
 }
 function _lkActions(n) { return n === 1 ? '1 action is' : n + ' actions are'; }
+function _lkUnsaved(n) { return n === 1 ? "1 check-in hasn't saved yet." : n + " check-ins haven't saved yet."; }
 // Logout with unsent items: ask, send (up to 10 s), then offer to log out anyway. False = stay. A queue holding only
 // "I am" switches gets one silent flush first, so the identity log still has them (APP-34).
 async function _lkLogoutGuard() {
   let n = 0, all = 0;
   try { const q = _lkQGet(); all = q.length; n = q.filter((it) => it.kind !== 'identity').length; } catch (e) { return true; }
   if (!n) { if (all) await Promise.race([_lkFlush(), new Promise((r) => setTimeout(r, 5000))]); return true; }
-  if (!(await _lkAsk(_lkActions(n) + ' waiting to send. Send ' + (n === 1 ? 'it' : 'them') + ' now?', 'Send now', 'Stay'))) return false;
+  if (!(await _lkAsk(_lkSay(_lkActions(n) + ' waiting to send.', _lkUnsaved(n)) + ' Send ' + (n === 1 ? 'it' : 'them') + ' now?', 'Send now', 'Stay'))) return false;
   await _lkDrain(10000);
   const m = _lkQGet().filter((it) => it.kind !== 'identity').length;
   if (!m) return true;
-  return _lkAsk(_lkActions(m) + ' still waiting to send.', 'Log out anyway (they may not be sent)', 'Stay');
+  return _lkAsk(_lkSay(_lkActions(m) + ' still waiting to send.', _lkUnsaved(m)), 'Log out anyway (they may not be sent)', 'Stay');
 }
 function _lkAsk(text, yes, no, title) {
   return new Promise((res) => {
@@ -10924,7 +10970,7 @@ async function _lkLoadPeople(svc, quiet) {
     LINK.people[svc] = { people: (r && r.people) || [], leaders: (r && r.leaders) || [] };
     LINK.loadErr = null;
     return true;
-  } catch (e) { LINK.loadErr = e.message || 'Could not load the list.'; return false; }
+  } catch (e) { LINK.loadErr = _lkSay(e.message || 'Could not load the list.', "Couldn't load. Try again."); return false; }
 }
 // Plan F (#0): this login's check-in / check-out rows still waiting for the console: { actionId: personId }.
 function _lkCiWaiting() {
@@ -10972,7 +11018,7 @@ async function renderLinkCheckin() {
   _lkDayCheck();
   if (!LINK.services) {
     setApp(shell(`<div class="ph"><h1>Check-in</h1></div><div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>`));
-    try { _lkTakeServices(await API.fresh('/link/checkin')); LINK.loadErr = null; } catch (e) { LINK.loadErr = e.message || 'Could not load the services.'; }
+    try { _lkTakeServices(await API.fresh('/link/checkin')); LINK.loadErr = null; } catch (e) { LINK.loadErr = _lkSay(e.message || 'Could not load the services.', "Couldn't load. Try again."); }
     if (S.page !== 'link-checkin') return;
     if (!LINK.services) {
       setApp(shell(`<div class="ph"><h1>Check-in</h1></div><div class="card"><p>${esc(LINK.loadErr)}</p>
@@ -11047,7 +11093,7 @@ function _lkListHtml() {
   const m = LINK.status && LINK.status.mirrors && LINK.status.mirrors.services, at = m && m.takenAt, hm = at ? _lkTime(at) : '';
   const sv = (LINK.services || []).find((x) => x.serviceTimeId === LINK.svc);
   const stale = !!hm && !!sv && sv.ymd === _lkSvcDay() && Date.now() - Date.parse(at) > 600000;
-  const asOf = !hm ? '' : stale ? `<span class="chip c-warn">${icS('alert')} ${esc('Kiosk check-ins as of ' + hm)}</span>` : `<span class="lk-asof">${esc('Kiosk check-ins as of ' + hm)}</span>`;
+  const asOf = !hm || !_lkBoss() ? '' : stale ? `<span class="chip c-warn">${icS('alert')} ${esc('Kiosk check-ins as of ' + hm)}</span>` : `<span class="lk-asof">${esc('Kiosk check-ins as of ' + hm)}</span>`;
   const q = String(LINK.q.search || '').trim();
   const add = typed && _nyOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkNyFromDoor()">${icS('plus')} ${esc(`Add '${q}' as a new person`)}</button>` : '';
   return `${l.due.map(_lkRowHtml).join('') || (typed ? '<p class="lk-hint">Nobody here by that name.</p>' + add : '<p class="lk-hint">Type a name to check someone in.</p>')}
@@ -11248,12 +11294,12 @@ function _lkPickService(then) {
 }
 function _lkPickHtml() {
   const xs = LINK.services || [];
-  if (!xs.length) return '<div class="mo-title">Pick a service</div><p class="lk-sub">No services in the last 7 days. Check in on the kiosk or in Elvanto.</p>'; // #9: one message
+  if (!xs.length) return '<div class="mo-title">Pick a service</div><p class="lk-sub">No services in the last 7 days. Check in on the kiosk' + _lkSay(' or in Elvanto', '') + '.</p>'; // #9: one message
   return `<div class="mo-title">Pick a service</div><p class="lk-sub">The last 7 days, newest first.</p>${_lkNoTonight()}
     ${xs.length ? xs.map((s) => `<button type="button" class="lk-opt${s.serviceTimeId === LINK.pickSel ? ' on' : ''}" onclick="_lkPickSel('${esc(s.serviceTimeId)}')">
       <span><span class="lk-opt-t">${esc(_lkDay(s.ymd) + ' · ' + (s.name || ''))}</span><span class="lk-d">${esc(_lkTime(s.startsAt))}</span></span>
       ${s.serviceTimeId === LINK.defaultSvc ? '<span class="lk-tag">Default</span>' : ''}${_lkNotToday(s)}</button>`).join('')
-    : '<p class="lk-sub">No services in the last 7 days. Check in on the kiosk or in Elvanto.</p>'}`;
+    : '<p class="lk-sub">No services in the last 7 days. Check in on the kiosk' + _lkSay(' or in Elvanto', '') + '.</p>'}`;
 }
 function _lkPickFoot() {
   if (!(LINK.services || []).length) return '<button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Close</button>'; // #9: no disabled button
@@ -11326,7 +11372,7 @@ function _lkLeadersHtml() {
   }).join('');
   return `<div class="mo-title">Check in leaders</div><p class="lk-sub">${esc(_lkSvcLabel(_lkSvc()))}</p>
     <div class="lk-lq-head"><span>${nDone} done · ${nNl} not linked</span>${tick.length ? `<button type="button" class="btn btn-ghost btn-sm lk-tickall" onclick="_lkTickAll()">${allOn ? 'Untick all' : 'Tick all'}</button>` : ''}</div>
-    ${nNl ? '<p class="lk-sub">Not linked: not found in Elvanto by this exact name (or more than one match). Ask the admin to fix the name.</p>' : ''}
+    ${nNl ? `<p class="lk-sub">${_lkSay('Not linked: not found in Elvanto by this exact name (or more than one match). Ask the admin to fix the name.', "Some names can't be checked in. Tell the admin.")}</p>` : ''}
     <div class="lk-lq-list">${rows || '<p class="lk-sub">No active leaders.</p>'}</div>`;
 }
 function _lkLeadersFoot() {
@@ -11374,7 +11420,7 @@ async function _lkSwitchGuard(id) {
   let n = 0;
   try { n = _lkQGet().filter((it) => it.kind !== 'identity').length; } catch (e) { return true; }
   if (!n) return true;
-  const text = n === 1 ? '1 action is still waiting to send. Send it first?' : n + ' actions are still waiting to send. Send them first?';
+  const text = _lkSay(_lkActions(n) + ' still waiting to send.', _lkUnsaved(n)) + ' Send ' + (n === 1 ? 'it' : 'them') + ' first?';
   if (!(await _lkAsk(text, 'Send first', 'Cancel'))) return false;
   await _lkDrain(10000); // unsent items keep their own "I am", so switching after 10 s loses nothing
   return true;
@@ -11399,7 +11445,7 @@ function _lkIamPick(then) {
   const show = (ls) => {
     const n = (ls || []).filter((l) => l && l.active !== false).length;
     // APP-65: a name filter above 12 leaders; Cancel sticks to the bottom of the sheet.
-    modal(`<div class="mo-title">Who are you?</div><p class="lk-sub">Pick your name first. Elvanto shows it on the report.</p>
+    modal(`<div class="mo-title">Who are you?</div><p class="lk-sub">Pick your name first.${_lkSay(' Elvanto shows it on the report.', '')}</p>
       ${n > 12 ? '<input class="fi lk-mb" placeholder="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="_lkIamFilter(this.value)">' : ''}
       <div id="lk-iam-list">${_lkIamListHtml('', ls)}</div>
       <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button></div>`, () => { LINK.iamThen = null; });
@@ -11552,7 +11598,7 @@ function _lkReportHtml(g, r) {
   const here = r.didNotMeet ? '' : `<details class="lk-here"><summary>Students here (${names.length})</summary><p class="lk-sub">${esc(names.join(', ') || 'Nobody ticked')}</p></details>`;
   const edit = r.editable && !r.blocked && !_lkCapOff('editReport')
     ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkEditReport('${esc(r.reportId)}')">${icS('edit')} Edit</button>`
-    : '<p class="lk-sub">Edit this report in Elvanto.</p>';
+    : `<p class="lk-sub">${_lkSay('Edit this report in Elvanto.', 'Tell the admin.')}</p>`;
   return `<div class="card"><div class="lk-sec">Report</div>
     ${kv.map((x) => `<div class="lk-kv"><span>${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join('')}${here}<div class="lk-mt">${edit}</div></div>`;
 }
@@ -11659,7 +11705,7 @@ async function _lkLoadGroups(quiet) {
     });
     LINK.gErr = null;
     return true;
-  } catch (e) { LINK.gErr = e.message || 'Could not load the groups.'; return false; }
+  } catch (e) { LINK.gErr = _lkSay(e.message || 'Could not load the groups.', "Couldn't load. Try again."); return false; }
 }
 async function renderLinkGroups() {
   if (!LINK.groups) { _lkPaintGroups(); await _lkLoadGroups(); if (S.page !== 'link-groups') return; }
@@ -11806,7 +11852,7 @@ async function _lkMembersLoad(gid, quiet) {
     LINK.gm[gid] = v;
     // The server's changes are the truth again; keep only this phone's refusals (those rows were never stored).
     Object.keys(LINK.mres).forEach((k) => { if (LINK.mres[k].groupId === gid && LINK.mres[k].status !== 'refused') delete LINK.mres[k]; });
-  } catch (e) { if (!LINK.gm[gid] || LINK.gm[gid].err) LINK.gm[gid] = { err: e.message || 'Could not load the members.' }; }
+  } catch (e) { if (!LINK.gm[gid] || LINK.gm[gid].err) LINK.gm[gid] = { err: _lkSay(e.message || 'Could not load the members.', "Couldn't load. Try again.") }; }
   if (S.page === 'link-groups' && LINK.gid === gid && !LINK.rf) {
     const gp = document.getElementById('lk-gpage'), g = _lkGroup();
     if (gp && g) gp.innerHTML = _lkGroupHtml(g);
@@ -11898,7 +11944,7 @@ async function _lkMemRemove(gid, pid) {
   if (!r) return;
   const gn = g ? lgDisplayName(g.name) : 'this group', adding = r.state === 'adding' && !(r.change && r.change.status === 'sent'); // B05
   const ok = await _lkAsk(adding ? 'Stop adding ' + (r.name || 'this person') + ' to ' + gn + '?'
-    : 'Remove ' + (r.name || 'this person') + ' from ' + gn + ' in Elvanto?', adding ? 'Stop adding' : 'Remove', 'Keep', adding ? 'Stop adding?' : 'Remove from group?');
+    : 'Remove ' + (r.name || 'this person') + ' from ' + gn + _lkSay(' in Elvanto', '') + '?', adding ? 'Stop adding' : 'Remove', 'Keep', adding ? 'Stop adding?' : 'Remove from group?');
   if (ok) _lkMemQueue(gid, pid, 'removeGroupMember', r.name);
 }
 function _lkMemKeep(gid, pid) {
@@ -11932,7 +11978,7 @@ async function _lkMemPick(gid) {
   _lkYpDraw();
   if (!LINK.youth) {
     try { const r = await API.fresh('/link/youth', true); LINK.youth = (r && r.rows) || []; LINK.youthErr = null; }
-    catch (e) { LINK.youthErr = e.message || 'Could not load the youth list.'; }
+    catch (e) { LINK.youthErr = _lkSay(e.message || 'Could not load the youth list.', "Couldn't load. Try again."); }
     _lkYpDraw();
   }
 }
@@ -12105,7 +12151,7 @@ function _lkStepBlock(r) {
       ? ' In Admin > Youth Setup > Elvanto for this location, check the New People flow name.' : ' Ask the admin.');
   }
   if (r && r.consentStep && r.consent !== 'ok' && !r.notReceivedOk) {
-    return _lkConsentWait(r) ? 'Waiting for the consent reply. Complete opens after ' + _lkDay(r.consentFriday) + ' ' + _cutoffWords() + '.' : 'Do the consent check first (New youth & consent).';
+    return _lkConsentWait(r) ? 'Waiting for the consent reply. Complete opens after ' + _lkDay(r.consentFriday) + ' ' + _cutoffWords() + '.' : _lkSay('Do the consent check first (New youth & consent).', 'Tell the admin.');
   }
   return '';
 }
@@ -12198,7 +12244,7 @@ function _lkFlowRowHtml(r, today, boss) {
 function _lkFlowsHtml() {
   const rs = LINK.flows;
   if (!rs) return LINK.fErr ? `<div class="card"><p>${esc(LINK.fErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkFlows()">Try again</button></div>` : progBar('Loading');
-  const fp = LINK.fProg, bar = fp ? progBar(fp.stage || 'Reading flow steps', fp.done, fp.total) : ''; // S5: the console is updating these
+  const fp = LINK.fProg, bar = fp ? progBar(_lkSay(fp.stage || 'Reading flow steps', 'Loading'), fp.done, fp.total) : ''; // S5: the console is updating these
   if (!rs.length && !(LINK.fSteps || []).length) return bar || '<p class="lk-hint">No flow steps for this login.</p>';
   const today = _lkToday(), boss = _lkBoss(), shown = _lkFlowVisible();
   const steps = LINK.fSteps;
@@ -12290,7 +12336,7 @@ function _lkStepHtml() {
   const hub = _lkHubOwned(r) ? '<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkStepConsents()">Open in New youth &amp; consent ' + icS('chevr') + '</button>' : '';
   const why = _lkStepBlock(r), blocked = hub ? '' : r.dnc ? '<p class="lk-sub">Complete is off for this person: they can only be removed from the step.</p>'
     : why && _lkFlowFree(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(why)}</div></div>` : '';
-  let assign = '<p class="lk-sub">This person has no Elvanto profile, so they cannot be assigned.</p>';
+  let assign = `<p class="lk-sub">${_lkSay('This person has no Elvanto profile, so they cannot be assigned.', "This person can't be assigned yet.")}</p>`;
   if (r.personId && _lkBoss()) {
     // 2026-10-24 flows reassign: admin/director pick from the leaders who fit this person; Reassign saves it, Complete gives them the next step
     const ls = _lkPickList(r), l = _lkPicked(r);
@@ -12301,7 +12347,7 @@ function _lkStepHtml() {
   } else if (r.personId) {
     // other logins see who has the person; Complete keeps them (the server sets it). No app leader known = Elvanto picks.
     assign = `<p class="lk-sub">Assigned to: ${esc(r.assignedLeaderName || r.assignedTo || 'Nobody')}</p>
-      <p class="lk-hint">${r.currentLeaderId && r.currentLeaderLinked ? 'Complete gives the next step to them.' : 'Elvanto will pick who gets the next step.'} Ask the admin to change it.</p>`;
+      <p class="lk-hint">${r.currentLeaderId && r.currentLeaderLinked ? 'Complete gives the next step to them.' : _lkSys('Elvanto will pick who gets the next step.')} Ask the admin to change it.</p>`;
   }
   const done = _lkCanComplete(r) ? (_lkFlowKind(r) === 'parent' ? `<p class="lk-sub">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` : '')
     + (_lkNotReceived(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(_lkNotReceivedText(r))}</div></div>` : '') + `<div class="fg"><label class="fl" for="fl-note-2">Note</label><textarea id="fl-note-2" class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
@@ -12471,7 +12517,7 @@ async function _lkLoadFlows(quiet) {
     LINK.flows = rows.filter((x) => !gone[x.rowId] || (LINK.fres && LINK.fres[x.rowId] && LINK.fres[x.rowId].status === 'sent'));
     LINK.fErr = null;
     return true;
-  } catch (e) { LINK.fErr = e.message || 'Could not load the flow steps.'; return false; }
+  } catch (e) { LINK.fErr = _lkSay(e.message || 'Could not load the flow steps.', "Couldn't load. Try again."); return false; }
 }
 async function renderLinkFlows() {
   if (!LINK.flows) { _lkPaintFlows(); await _lkLoadFlows(); if (S.page !== 'link-flows') return; }
@@ -15416,9 +15462,13 @@ function _bcConfirmHtml(parent) {
   return `<div class="mo-title">Before you submit</div>
   <label class="cbx-row"><input type="checkbox" id="bc-agree" onchange="document.getElementById('bc-submit').disabled = !this.checked"> ${esc('I read the declaration to ' + (parent || 'the parent') + ' and they agreed')}</label>
   <div class="mo-actions"><button type="button" class="btn btn-secondary" onclick="busConsentForm(BUS.bc.who, true)">Back</button>
-  <button type="button" class="btn btn-primary" id="bc-submit" disabled onclick="_bcSend()">Submit to Elvanto</button></div>`;
+  <button type="button" class="btn btn-primary" id="bc-submit" disabled onclick="_bcSend()">${_lkSys('Submit to Elvanto')}</button></div>`;
 }
 function _bcResultText(r) {
+  const m = _bcResultRaw(r);
+  return Object.assign(m, { lines: m.lines.map(_lkSys) }); // F: a non-boss reads "the system", not Elvanto
+}
+function _bcResultRaw(r) {
   if (r.result === 'sent') return { tone: 'ok', lines: ['Sent to Elvanto.', r.dropoff ? 'Drop-off: ' + r.dropoff : 'Tell the parent the drop-off location shows after the form is in.'] };
   if (r.result === 'failed') return { tone: 'bad', lines: ['Elvanto did not take the form.', r.queued ? 'It is saved for the admin to resend.' : 'Use the paper form and tell the admin.'] };
   return { tone: 'warn', lines: ["We don't know if the form went in.", 'Check the bus consent form in Elvanto before sending again.'] };

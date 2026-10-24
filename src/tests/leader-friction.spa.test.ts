@@ -2,7 +2,7 @@
 // on both password screens, a half-typed lifegroup report kept across a sign-out (ysc.lkDraft.<login id>), plain
 // "Elvanto" wording instead of "console" on the leader pages, and a next step on two dead ends.
 import { describe, it, expect } from 'vitest';
-import { loadIndexHtml, extractFn } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, withPlain } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
 const WARN = 'Everyone using this login is signed out. They need the new password.';
@@ -29,7 +29,7 @@ function draftEnv(broken = false) {
     const _lkReports = () => []; const getMyLeaderId = () => 'L1'; const _lkReportOn = () => false; const _lkIamPick = () => {};
     const _lkPush = (it) => { __t.pushed.push(it); }; const _lkUuid = () => 'id-1'; const _lkQGet = () => []; const _lkSchedule = () => {};
     const _lkAdmFresh = () => ({}); const _lkAsk = async () => __t.ask; const _lkGroupsBack = () => { __t.back++; };
-    ${DRAFT_FNS.map((n) => extractFn(HTML, n)).join('\n')}
+    ${withPlain(DRAFT_FNS.map((n) => extractFn(HTML, n)).join('\n'))}
     let LINK = _lkFresh();
     return { ${DRAFT_FNS.join(', ')}, S, get LINK() { return LINK; }, set LINK(v) { LINK = v; } };`)(t, ls, G);
   return { fns, t, m };
@@ -155,7 +155,7 @@ function pwEnv(role: string) {
     const moreItems = () => [{ id: 'prayers', ic: 'pray', label: 'Prayers', open: "go('prayers')" }, { id: 'bus', ic: 'bus', label: 'Bus', open: "go('bus')" }];
     const brandMark = () => ''; const Cache = { clear() {} }; const _positionNprog = () => {}; let _shellReady = true;
     const document = { getElementById: (id) => (id === 'app' ? __app : { addEventListener() {} }) };
-    ${['_sharedPwWarn', 'openMore', 'showChangeOwnPassword', 'renderMustChangePassword'].map((n) => extractFn(HTML, n)).join('\n')}
+    ${withPlain(['_sharedPwWarn', 'openMore', 'showChangeOwnPassword', 'renderMustChangePassword'].map((n) => extractFn(HTML, n)).join('\n'))}
     return { openMore, showChangeOwnPassword, renderMustChangePassword };`)((h: string) => { shown = h; }, app);
   return { fns, shown: () => shown, app };
 }
@@ -193,7 +193,7 @@ describe('controller ruling: a junior leader always has the More button', () => 
   const NAV = ['_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', '_busOn', '_prayersOn', 'moreItems', '_navItemsBase', '_navSlots', 'navItems', 'bottomNavItems', '_navClick', 'openMore'];
   const nav = (role: string, modules: any) => {
     let shown = '';
-    const n = new Function('S', 'L', 'modal', 'icN', 'esc', `${NAV.map((x) => extractFn(HTML, x)).join('\n')}; return { navItems, bottomNavItems, moreItems, openMore };`)(
+    const n = new Function('S', 'L', 'modal', 'icN', 'esc', `${withPlain(NAV.map((x) => extractFn(HTML, x)).join('\n'))}; return { navItems, bottomNavItems, moreItems, openMore };`)(
       { user: { role }, page: 'home', settings: { ministryConfig: { modules } } }, (k: string) => k, (h: string) => { shown = h; }, (k: string) => `<i ${k}>`, (x: string) => x);
     return { n, shown: () => shown };
   };
@@ -218,13 +218,13 @@ describe('Y5 leader wording', () => {
   const statusFns = () => new Function(`
     let LINK = { status: null }; const LK_OFFLINE_MS = 9e5; const S = { user: { role: 'grade' } };
     const _lkSeen = (x) => x; const _lkTime = (x) => x; const _lkOutsideWindow = () => false; const icS = () => ''; const esc = (s) => s;
-    ${['_lkStatusText', '_lkStatusHtml'].map((n) => extractFn(HTML, n)).join('\n')}
+    ${withPlain(['_lkStatusText', '_lkStatusHtml'].map((n) => extractFn(HTML, n)).join('\n'))}
     return { _lkStatusText, _lkStatusHtml };`)();
   it('"Waiting for the console" and "Console last seen" become "Waiting for Elvanto" and "Elvanto last reached"', () => {
     const f = statusFns();
     expect(f._lkStatusText({ status: 'pending', reason: null })).toBe('Waiting for Elvanto.');
     expect(f._lkStatusText({ status: 'pending', reason: null }, '7:02 pm')).toBe('Waiting for Elvanto. Elvanto last reached 7:02 pm');
-    expect(f._lkStatusHtml({ status: 'pending', reason: null }, '7:02 pm')).toBe('Waiting for Elvanto. Elvanto last reached 7:02 pm');
+    expect(f._lkStatusHtml({ status: 'pending', reason: null }, '7:02 pm')).toBe('Saving…'); // plain pass 2026-10-25: a grade login
   });
   it('controller ruling: the other leader-visible status lines say Elvanto, not console', () => {
     const f = statusFns();
@@ -232,7 +232,7 @@ describe('Y5 leader wording', () => {
     expect(f._lkStatusText({ status: 'pending', reason: null, createdAt: old })).toBe('Not sent to Elvanto yet (since ' + old + ').');
     for (const reason of ['console-cannot-read', 'unknown', 'never-heard-of']) {
       expect(f._lkStatusText({ status: 'refused', reason }), reason).toBe('This did not go through. Do it in Elvanto.');
-      expect(f._lkStatusHtml({ status: 'refused', reason }), reason).toBe('This did not go through. Tell the admin.');
+      expect(f._lkStatusHtml({ status: 'refused', reason }), reason).toBe("Couldn't save. Try again, or tell the admin."); // plain pass
     }
   });
   it('the dead ends say the next step', () => {
@@ -259,7 +259,7 @@ describe('Y5 leader wording', () => {
   it('rule: the link banner a leader sees never says "console"', () => {
     const banner = (role: string) => new Function('role', `
       const S = { user: { role } }; const LINK = { status: null }; const icS = () => ''; const esc = (s) => s; const _lkSeen = (x) => x;
-      ${['_lkBanner', '_lkBoss', '_lkOfflineSince'].map((n) => extractFn(HTML, n)).join('\n')}
+      ${withPlain(['_lkBanner', '_lkBoss', '_lkOfflineSince'].map((n) => extractFn(HTML, n)).join('\n'))}
       const LK_OFFLINE_MS = 9e5;
       return _lkBanner;`)(role);
     for (const r of ['grade', 'quad', 'leader']) {

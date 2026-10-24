@@ -1,7 +1,7 @@
 // navfix lane n5 (Lifegroups + Flows): S-1/D7 client, B05, B06, B09, B11, B12, B16, B24. Harness copied from fix16-e.spa.test.ts
 // (no lane may edit a shared test file). Run from the REAL page source (extract-and-evaluate).
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
+import { loadIndexHtml, extractFn, SITE_TIME_SRC, withPlain } from './helpers/extract-fn';
 
 const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'setMyLeaderId', '_vgSnap', '_vgActive',
   '_lkFresh', '_lkTime', '_lkDay', 'fmtDay', '_lkSvcLabel', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
@@ -29,7 +29,7 @@ const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: 
   name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' };
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
-const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(loadIndexHtml(), n)).join('\n');
+const BODY = withPlain(SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(loadIndexHtml(), n)).join('\n'), FNS);
 // APP-49: the real constant, read from the page (a copy here would hide a change).
 const LK_DOOR_TYPES_SRC = ['LK_DOOR_TYPES', 'LK_MEM_TYPES', 'LK_GROUP_TYPES', 'LK_FLOW_TYPES', 'LK_FF', 'LK_CATS', 'LK_OFFLINE_MS']
   .map((n) => loadIndexHtml().match(new RegExp(`^const ${n} = .*;`, 'm'))![0]).join('\n');
@@ -157,7 +157,7 @@ describe('B05 an add the console already sent is a member: the button says Remov
     expect(html).not.toContain('>Cancel</button>');
     h.answers.push(false);
     await h.fns._lkMemRemove(G(1), P(70));
-    expect(h.calls.asks[0]).toMatch(/^Remove Tom LDummyton from .* in Elvanto\? \| Remove \| Keep$/);
+    expect(h.calls.asks[0]).toMatch(/^Remove Tom LDummyton from .*[^o]\? \| Remove \| Keep$/); // plain pass: no 'in Elvanto' for a non-boss
   });
   it('pending add -> still "Cancel" / "Stop adding"', async () => {
     const h = mem('pending');

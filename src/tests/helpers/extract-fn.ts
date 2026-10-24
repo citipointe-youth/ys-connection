@@ -43,8 +43,28 @@ export function loadFns(names: string[], prelude = '', returns: string[] = names
   if (/\b_LK_RC\b/.test(body) && !/\b_LK_RC\s*=/.test(prelude)) prelude = 'const _LK_RC = {};\n' + prelude;
   // Rev 20: a door repaint (_lkSetSearch, _lkRefreshView) brings the door search's paint along (it paints nothing without #lk-es).
   if (/\b_lkEsPaint\(/.test(body) && !names.includes('_lkEsPaint')) body += '\n' + ES_FNS.filter((n) => !names.includes(n)).map((n) => extractFn(src, n)).join('\n');
+  // Plain-language pass (2026-10-25): a function that reads _lkSay / _lkSys / _lkPlainStatus brings them (and _lkBoss) along.
+  body = withPlain(body, names, prelude);
+  if (/\b_lkBoss\(/.test(body) && !/\b(?:var|let|const) S\b/.test(prelude)) prelude = 'var S = {};\n' + prelude;
   // eslint-disable-next-line no-new-func
   return new Function(`${prelude}\n${body}\nreturn { ${returns.join(', ')} };`)();
+}
+
+/** The plain-language helpers (bosses keep technical words, everyone else gets plain ones). */
+export const PLAIN_FNS = ['_lkBoss', '_lkSay', '_lkSys', '_plainErr', '_lkPlainStatus', '_lkStatusText', '_nyMessageRaw', '_bcResultRaw', '_lkUnsaved', '_lkPlainToast'];
+/** Appends each PLAIN_FNS helper the body calls and does not already hold (repeats until nothing new is needed). */
+export function withPlain(body: string, have: string[] = [], prelude = ''): string {
+  const src = loadIndexHtml(), got = new Set(have);
+  // A test stub of the same name (function or const in the prelude) wins: never append the real one over it.
+  for (const n of PLAIN_FNS) if (new RegExp(`(?:function\\s+${n}\\(|(?:const|let|var)\\s+${n}\\b)`).test(prelude)) got.add(n);
+  for (let more = true; more;) {
+    more = false;
+    for (const n of PLAIN_FNS) {
+      if (got.has(n) || !new RegExp(`\\b${n}\\b`).test(body) || new RegExp(`function ${n}\\(`).test(body)) continue;
+      body += '\n' + extractFn(src, n); got.add(n); more = true;
+    }
+  }
+  return body;
 }
 
 /** Rev 20: the door search's paint and what it reads (loadFns adds them; a test with its own FNS list adds ES_FNS). */

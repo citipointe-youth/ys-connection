@@ -117,7 +117,7 @@ describe('F-11 / F-12 / F-51 the no-link line', () => {
   it('F-12: leaders get the pill only, except on the door', () => {
     f.role('leader');
     expect(f._lkBanner(['submitReport'], st({ online: false }))).toBe('');
-    expect(text(f._lkBanner(['checkIn'], st({ online: false })))).toContain('Use the kiosk too.');
+    expect(text(f._lkBanner(['checkIn'], st({ online: false })))).toBe("Taps are saved on this phone and will send shortly. Use the kiosk if it's urgent."); // plain pass 2026-10-25
   });
   it('F-51: the Home offline line is role=status, not alert', () => {
     f.role('admin');
@@ -130,7 +130,7 @@ describe('F-11 / F-12 / F-51 the no-link line', () => {
 
 describe('F-13 the pill', () => {
   const prelude = `
-    let LINK = { red: false, flash: true, people: {}, gres: {}, fres: {}, mres: {} };
+    let LINK = { red: false, flash: true, people: {}, gres: {}, fres: {}, mres: {} }; var S = { user: { role: 'admin' } };
     function _lkQGet() { return []; }
     function set(x) { Object.assign(LINK, x); }`;
   const f = loadFns(['_lkPill'], prelude, ['_lkPill', 'set']);
@@ -182,7 +182,7 @@ describe('F-35 refusals: "Tell the admin." for non-admin logins', () => {
       expect(h("This isn't connected yet. Do it in Elvanto.")).toBe("This isn't connected yet. Tell the admin.");
       expect(h('Too late to send. Do it in Elvanto.')).toBe('Too late to send. Tell the admin.');
       expect(h('Do this in Elvanto for now.')).toBe('Tell the admin.');
-      expect(h('This step changed in Elvanto. Do it there.')).toBe('This step changed in Elvanto. Tell the admin.');
+      expect(h('This step changed in Elvanto. Do it there.')).toBe('This step changed. Tell the admin.'); // plain pass: no Elvanto
       expect(h('Edit this report in Elvanto.')).toBe('Tell the admin.');
       expect(h("Pick who gets the next step, or Elvanto's usual pick, then Complete again.")).toBe('Tell the admin.'); // r21 review #1
     }

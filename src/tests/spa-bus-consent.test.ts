@@ -100,7 +100,7 @@ describe('consent form sheet (R2, R3, R6)', () => {
     expect(h).toMatch(/id="bc-submit"[^>]*disabled/);
   });
   it('result text: sent with drop-off; unconfirmed says check Elvanto, never "try again"', () => {
-    const { _bcResultText } = loadFns(['_bcResultText']);
+    const { _bcResultText } = loadFns(['_bcResultText'], "var S = { user: { role: 'admin' } };"); // the boss wording
     expect(_bcResultText({ result: 'sent', dropoff: 'Carindale stop' }).lines.join(' ')).toMatch(/Carindale stop/);
     const u = _bcResultText({ result: 'unconfirmed', dropoff: null, queued: true }).lines.join(' ');
     expect(u).toMatch(/Elvanto/); expect(u).not.toMatch(/try again/i);
@@ -163,7 +163,7 @@ describe('fix round 1', () => {
   it('times out with the toast, even while offline, and re-enables the button', async () => {
     const f = load('bus'); f._pollSet({ offline: true });
     await f._busConsentPollTick(Date.now() - 1);
-    expect(f.calls.toast).toEqual(["Console didn't respond, try again later"]); expect(f.BUS.consentStatus.checking).toBe(false); expect(f.calls.cleared).toBe(1);
+    expect(f.calls.toast).toEqual(["Couldn't check just now. Try again later."]); // plain pass: no role = non-boss expect(f.BUS.consentStatus.checking).toBe(false); expect(f.calls.cleared).toBe(1);
   });
   it('two taps leave one live interval; a tap off the Bus page does not repaint', async () => {
     const f = load('bus'); await f.busConsentCheck(); await f.busConsentCheck();
