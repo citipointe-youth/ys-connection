@@ -1,5 +1,6 @@
 // link.service (lane D, plan Tasks D1–D6; spec 2026-10-12-elvanto-link-app-design.md §6, §8.2, §9.1).
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { makeSyncService } from '../services/sync.service';
 import { makeLinkService, stepHidden, LINK_RATE_MAX, LINK_RATE_WINDOW_MS, type LinkService } from '../services/link.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import { dncFullyOn } from '../services/dnc';
@@ -139,7 +140,7 @@ async function setup(mode: Mode | Modes = 'on', o: { console?: boolean; caps?: P
 
   const svc = makeLinkService({ link, settings, students, leaders, users, serviceSessions: sessions,
     serviceAttendance: attendance, limiter: o.limiter ?? new RateLimiter(LINK_RATE_MAX, LINK_RATE_WINDOW_MS), now: () => clock.now });
-  return { svc, link, clock, sessions, attendance, leaders, students, settings };
+  return { svc, link, clock, sessions, attendance, leaders, students, settings, users };
 }
 
 async function registerConsole(link: InMemoryLinkRepository, consoleId: string, capabilities: Capabilities, pollSeconds = 60, linkRev = 1) {
@@ -708,7 +709,7 @@ describe('R2-G1 G1-2: a same-direction tap after another leader’s answers dupl
 
 describe('B4 / T-24 ordering (APP-3, APP-45)', () => {
   // M2 (operator ruling 2026-10-24): over a claimed (mid-send) check-in, a check-out is queued behind it, not refused.
-  const lease = (h: Awaited<ReturnType<typeof setup>>) => h.link.claim({ console: { consoleId: '8f5a1c2e-0000-4000-8000-000000000001', label: 'Office PC', contractVersion: 1,
+  const lease = (h: Awaited<ReturnType<typeof setup>>) => h.link.claim({ console: { consoleId: CONSOLE, label: 'Office PC', contractVersion: 1,
     consoleVersion: '1.0', inWindow: true, pollSeconds: 60, capabilities: CAPS, linkRev: 1 }, max: 10, leaseSeconds: 180, cutoffDays: 3, leaseLostMs: 3_600_000 });
   it('APP-3 A: a checkOut over a pending check-in cancels it and answers cancelled; over a claimed one it queues behind it (M2)', async () => {
     const h = await setup();
@@ -720,6 +721,21 @@ describe('B4 / T-24 ordering (APP-3, APP-45)', () => {
     expect((await lease(h)).map((r) => r.row.id)).not.toContain(q.id); // the claim holds it behind the claimed check-in
     setRow(h.link, a.id, { status: 'sent', result_at: NOW.toISOString() });
     expect((await lease(h)).map((r) => r.row.id)).toContain(q.id);
+  });
+  it('M2 + retry (link seam review #1): a console retry on the claimed check-in cancels it and the check-out queued behind it', async () => {
+    for (const queued of [true, false]) {
+      const h = await setup();
+      const sync = makeSyncService({ link: h.link, settings: h.settings, students: h.students, users: h.users, now: () => h.clock.now });
+      const a = checkIn(P_AMY);
+      await enq(h.svc, GRADE, a, DEV);
+      expect((await lease(h)).map((r) => r.row.id)).toContain(a.id);
+      const q = checkOut(P_AMY);
+      if (queued) expect((await enq(h.svc, QUAD, q, DEV)).outcome).toBe('saved');
+      await sync.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: a.id, outcome: 'retry', retrySeconds: 60, reason: 'console-busy' }] });
+      // Nothing reached Elvanto yet, so the Undo / Check out wins, as before M2: neither row is sent. With nothing queued, the retry stands.
+      expect((await h.link.getAction(a.id))!.status).toBe(queued ? 'cancelled' : 'pending');
+      if (queued) expect((await h.link.getAction(q.id))!.status).toBe('cancelled');
+    }
   });
   it('APP-3 A (pending): a checkOut over a pending check-in cancels it and answers cancelled', async () => {
     const h = await setup();

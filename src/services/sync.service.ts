@@ -190,6 +190,18 @@ export function makeSyncService(d: SyncDeps) {
       };
       req.results = await Promise.all(req.results.map(async (it) => (it.outcome === 'resolved' && !it.landed && await rechecked(it.id) ? { ...it, landed: true } : it)));
       const reply = await d.link.applyResults(req.consoleId, req.results, now());
+      // Link seam review #1 (2026-10-24): a retried check-in is pending again with a check-out queued behind it (M2): nothing reached
+      // Elvanto, so the Undo / Check out wins, as before M2. Cancel the check-in first: if that fails it was re-claimed, and the queue stands.
+      const appliedNow = new Set(reply.applied);
+      for (const it of req.results) {
+        if (it.outcome !== 'retry' || !appliedNow.has(it.id)) continue;
+        const ci = await d.link.getAction(it.id);
+        if (ci?.type !== 'checkIn' || ci.status !== 'pending' || !ci.personId) continue;
+        const st = (ci.payload as { serviceTimeId?: unknown }).serviceTimeId;
+        const out = (await d.link.listActions({ types: ['checkOut'], statuses: ['pending'], personId: ci.personId, serviceDateFrom: ci.serviceDate, serviceDateTo: ci.serviceDate }))
+          .find((r) => (r.payload as { serviceTimeId?: unknown }).serviceTimeId === st && r.createdAt >= ci.createdAt);
+        if (out && await d.link.cancelPending(ci.id, out.id)) await d.link.cancelPending(out.id);
+      }
       if (d.errorLog) {
         const applied = new Set(reply.applied);
         // D1: an unclear is not written here; the sweep below keeps the live count of open unclear rows.
