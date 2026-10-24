@@ -29,6 +29,13 @@ describe('quad lifegroup names', () => {
     expect(parseGroupMeta('YS - Junior Girls Wednesday Mt Gravatt Lifegroup')).toEqual({ grade: null, gender: 'female', quad: 'g79' });
     expect(parseGroupMeta('YS - Grade 10 Boys Wednesday Mt Gravatt Lifegroup')).toEqual({ grade: 10, gender: 'male', quad: null });
   });
+  it('Senior before the suburb, Guys before or after Senior (D8)', () => {
+    expect(parseGroupName('Brisbane - Youth - Senior Guys Mt Gravatt Wednesday Lifegroup')).toEqual({ grade: null, gender: 'male', quad: 'b1012' });
+    expect(parseGroupName('Brisbane - Youth - Guys Senior Mt Gravatt Wednesday Lifegroup')).toEqual({ grade: null, gender: 'male', quad: 'b1012' });
+    expect(parseGroupName('Brisbane - Youth - Senior Girls Mt Gravatt Wednesday Lifegroup')).toEqual({ grade: null, gender: 'female', quad: 'g1012' });
+    // the real renamed group (read 24 Oct) has no gender word, so no quad; never invent one
+    expect(parseGroupName('Brisbane - YS - Senior Wednesday Mt Gravatt Lifegroup')).toEqual({ grade: null, gender: null, quad: null });
+  });
   it('canAccessQuadGroup: admin/director, the quad login, a grade login with a grade in range + gender', () => {
     expect(canAccessQuadGroup(ADMIN, 'g79')).toBe(true);
     expect(canAccessQuadGroup(act('director'), 'b1012')).toBe(true);
