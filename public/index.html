@@ -10625,6 +10625,14 @@ function _lkResults(items, results) {
         if (!(svc && pid) || it.type === 'checkOut') say = r.message || say;
       } else if (svc && pid) {
         // cancelled (B4): a check-out met a pending check-in, and r.action is that check-in, now cancelled.
+        if (it.type === 'checkOut' && r.outcome === 'cancelled' && _lkQGet().some((x) => x.kind === 'cancel' && x.id === it.id)) {
+          // UI diff review M1: Undo was pressed while this check-out was on the wire, but it cancelled an unsent check-in
+          // (B4), so no check-out row exists to cancel. Drop the cancel and check them in again, which is what Undo meant.
+          done['cancel:' + it.id] = true;
+          const sv = (LINK.services || []).find((x) => x.serviceTimeId === svc);
+          _lkPush({ kind: 'action', id: _lkUuid(), type: 'checkIn', payload: { serviceTimeId: svc, serviceId: sv ? sv.serviceId : it.payload.serviceId, personId: pid },
+            note: null, leaderId: it.leaderId == null ? null : it.leaderId });
+        }
         const act = Object.assign({ id: it.id, type: it.type, status: 'pending', reason: null }, r.action || {});
         if (r.outcome === 'duplicate' && r.existingId) act.id = r.existingId;
         else if (r.outcome === 'duplicate' && !r.action) act.status = 'mirror'; // in by the kiosk

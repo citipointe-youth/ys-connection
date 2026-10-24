@@ -2424,3 +2424,22 @@ describe('impeccable #9 check-in with no service: one message, no broken-looking
     expect(extractFn(html, '_lkPaintDoor')).toContain("${s || (LINK.services || []).length ? `<div class=\"card lk-svc\">");
   });
 });
+
+describe('ys-ui-diff-review M1 / M2: the toast Undo acts only on its own tap', () => {
+  const ava = (o: any = {}) => ({ personId: P(1), name: 'Ava', grade: 7, leader: false, checkedIn: true, action: null, mine: false, ...o });
+  it('M1: Undo while a check-out that cancels an unsent check-in is on the wire ends with a queued check-in, no cancel', async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    const h = makeEnv({ post: (_p, b) => new Promise((r) => { release = () => r({ results: [
+      { id: b.items[0].id, kind: 'action', outcome: 'cancelled', action: { id: P(501), type: 'checkIn', status: 'cancelled', reason: null } }] }); }) });
+    door(h, [ava({ mine: true, action: { id: P(501), type: 'checkIn', status: 'pending', reason: null } })]);
+    h.fns._lkCheck(P(1), 'checkOut');
+    const f = h.fns._lkFlush();
+    h.fns._lkToastUndo();
+    expect(h.fns._lkQGet().map((i: any) => i.kind)).toEqual(['action', 'cancel']);
+    release(); await f;
+    const q = h.fns._lkQGet();
+    expect(q.filter((i: any) => i.kind === 'cancel')).toEqual([]);
+    expect(q).toEqual([expect.objectContaining({ kind: 'action', type: 'checkIn', payload: expect.objectContaining({ personId: P(1), serviceTimeId: SVC.serviceTimeId }) })]);
+  });
+});
