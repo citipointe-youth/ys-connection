@@ -55,7 +55,7 @@ type Mode = 'off' | 'admin' | 'on';
 interface H {
   svc: LinkService; link: InMemoryLinkRepository; clock: { now: Date };
   sessions: InMemoryServiceSessionRepository; attendance: InMemoryServiceAttendanceRepository;
-  leaders: InMemoryLeaderRepository; students: InMemoryStudentRepository; settings: InMemorySettingsRepository;
+  leaders: InMemoryLeaderRepository; students: InMemoryStudentRepository; settings: InMemorySettingsRepository; users: InMemoryUserRepository;
 }
 
 const student = (id: string, first: string, last: string, gender: 'male' | 'female', grade: number) => ({
