@@ -23,9 +23,9 @@ describe('door status lines', () => {
     [{ status: 'sent', reason: null, resultAt: '2026-10-23T09:05:00Z', type: 'checkIn' }, 'In Elvanto 7:05 pm', 'Saved'],
     [{ status: 'sent', reason: 'already', type: 'checkIn' }, 'Already in Elvanto', 'Saved'],
     [{ status: 'mirror', reason: null }, 'In Elvanto.', 'Checked in'],
-    [{ status: 'refused', reason: 'lease-lost' }, 'Not sure it saved. The admin is checking Elvanto.', "Couldn't save. Try again, or tell the admin."],
+    [{ status: 'refused', reason: 'lease-lost' }, 'Not sure it saved. The admin is checking Elvanto.', "Still checking. Don't tap again — tell the admin if it doesn't clear."],
     [{ status: 'refused', reason: 'no-room', type: 'checkIn' }, 'No check-in room found for this person. Tap again in a few minutes, or check in on the kiosk.', "Couldn't save. Try again, or tell the admin."],
-    [{ status: 'unclear', reason: null }, 'Not sure it saved. The admin is checking Elvanto.', "Couldn't save. Try again, or tell the admin."],
+    [{ status: 'unclear', reason: null }, 'Not sure it saved. The admin is checking Elvanto.', "Still checking. Don't tap again — tell the admin if it doesn't clear."],
     [{ status: 'refused', reason: 'weird-new', message: 'Elvanto said 500' }, 'Elvanto said 500', "Couldn't save. Try again, or tell the admin."],
   ];
   it('a grade, quad or leader login reads the plain line', () => {

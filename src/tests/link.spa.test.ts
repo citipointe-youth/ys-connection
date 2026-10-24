@@ -644,7 +644,7 @@ describe('F1.2 logout guard', () => {
     h.fns._lkQSet([item]);
     h.answers.push(true);
     expect(await h.fns._lkLogoutGuard()).toBe(true);
-    expect(h.calls.asks[0]).toBe("1 check-in hasn't saved yet. Send it now? | Send now | Stay"); // plain pass: a grade login
+    expect(h.calls.asks[0]).toBe("1 change hasn't saved yet. Send it now? | Send now | Stay"); // plain pass: a grade login
     expect(h.calls.posts).toHaveLength(1);
   });
   it('Stay keeps the login', async () => {
@@ -662,8 +662,8 @@ describe('F1.2 logout guard', () => {
     const p = h.fns._lkLogoutGuard();
     await vi.advanceTimersByTimeAsync(10000);
     expect(await p).toBe(true);
-    expect(h.calls.asks[0]).toMatch(/^2 check-ins haven't saved yet/);
-    expect(h.calls.asks[1]).toBe("2 check-ins haven't saved yet. | Log out anyway (they may not be sent) | Stay");
+    expect(h.calls.asks[0]).toMatch(/^2 changes haven't saved yet/);
+    expect(h.calls.asks[1]).toBe("2 changes haven't saved yet. | Log out anyway (they may not be sent) | Stay");
   });
   it('B14 / APP-22: 160 queued items drain in under 2 s on a good network (300 ms between batches)', async () => {
     vi.useFakeTimers();
@@ -1185,7 +1185,7 @@ describe('F1 fix: "I am" switch guard (ledger 18)', () => {
     h.fns._lkQSet([act(1), act(2), { kind: 'identity', id: P(9), at: '2026-10-16T08:00:00.000Z', from: null, to: 'L1' }]);
     h.answers.push(true);
     expect(await h.fns._lkSwitchLeader('L2')).toBe(true);
-    expect(h.calls.asks).toEqual(["2 check-ins haven't saved yet. Send them first? | Send first | Cancel"]);
+    expect(h.calls.asks).toEqual(["2 changes haven't saved yet. Send them first? | Send first | Cancel"]);
     expect(h.calls.posts).toHaveLength(1);
     expect(atPost).toBeUndefined(); // the flush went out before the switch
     expect(h.calls.posts[0].b.items.filter((i: any) => i.kind === 'action').map((i: any) => i.leaderId)).toEqual(['L1', 'L1']);
@@ -1196,7 +1196,7 @@ describe('F1 fix: "I am" switch guard (ledger 18)', () => {
     h.fns._lkQSet([act(1)]);
     h.answers.push(false);
     expect(await h.fns._lkSwitchLeader(null)).toBe(false);
-    expect(h.calls.asks).toEqual(["1 check-in hasn't saved yet. Send it first? | Send first | Cancel"]);
+    expect(h.calls.asks).toEqual(["1 change hasn't saved yet. Send it first? | Send first | Cancel"]);
     expect(h.calls.posts).toHaveLength(0);
     expect(h.env.storage.has('yap_leader_id')).toBe(false);
     expect(h.fns._lkQGet()).toHaveLength(1);

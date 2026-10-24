@@ -10513,7 +10513,8 @@ function _lkPlainStatus(row, t) {
   const unmapped = s === 'refused' && _lkStatusText(Object.assign({}, row, { message: '' })) === 'This did not go through. Do it in Elvanto.'
     && !/^(unknown|console-cannot-read)$/.test(row.reason || '');
   if (unmapped && row.message && !/Elvanto|console|validation|error/i.test(row.message)) return row.message;
-  if ((s === 'unclear' || unmapped || (s === 'refused' && /^(lease-lost|not-landed|stale|group-unknown|person-unknown|no-room|unknown|console-cannot-read)$/.test(row.reason || '')))
+  if (s === 'unclear' || (s === 'refused' && row.reason === 'lease-lost')) return "Still checking. Don't tap again — tell the admin if it doesn't clear.";
+  if ((unmapped || (s === 'refused' && /^(lease-lost|not-landed|stale|group-unknown|person-unknown|no-room|unknown|console-cannot-read)$/.test(row.reason || '')))
     && !(row.reason === 'no-room' && row.type === 'checkOut')) return "Couldn't save. Try again, or tell the admin.";
   return t.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
     .replace(/(Edit this report|Remove a leader) in Elvanto\./, 'Tell the admin.')
@@ -10791,7 +10792,7 @@ async function _lkDrain(ms) {
   }
 }
 function _lkActions(n) { return n === 1 ? '1 action is' : n + ' actions are'; }
-function _lkUnsaved(n) { return n === 1 ? "1 check-in hasn't saved yet." : n + " check-ins haven't saved yet."; }
+function _lkUnsaved(n) { return n === 1 ? "1 change hasn't saved yet." : n + " changes haven't saved yet."; }
 // Logout with unsent items: ask, send (up to 10 s), then offer to log out anyway. False = stay. A queue holding only
 // "I am" switches gets one silent flush first, so the identity log still has them (APP-34).
 async function _lkLogoutGuard() {
