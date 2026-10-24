@@ -509,7 +509,7 @@ describe('sync.service bus consent (rev 18, spec 2026-10-22 bus consent)', () =>
 
 // ---------------- 2026-10-24 (plan Task 4): consentFix "missing field" refusals ----------------
 
-describe('sync.service result: consentFix missing-field refusals (fix-no-field)', () => {
+describe('sync.service result: consentFix missing-field refusals (fix-no-date / fix-no-total)', () => {
   // Byte for byte from 11.1 src/ys-link.js FIX_SHAPE (fix-no-date, fix-no-total, fix-no-date-moved, fix-no-total-moved).
   const SHAPES = [
     "Not sent: this person's Elvanto profile has no consent date field, so the console can't copy the form. Change it in Elvanto.",
@@ -528,14 +528,17 @@ describe('sync.service result: consentFix missing-field refusals (fix-no-field)'
       users: new InMemoryUserRepository(), errorLog: { record } } as any);
     return { svc, record };
   }
-  it('each of the four FIX_SHAPE details records fix-no-field, counted', async () => {
+  it('date texts record fix-no-date, TOTAL texts fix-no-total (never fix-no-date), -moved too', async () => {
     const types = Object.fromEntries([1, 2, 3, 4, 5].map((n) => [rid(n), 'consentFix']));
     const { svc, record } = mk(types);
     await svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [
       ...SHAPES.map((detail, i) => ({ id: rid(i + 1), outcome: 'refused', reason: 'unknown', detail })),
       { id: rid(5), outcome: 'refused', reason: 'unknown', detail: SHAPES[0] },
     ] });
-    expect(record.mock.calls).toEqual([[{ category: 'link', code: 'fix-no-field', route: 'consentFix', role: 'console', count: 5 }]]);
+    expect(record.mock.calls.map((c: any) => c[0])).toEqual([
+      { category: 'link', code: 'fix-no-date', route: 'consentFix', role: 'console', count: 3 },
+      { category: 'link', code: 'fix-no-total', route: 'consentFix', role: 'console', count: 2 },
+    ]);
   });
   it('a consentFix unknown with another detail or none, or another type with that detail, stays unknown', async () => {
     const { svc, record } = mk({ [rid(1)]: 'consentFix', [rid(2)]: 'consentFix', [rid(3)]: 'consentSave' });

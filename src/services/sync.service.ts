@@ -24,7 +24,10 @@ export async function saveGenderFixes(repo: IStudentRepository, fixes: { student
 import { parseGroupName } from './import.service';
 import type { ErrorLogService } from './error-log.service';
 // 2026-10-24: the console names a missing consent field only in detail (FIX_SHAPE, 11.1 ys-link.js:72-76); a contract reason would need a LINK_REV.
-const NO_FIELD = /profile (?:still )?has no (?:consent date|TOTAL non-consent date) field/;
+const NO_DATE = /has no consent date field/;
+const NO_TOTAL = /has no TOTAL non-consent date field/;
+// anchored: a bare /consent date/ would also match the TOTAL text
+const noFieldCode = (d: string) => (NO_DATE.test(d) ? 'fix-no-date' : NO_TOTAL.test(d) ? 'fix-no-total' : null);
 
 /** Roster auto-match + gender fixes (approved YS-only write). Called after a roster push and after every import (Part 2). */
 export async function rematchRoster(link: Pick<ILinkRepository, 'roster' | 'setMatches'>, students: IStudentRepository) {
@@ -186,7 +189,7 @@ export function makeSyncService(d: SyncDeps) {
         const groups = new Map<string, { code: string; route: string; count: number }>();
         hits.forEach((it, i) => {
           if (rows[i]?.type === 'recheck') return; // L7: a re-check's answer shows on its own row, never as an Error log line
-          const code = rows[i]?.type === 'consentFix' && it.reason === 'unknown' && NO_FIELD.test(it.detail ?? '') ? 'fix-no-field' : it.reason;
+          const code = rows[i]?.type === 'consentFix' && it.reason === 'unknown' ? (noFieldCode(it.detail ?? '') ?? it.reason) : it.reason;
           const route = rows[i]?.type ?? 'unknown';
           const g = groups.get(`${route}|${code}`) ?? { code, route, count: 0 };
           g.count++; groups.set(`${route}|${code}`, g);

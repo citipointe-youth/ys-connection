@@ -63,6 +63,13 @@ describe('error-log-text', () => {
     expect(textFor('server', 'SETUP_INCOMPLETE', 'POST /auth/login', 503).tier).toBe('now');
   });
 
+  it('2026-10-24: fix-no-date / fix-no-total are fyi and name the missing field', () => {
+    expect(textFor('link', 'fix-no-date', 'consentFix', null, 1)).toMatchObject({ tier: 'fyi', counted: true });
+    expect(textFor('link', 'fix-no-date', 'consentFix', null, 1).line1).toMatch(/consent date field/);
+    expect(textFor('link', 'fix-no-total', 'consentFix', null, 1).tier).toBe('fyi');
+    expect(textFor('link', 'fix-no-total', 'consentFix', null, 3).line1).toMatch(/^3 .*TOTAL non-consent date field/);
+  });
+
   it('2026-10-24: fix-no-field (consentFix missing a field) is fyi, plain and counted, not raised', () => {
     expect(textFor('link', 'fix-no-field', 'consentFix', null, 1)).toMatchObject({ tier: 'fyi', counted: true,
       line1: "A consent fix needs a field this Elvanto profile doesn't have" });
