@@ -2,6 +2,15 @@
 
 Guidance for Claude Code when working in this package. **Current truth first.** Every dated section up to 2026-10-15 lives in `docs/HISTORY.md`, verbatim and newest first, with an index; when the two disagree, this file wins on what is true now. `debug.md` is the symptom router (incidents, gotchas by symptom). The pre-trim file is `git show a71a2c0:CLAUDE.md`. Dated sections of the current round sit under "Current round" for one round, then move to `docs/HISTORY.md`.
 
+## First change after the HOMESERVER cutover (operator, 2026-10-25)
+
+Cutover planned Sun 25 Oct night (fallback Mon 26 / Wed 28). Do these first, in this order:
+
+1. **Replace the Admin "New Year" wizard with a data export + backup** (operator ruling). Since r25 (YS 3159fd6, ysc-v153) `students.grade`/`quad` follow the matched Elvanto roster grade on every roster push (`gradeFixes`/`saveRosterFixes`, link-rules/link.service), and Year 12s get `students.graduated_at` (migration 0048) when Elvanto's grade goes 12 -> blank (skipped when >50% of pushed grades are blank, `gradeGlitch`). So the Full Reset (step 4) is no longer needed for rollover: it wipes students and cascades (lifegroups, import history, bus consents/addresses, My car, flow assignments, connections, attendance, prayers). Keep the exports (allocations, prayers, Connection Audit), add a full data export/backup, remove or hide Full Reset from the year-end path (server route may stay).
+2. Unlinked legacy students (~326, no active roster row) never roll grade or graduate: decide mark graduated vs a one-off +1 grade.
+3. Confirm the door "Slow: Search Elvanto" Brisbane location filter on live Elvanto (phone test); run `spike/e2e-ys-link.js` (ship.sh warned it was not run for LINK_REV 20).
+4. Console side: the weekly digest does not exclude graduated students yet (see the console CLAUDE.md).
+
 ## What this is
 
 **YS Connection** (`ys-connection`, formerly `connection-made-simple`) — a youth ministry platform for YS Brisbane. Phone-first SPA backed by a TypeScript/Express API. Students are *connected* to leaders; "connection" is the core relationship entity. Backend-agnostic architecture identical in structure to the Youth Camp Platform.
