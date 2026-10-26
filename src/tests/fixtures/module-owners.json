@@ -10,5 +10,8 @@
   "busMinistry": ["bus"],
   "busConsentForm": ["forms"],
   "newYouthForms": ["new-youth"],
-  "intakeAdmin": ["link-intake"]
+  "intakeAdmin": ["link-intake"],
+  "flows": ["link-flows"],
+  "checkin": ["link-checkin"],
+  "lifegroupReport": ["link-groups"]
 }

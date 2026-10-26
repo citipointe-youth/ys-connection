@@ -136,7 +136,8 @@ export function makeSetupService(deps: {
         : linkSet ? ok('link', linkLabel) : fix('link', linkLabel, LINK_TOKEN_FIX));
       // Y2a: step-0 Complete refuses while this is unknown. Not on the first-admin page (no flows yet; it would block the create).
       // Skipped with the DB down; its reads are bounded (3 s, like probeDb) so the Database fix row always comes back.
-      if (!needs && dbOk && deps.settings && deps.flows) {
+      // Modular setup (lane 2.5): only a location with Flows on needs it; modules not known = shown.
+      if (!needs && dbOk && deps.settings && deps.flows && mods?.flows !== 'off') {
         const { settings, flows } = deps;
         const read = async () => {
           const [s, f] = await Promise.all([settings.getSettings(), flows()]);
