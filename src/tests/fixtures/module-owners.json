@@ -1,1 +1,5 @@
-{}
+{
+  "flows": ["link-flows"],
+  "checkin": ["link-checkin"],
+  "lifegroupReport": ["link-groups"]
+}

@@ -262,10 +262,9 @@ describe('status: New People flow row (Y2a)', () => {
   async function row(prefix: string | null, names: string[], o: { needs?: boolean; flows?: boolean | (() => Promise<{ flowName: string }[]>); probeDb?: () => Promise<boolean> } = {}) {
     const settings = new InMemorySettingsRepository();
     await settings.init();
-    if (prefix !== null) {
-      const cur = await settings.getSettings();
-      await settings.updateSettings({ ministryConfig: { ...cur.ministryConfig, elvanto: { ...cur.ministryConfig.elvanto, peopleFlowPrefix: prefix } } } as never);
-    }
+    const cur = await settings.getSettings(); // flows on, as the live install (the row is absent with Flows off: module-off-2_5)
+    await settings.updateSettings({ ministryConfig: { ...cur.ministryConfig, modules: { ...cur.ministryConfig.modules, flows: 'admin' },
+      ...(prefix !== null ? { elvanto: { ...cur.ministryConfig.elvanto, peopleFlowPrefix: prefix } } : {}) } } as never);
     const flows = typeof o.flows === 'function' ? o.flows : async () => names.map((flowName) => ({ flowName }));
     const { s } = svc(good, { settings, ...(o.flows === false ? {} : { flows }), ...(o.probeDb ? { probeDb: o.probeDb } : {}) });
     if (!o.needs) await s.createFirstAdmin({ code: good.SETUP_CODE, displayName: 'A', password: 'longenough' });
