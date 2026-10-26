@@ -20,6 +20,9 @@ describe('MP1 _modOn', () => {
     expect(modOn('director', { checkin: 'admin' }, 'checkin')).toBe(false);
     expect(modOn(null, { checkin: 'admin' }, 'checkin')).toBe(false);
     expect(modOn('admin', { checkin: 'admin' }, 'checkin')).toBe(true);
+    // legacy 'shadow' reads as admin, as _linkOn does
+    expect(modOn('leader', { checkin: 'shadow' }, 'checkin')).toBe(false);
+    expect(modOn('admin', { checkin: 'shadow' }, 'checkin')).toBe(true);
   });
   it('unknown shows: settings or modules not loaded = on', () => {
     expect(modOn('leader', undefined, 'flows')).toBe(true);
@@ -57,6 +60,9 @@ describe('MP1b page dispatcher guard', () => {
   it('lets the page through when its module is on, or when it has no entry', async () => {
     expect(await run('trends', { trends: 'fakeMod' }, { fakeMod: true })).toEqual([]);
     expect(await run('trends', {}, { fakeMod: false })).toEqual([]);
+  });
+  it('inherited object members are not page entries', async () => {
+    for (const page of ['constructor', 'toString', '__proto__']) expect(await run(page, {}, { [String(Object)]: false, [String(Object.prototype.toString)]: false }), page).toEqual([]);
   });
   it('the shipped PAGE_MODULE map starts empty', () => {
     expect(loadIndexHtml()).toMatch(/^const PAGE_MODULE = \{\};\r?$/m);

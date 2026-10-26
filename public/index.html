@@ -1750,7 +1750,7 @@ function _modOn(key) {
   if (!m) return true;
   if (key === 'consentsHub') return !!m.busConsentForm || m.intakeAdmin === 'on';
   const v = m[key];
-  return v === 'admin' ? !!S.user && S.user.role === 'admin' : v !== false && v !== 'off';
+  return v === 'admin' || v === 'shadow' ? !!S.user && S.user.role === 'admin' : v !== false && v !== 'off';
 }
 // page id -> module key. The dispatcher (render) sends a page whose module is off to Home. Lanes fill this in.
 const PAGE_MODULE = {};
@@ -2811,7 +2811,7 @@ async function render() {
   // other route home (defence-in-depth; the server also scopes/403s their data).
   if (S.user.role === 'leader' && !['home','my-students','at-risk','prayers','birthdays','bus','new-youth'].includes(p) && p !== 'link-checkin') { go('home'); return; }
   if (p === 'prayers' && !_prayersOn()) { go('home'); return; }
-  if (PAGE_MODULE[p] && !_modOn(PAGE_MODULE[p])) { go('home'); return; }
+  if (Object.prototype.hasOwnProperty.call(PAGE_MODULE, p) && !_modOn(PAGE_MODULE[p])) { go('home'); return; }
   if (p === 'notices' && !_noticesOn()) { go('home'); return; }
   if (p && p.indexOf('ca-') === 0 && window.CA) { await CA.render(p); return; } /*CA-HOOK*/
   if (p==='home') await renderHome();
