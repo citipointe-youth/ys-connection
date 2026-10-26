@@ -8,5 +8,7 @@
     "ca-quality"
   ],
   "busMinistry": ["bus"],
-  "busConsentForm": ["forms"]
+  "busConsentForm": ["forms"],
+  "newYouthForms": ["new-youth"],
+  "intakeAdmin": ["link-intake"]
 }
