@@ -117,10 +117,8 @@ describe('B8-B12 and B9 Youth Setup layout', () => {
     expect(structure).not.toContain('>Attendance</div>');
     expect(structure).toContain('Admin is always on. Turning a role off switches off its logins when you save.');
   });
-  it('B9: each preset has one short line, and no developer talk is left', () => {
-    const info = new Function(/const MINISTRY_PRESETS_INFO = (\[[\s\S]*?\n\]);/.exec(html)![1]!.replace(/^/, 'return '))();
-    expect(info.map((p: { id: string }) => p.id)).toEqual(['large-graded-au']); // B1: one preset
-    for (const p of info) expect(p.desc.length).toBeLessThan(80);
+  it('B9: the dead preset and account-layout code is gone, and no developer talk is left', () => {
+    for (const s of ['MINISTRY_PRESETS_INFO', 'PRESET_CONFIGS_CLIENT', '_applyMinistryPreset', 'pickMinistryPreset', 'planCohortAccountLayoutClient', 'previewCohortLayout', 'cohort-layout']) expect(html).not.toContain(s);
     for (const s of ['unchanged — the default', '(the current setup)']) expect(html).not.toContain(s);
   });
 });

@@ -2006,7 +2006,7 @@ async function noticePushOff() {
 // HELPERS
 // ============================================================
 const QUAD_LABELS = { g79:'Junior Girls', b79:'Junior Guys', g1012:'Senior Girls', b1012:'Senior Guys' };
-const SIMPLE_QUAD_LABELS = QUAD_LABELS; // one name per group; alias kept for the Youth Setup account planner
+const SIMPLE_QUAD_LABELS = QUAD_LABELS; // one name per group; alias kept for quadLabel() and the tests
 // Junior/Senior logins (ministryConfig.logins.simple) rename the four quad logins everywhere.
 function _simpleLoginsOn() {
   const lg = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.logins;
@@ -7120,18 +7120,11 @@ function wizHandleAllocationImportFile(input) {
 
 // ── Youth Setup (Admin tab) ──
 // Fully inline, always-editable configuration screen — no separate "Open
-// Setup" click-through and no step wizard (retired 2026-07-11): a 2-preset
-// quick-pick up top, then Structure+Roles / Branding / Terminology / Modules /
+// Setup" click-through and no step wizard (retired 2026-07-11): Structure+Roles / Branding / Terminology / Modules /
 // Import / Review / Deploy-guide as independently expand/collapse cards
 // (`.drop`, same pattern as the Home/Trends dropdowns) so the screen doesn't
 // dump everything on you at once. Every input writes into _setupDraft via
 // _setupSet and is saved by saveMinistrySetup() through PATCH /settings.
-// 2026-10-27 (B1): new locations are Junior/Senior only, so there is one preset. The old
-// 'simple' (Simple Ministry) preset is gone from the screen; a stored row that says
-// preset:'simple' still parses on the server.
-const MINISTRY_PRESETS_INFO = [
-  { id: 'large-graded-au', title: 'Junior/Senior Ministry', desc: 'Four logins: Junior and Senior, Girls and Guys.' },
-];
 let _setupDraft = null;
 let _setupServiceMinAttendance = null;
 let _setupTermGapDays = null;
@@ -7373,35 +7366,12 @@ function _cropCancel() {
 function _setupSetMinAtt(val) { const n = parseInt(val, 10); _setupServiceMinAttendance = isNaN(n) ? 0 : n; _setupRerender(); }
 function _setupSetTermGap(val) { const n = parseInt(val, 10); _setupTermGapDays = isNaN(n) ? 14 : n; _setupRerender(); }
 
-function _deepMergeClient(base, patch) {
-  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return patch === undefined ? base : patch;
-  const out = Array.isArray(base) ? [...base] : { ...(base || {}) };
-  for (const k of Object.keys(patch)) {
-    const v = patch[k];
-    out[k] = (v && typeof v === 'object' && !Array.isArray(v) && base && typeof base[k] === 'object')
-      ? _deepMergeClient(base[k], v) : v;
-  }
-  return out;
-}
-
-// Mirrors src/core/ministry-config.ts's PRESET_CONFIGS / PRESET_SERVICE_MIN_ATTENDANCE.
-// Keep these two in sync — same sync-comment pattern as the rising/declining
-// threshold shared between the backend and this file.
-const PRESET_CONFIGS_CLIENT = {
-  'large-graded-au': {},
-};
-const PRESET_SERVICE_MIN_ATTENDANCE_CLIENT = { 'large-graded-au': 100 };
-
-// Mirrors src/core/ministry-config.ts's MINISTRY_CONFIG_DEFAULTS. Needed so
-// switching presets always computes "defaults + this preset's overrides" from
-// a clean baseline — merging a preset onto whatever the PREVIOUS preset left
-// behind would let old overrides (e.g. modules.connectionAudit:false from a
-// prior preset) leak into a later large-graded-au pick instead of reverting.
+// Mirrors src/core/ministry-config.ts's MINISTRY_CONFIG_DEFAULTS: the fallback for any field the draft leaves unset.
 const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   version: 1, preset: 'large-graded-au',
   branding: { ministryName: 'Youth Society Brisbane', appName: 'YS Connection', shortName: 'Connection', accent: '#1a1af2', accentDark: '#1111c9', accentLight: '#ececff', navy: '#0a0a2e', logoImage: null },
   labels: { smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth', serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection', groupNameStrip: ['Brisbane - YS - '], /*BUS-HOOK*/ busMinistry: 'Bus Ministry' },
-  structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', brackets: [{ id: '79', label: 'Yr 7–9', gradeMin: 7, gradeMax: 9 }, { id: '1012', label: 'Yr 10–12', gradeMin: 10, gradeMax: 12 }], genderPolicy: 'strict', serviceDayOfWeek: 5,
+  structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', genderPolicy: 'strict', serviceDayOfWeek: 5,
     timeZone: 'Australia/Brisbane', consentCutoff: '09:00' }, // Y3a: the location's time zone and consent cut-off
   roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
   modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', intakeAdmin: 'off', flowHiddenStep: {}, prayers: true, liveLink: true, digest: true, camp: true, busConsentForm: true },
@@ -7445,40 +7415,6 @@ function _ensureSetupDraft(settings) {
     _logoModeOverride = null;
     _setupElv = null;
   }
-}
-
-// Leaf paths of a preset object ('structure.cohortModel', ...).
-function _presetPaths(o, pre) {
-  return Object.keys(o).flatMap((k) => (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) ? _presetPaths(o[k], pre + k + '.') : [pre + k]);
-}
-// CY-D1: a preset sets ONLY the fields some preset defines (cohort model, gender rule, Director and
-// Quad, Connection Audit, Lifegroups, Export guides), each from defaults + this preset, so switching
-// presets never piles up overrides. Everything else in the draft is kept: the Elvanto screens, New
-// youth & consent, Bus (module and settings), branding, labels, logins, Prayers. It also scales
-// serviceMinAttendance; termGapDays is left alone.
-function _applyMinistryPreset(id) {
-  const full = _deepMergeClient(MINISTRY_CONFIG_DEFAULTS_CLIENT, PRESET_CONFIGS_CLIENT[id]);
-  const paths = new Set(['preset', ...Object.values(PRESET_CONFIGS_CLIENT).flatMap((p) => _presetPaths(p, ''))]);
-  const d = JSON.parse(JSON.stringify(_setupDraft || {}));
-  for (const p of paths) {
-    const ks = p.split('.');
-    let v = full, o = d;
-    for (const k of ks) v = v == null ? undefined : v[k];
-    for (const k of ks.slice(0, -1)) o = (o[k] && typeof o[k] === 'object') ? o[k] : (o[k] = {});
-    o[ks[ks.length - 1]] = v;
-  }
-  _setupDraft = d;
-  _setupServiceMinAttendance = PRESET_SERVICE_MIN_ATTENDANCE_CLIENT[id];
-  _setupRerender();
-}
-function pickMinistryPreset(id) {
-  const p = MINISTRY_PRESETS_INFO.find((x) => x.id === id) || { title: id };
-  modal(`<div class="mo-title">Use ${esc(p.title)}?</div>
-    <p style="color:var(--ink-mid);margin-bottom:20px">This is the standard setup for a new location. Everything else stays as it is. Nothing changes until you tap Save.</p>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="closeModal();_applyMinistryPreset('${id}')">Use ${esc(p.title)}</button>
-      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    </div>`);
 }
 
 async function saveMinistrySetup(confirmIntakeOff) {
@@ -7686,126 +7622,11 @@ function _youthSetupBody(settings, users) {
   return b;
 }
 
-// ── Apply account layout (bug 8) ──
-// Client-side mirror of src/services/cohort-account-layout.ts, purely so the
-// button above can grey itself out instantly from data already on the page
-// (_adminData.users + the saved settings) instead of an extra round-trip on
-// every Youth Setup render. The server re-derives the same plan itself when
-// actually previewing/applying — this copy only ever decides the button's
-// enabled/disabled state, never performs a mutation itself. Keep in sync with
-// the backend file's gradeBrackets/buildTargetAccounts/planCohortAccountLayout.
-function _gradeBracketsClient(gradeMin, gradeMax) {
-  const top = [];
-  let g = gradeMax;
-  while (g - 1 >= gradeMin + 2) { top.unshift([g - 1, g]); g -= 2; }
-  const lowest = [];
-  for (let n = gradeMin; n <= g; n++) lowest.push(n);
-  if (lowest.length) top.unshift(lowest);
-  return top;
-}
-function _gradeWordLabelClient(grades, gradeWord) {
-  const g = grades.slice().sort((a, b) => a - b);
-  const nums = g.length > 1 ? (g[0] + '–' + g[g.length - 1]) : String(g[0]);
-  return gradeWord + (g.length > 1 ? 's' : '') + ' ' + nums;
-}
-function buildTargetAccountsClient(targetCohort, gradeMin, gradeMax, gradeWord, simple) {
-  const out = [];
-  const genders = [{ gender: 'female', label: 'Girls', suffix: 'g' }, { gender: 'male', label: 'Boys', suffix: 'b' }];
-  if (targetCohort === 'none') {
-    for (const bracket of _gradeBracketsClient(gradeMin, gradeMax)) {
-      for (const g of genders) out.push({ role: 'grade', username: 'grade' + bracket.join('') + g.suffix, displayName: _gradeWordLabelClient(bracket, gradeWord) + ' ' + g.label });
-    }
-  } else {
-    // Junior/Senior logins on: the four quads only, with their Simple names, no grade accounts.
-    for (let grade = gradeMin; grade <= gradeMax && !simple; grade++) {
-      for (const g of genders) out.push({ role: 'grade', username: 'grade' + grade + g.suffix, displayName: _gradeWordLabelClient([grade], gradeWord) + ' ' + g.label });
-    }
-    for (const q of ['g79', 'b79', 'g1012', 'b1012']) {
-      out.push({ role: 'quad', username: q, displayName: simple ? SIMPLE_QUAD_LABELS[q] : QUAD_LABELS[q] });
-    }
-  }
-  return out;
-}
-function planCohortAccountLayoutClient(targetCohort, gradeMin, gradeMax, gradeWord, existing, simple) {
-  const targets = buildTargetAccountsClient(targetCohort, gradeMin, gradeMax, gradeWord, simple);
-  const existingUsernames = new Set(existing.map(u => (u.email || '').toLowerCase()));
-  const targetUsernames = new Set(targets.map(t => t.username.toLowerCase()));
-  const toCreate = targets.filter(t => !existingUsernames.has(t.username.toLowerCase()));
-  const toDeactivate = existing
-    .filter(u => (u.role === 'grade' || u.role === 'quad') && u.status === 'active' && !targetUsernames.has((u.email || '').toLowerCase()))
-    .map(u => ({ id: u.id, username: u.email, displayName: u.displayName }));
-  return { targetCohort, toCreate, toDeactivate };
-}
-
-async function previewCohortLayout(targetCohort) {
-  try {
-    const plan = await API.post('/accounts/cohort-layout/preview', { targetCohort });
-    _showCohortLayoutPreview(targetCohort, plan);
-  } catch (e) { toast(e.message); }
-}
-
-function _showCohortLayoutPreview(targetCohort, plan) {
-  const rows = (items) => items.map(x => `<div class="li-sub">${esc(x.displayName)} <span style="color:var(--ink-faint)">(${esc(x.username)})</span></div>`).join('');
-  let h = `<div class="mo-title">Apply account layout?</div>
-    <div style="font-size:13px;color:var(--ink-mid);margin-bottom:12px">This only creates/deactivates grade &amp; quad Accounts — it never touches students, leaders or connections, and never deletes an account.</div>`;
-  if (plan.toCreate.length) h += `<div class="sh">Accounts to create (${plan.toCreate.length})</div>${rows(plan.toCreate.map(t => ({ displayName: t.displayName, username: t.username })))}`;
-  if (plan.toDeactivate.length) h += `<div class="sh" style="margin-top:8px">Accounts to deactivate (${plan.toDeactivate.length})</div>${rows(plan.toDeactivate)}`;
-  if (!plan.toCreate.length && !plan.toDeactivate.length) h += `<div class="alert al-ok">Accounts already match this layout — nothing to do.</div>`;
-  // Matched-by-username accounts whose actual grades/gender/quad have drifted from
-  // what that username implies — this action never edits them (same "never
-  // silently edit an account" rule as create/deactivate), so just flag it.
-  if (plan.mismatched && plan.mismatched.length) {
-    h += `<div class="alert al-warn" style="margin-top:8px">
-      <strong>${plan.mismatched.length} existing account${plan.mismatched.length===1?'':'s'} may need a manual check</strong> —
-      their username matches this layout, but their actual grades/gender/quad don't. They won't be
-      changed by this action.
-      ${plan.mismatched.map(m => `<div class="li-sub">${esc(m.displayName)} <span style="color:var(--ink-faint)">(${esc(m.username)}) — ${esc(m.reason)}</span></div>`).join('')}
-    </div>`;
-  }
-  h += `<p style="font-size:13px;margin:14px 0 6px">Type <strong>APPLY</strong> to confirm:</p>
-    <input class="fi" id="col-confirm" autocomplete="off" autocapitalize="characters"
-      oninput="document.getElementById('col-go').disabled = this.value.trim().toUpperCase() !== 'APPLY'">
-    <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-danger" id="col-go" style="flex:1" disabled onclick="_submitApplyCohortLayout('${targetCohort}')">Apply</button>
-      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-    </div>`;
-  modal(h);
-}
-
-async function _submitApplyCohortLayout(targetCohort) {
-  try {
-    const report = await API.post('/accounts/cohort-layout/apply', { targetCohort });
-    Cache.clear();
-    _showCohortLayoutResult(report);
-    const [settings, users, history] = await Promise.all([
-      API.get('/settings').catch(() => _adminData.settings),
-      API.get('/accounts/users').catch(() => _adminData.users),
-      API.get('/import/history').catch(() => _adminData.history),
-    ]);
-    _adminData = { settings, users, history };
-  } catch (e) { toast(e.message); }
-}
-
-function _showCohortLayoutResult(report) {
-  let h = `<div class="mo-title">Account layout applied</div>`;
-  if (report.created.length) {
-    h += `<div class="sh">New accounts — passwords shown once, save them now</div>`;
-    h += report.created.map(c => `<div class="fg"><label class="fl">${esc(c.displayName)} (${esc(c.username)})</label><input class="fi" readonly value="${esc(c.password)}" onclick="this.select()"></div>`).join('');
-  }
-  if (report.deactivated.length) {
-    h += `<div class="sh" style="margin-top:8px">Deactivated (${report.deactivated.length})</div>`;
-    h += report.deactivated.map(d => `<div class="li-sub">${esc(d.displayName)} <span style="color:var(--ink-faint)">(${esc(d.username)})</span></div>`).join('');
-  }
-  if (!report.created.length && !report.deactivated.length) h += `<div class="alert al-ok">Nothing to change — accounts already matched this layout.</div>`;
-  h += `<button class="btn btn-primary btn-full" style="margin-top:12px" onclick="closeModal();renderAdminView(_adminData.settings,_adminData.users,_adminData.history)">Done</button>`;
-  modal(h);
-}
-
 // Confirm before applying Youth Setup changes — this is live config for
 // every user of the app, not a per-device preference, so a stray tap
 // shouldn't silently rebrand/reconfigure the ministry.
 // Which risky switches differ between the saved config and the draft, whatever changed them
-// (the toggle, a preset button or a loaded settings file). Pure, so it is unit-tested.
+// (the Login style control or a loaded settings file). Pure, so it is unit-tested.
 function _setupRiskyDiff(saved, draft) {
   const s = saved || {}, d = draft || {};
   const simple = (c) => !!(c.logins && c.logins.simple);
@@ -7835,7 +7656,7 @@ function confirmSaveMinistrySetup() {
       risky += `<div class="alert al-warn" style="margin-bottom:10px">This ${n ? `switches off the ${n} grade logins (they come back if you turn this off) and ` : ''}renames the 4 Junior/Senior logins to Junior Girls, Junior Guys, Senior Girls and Senior Guys.${busOn ? ' Junior/Senior logins stop coordinating Bus.' : ''}</div>`;
       if (busOn && !coords.length) risky += `<div class="alert" style="margin-bottom:10px;background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626">No Bus coordinators are set. Only admin and director can run Bus.</div>`;
     } else {
-      risky += `<div class="alert al-warn" style="margin-bottom:10px">This turns Junior/Senior logins off. The grade logins it switched off come back, and the quad logins get their old names.</div>`;
+      risky += `<div class="alert al-warn" style="margin-bottom:10px">This turns Junior/Senior logins off. The grade logins it switched off come back. The 4 Junior/Senior logins keep their names.</div>`;
     }
   }
   if (diff.includes('modules.prayers')) {
