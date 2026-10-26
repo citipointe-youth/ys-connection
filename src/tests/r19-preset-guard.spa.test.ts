@@ -45,7 +45,7 @@ describe('CY-D1 preset guard', () => {
       expect(d.roles.enabled.quad).toBe(true);
       await svc.update(ADMIN, { ...f._setupPatch(d, f._setupBaseOf(before)) } as any);
       const mc = (await svc.get()).ministryConfig;
-      expect(mc.modules).toMatchObject({ intakeAdmin: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'on', newYouthForms: 'on', busMinistry: true, flowHiddenStep: { f1: 's2' } });
+      expect(mc.modules).toMatchObject({ intakeAdmin: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'on', newYouthForms: 'on', busMinistry: true, flowHiddenStep: { f1: ['s2'] } }); // 2026-10-27: the old string reads as a list
       expect(mc.busMinistry).toMatchObject({ churchAddress: '1 Church St', churchPlaceId: 'pl1', coordinatorLeaderIds: ['L1'], leaveTime: '20:30' });
       expect(mc.branding).toMatchObject({ ministryName: 'YS Gold Coast', appName: 'GC App', accent: '#ff0000' });
       expect(mc.labels.groupNameStrip).toEqual(['Gold Coast - YS - ']);

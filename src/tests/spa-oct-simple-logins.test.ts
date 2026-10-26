@@ -110,7 +110,7 @@ let _setupServiceMinAttendance = 100; function _setupRerender() {}`;
       ['saveMinistrySetup', '__d', '__t', '__s']);
     await f.saveMinistrySetup();
     expect(f.__d()).toEqual([{ logins: { simple: true } }]);
-    expect(f.__t().join(' ')).toMatch(/Renamed 4 quad logins/);
+    expect(f.__t().join(' ')).toMatch(/Renamed 4 Junior\/Senior logins/);
     expect(f.__s().settings.renamedQuads).toBeUndefined();
   });
 });

@@ -127,8 +127,7 @@ describe('T13 grade 6 is a junior year when the ministry has it', () => {
     expect(html).not.toMatch(/\[7, ?8, ?9\]:\s*\[10|\?\s*\[7,8,9\]\s*:/);
   });
   it('Simple logins have no Grade 6 lock', () => {
-    const f = loadFns(['_setupLocks']);
-    expect(f._setupLocks({ simpleOn: false, includeGrade6: true, cohort: 'grades-quads', quadOn: true })).toEqual({ simple: '' });
+    expect(html).not.toContain('function _setupLocks('); // 2026-10-27: Login style replaced the lock
     expect(html).not.toMatch(/Years 7 to 12 only|locks\.grade6/);
   });
 });

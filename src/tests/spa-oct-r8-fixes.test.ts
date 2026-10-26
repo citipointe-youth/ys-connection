@@ -55,23 +55,12 @@ describe('T1 Youth Setup sends a risky switch only when it changed, with expect'
   });
 });
 
-describe('T3/T13 Youth Setup: Grade 6 no longer blocks Junior/Senior logins', () => {
-  const { _setupLocks } = loadFns(['_setupLocks']);
-  it('Include Grade 6 does not lock turning Simple on, and Simple on does not lock Include Grade 6', () => {
-    expect(_setupLocks({ simpleOn: false, includeGrade6: true, cohort: 'grades-quads', quadOn: true })).toEqual({ simple: '' });
-    expect(_setupLocks({ simpleOn: true, includeGrade6: false, cohort: 'grades-quads', quadOn: true })).toEqual({ simple: '' });
-    expect(_setupLocks({ simpleOn: true, includeGrade6: true, cohort: 'grades-quads', quadOn: true })).toEqual({ simple: '' });
-  });
-  it('Simple model or Quad off locks turning Simple on with the right next step', () => {
-    expect(_setupLocks({ simpleOn: false, cohort: 'none', quadOn: true }).simple).toMatch(/Complex cohort model and the Quad role/);
-    expect(_setupLocks({ simpleOn: false, cohort: 'grades-quads', quadOn: false }).simple).toMatch(/Complex cohort model and the Quad role/);
-  });
-  it('_youthSetupBody uses the Simple lock only, and no text says Years 7 to 12 only', () => {
+describe('T3/T13 Youth Setup: Grade 6 never locks anything (2026-10-27: Login style has no lock at all)', () => {
+  it('_youthSetupBody has no Junior/Senior lock, and no text says Years 7 to 12 only', () => {
     const html = loadIndexHtml();
     const body = extractFn(html, '_youthSetupBody');
-    expect(body).toContain('_setupLocks(');
-    expect(body).not.toMatch(/locks.grade6/);
-    expect(body).toMatch(/locks.simple/);
+    expect(html).not.toContain('function _setupLocks(');
+    expect(body).not.toMatch(/locks\.(simple|grade6)/);
     expect(html).not.toMatch(/Years 7 to 12/);
   });
 });

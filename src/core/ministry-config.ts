@@ -37,6 +37,13 @@ const unShadow = (v: unknown) => (v === 'shadow' ? 'admin' : v);
 const moduleMode = z.preprocess(unShadow, MODE);
 const uuidOrEmpty = z.union([z.literal(''), z.string().uuid()]);
 
+/** One flow's stored hidden-step value as a list: undefined for none saved ('' or missing), 'none' = [], an old step id = [id]. */
+export function hiddenStepsOf(v: unknown): string[] | undefined {
+  if (v === undefined || v === null || v === '') return undefined;
+  if (typeof v === 'string') return v === 'none' ? [] : [v];
+  return v as string[]; // anything else is left for the schema to accept (a list) or refuse
+}
+
 export const DEFAULT_LOCATION_QUESTION = 'Citipointe Location';
 
 // Drafted from the form's consent text (spec §5.5 step 4). G1: the operator or Citipointe approves it before go-live.
@@ -62,9 +69,14 @@ const ModulesSchema = z.object({
   flows: moduleMode.optional(),
   // T4 (2026-10-13, ruling R3): youth intake + consents through the Elvanto link. A plain Off / On switch, admin only.
   intakeAdmin: z.enum(['off', 'on']).default('off'),
-  // 2026-10-14: per flow (Elvanto flow id), the step no login lists, completes or assigns on Flow steps.
-  // Flow Steps screen, non-admin logins only (T11). Missing or '' = the first step (stepOrder <= 1), 'none' = no hidden step, else that step's id.
-  flowHiddenStep: z.record(z.string().max(64), z.string().max(64)).default({}),
+  // 2026-10-14: per flow (Elvanto flow id), the steps no login lists, completes or assigns on Flow steps.
+  // Flow Steps screen, non-admin logins only (T11). 2026-10-27 (Option A): a list of step ids per flow. A flow with no list
+  // uses the '*' list (a new install saves '*': [], nothing hidden); with neither, the first step (stepOrder <= 1), as before.
+  // Old stored strings are read in place: '' = no list, 'none' = [], a step id = [id]. No migration.
+  flowHiddenStep: z.preprocess(
+    (v) => (isPlainObject(v) ? Object.fromEntries(Object.entries(v).flatMap(([k, x]) => { const l = hiddenStepsOf(x); return l === undefined ? [] : [[k, l]]; })) : v),
+    z.record(z.string().max(64), z.array(z.string().max(64)).max(200)),
+  ).default({}),
   // Modular setup (2026-10-27): the switchboard keys. Defaults keep today's behaviour (nothing hidden); the setup wizard
   // writes explicit values for a new location. module-tree.ts holds the tree and its rules.
   liveLink: z.boolean().default(true),

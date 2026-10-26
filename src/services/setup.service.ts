@@ -170,13 +170,14 @@ export function makeSetupService(deps: {
         loginHistory: [], loginDevices: [],
         createdAt: now, updatedAt: now,
       };
-      // New installs default to Simple logins. Written BEFORE the admin so a failed create
+      // New installs default to Simple logins (and no hidden flow steps). Written BEFORE the admin so a failed create
       // leaves only a harmless config behind and a retry still goes through.
       if (deps.settings) {
         const current = await deps.settings.getSettings();
         await deps.settings.updateSettings({
           ministryConfig: mergeMinistryConfig(current.ministryConfig, {
             logins: { simple: true }, roles: { enabled: { grade: false } },
+            modules: { flowHiddenStep: { '*': [] } }, // ruling B (2026-10-27): a new location hides no flow step until it ticks one
           }),
         });
       }
