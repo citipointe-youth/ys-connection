@@ -156,6 +156,7 @@ describe('F-28 a past service is read-only for check-out', () => {
     function _lkStatusHtml() { return ''; }
     function _lkLastSeen() { return ''; }
     function esc(s) { return String(s); }
+    function _gradeWord() { return 'Grade'; }
     function day(d) { LINK.services = [{ serviceTimeId: 'S', ymd: d }]; }`;
   const f = loadFns(['_lkRowHtml'], prelude, ['_lkRowHtml', 'day']);
   const p = { personId: 'tom', name: 'Tom', grade: 9, checkedIn: true, action: { status: 'sent', type: 'checkIn' }, mine: false };
@@ -267,7 +268,7 @@ describe('F-02 r1: holds are per row', () => {
     } finally { vi.useRealTimers(); }
   });
   it('the Undo button is held only on the tapped row', () => {
-    const f = loadFns(['_lkRowHtml'], `let LINK = { svc: 'S', refusals: {} }; function _lkCapOff() { return false; } function _lkStatusTone() { return ''; }
+    const f = loadFns(['_lkRowHtml'], `let LINK = { svc: 'S', refusals: {} }; function _gradeWord() { return 'Grade'; } function _lkCapOff() { return false; } function _lkStatusTone() { return ''; }
       function _lkStatusHtml() { return ''; } function _lkLastSeen() { return ''; } function esc(s) { return String(s); } function _lkSvcDay() { return '2026-10-16'; }`, ['_lkRowHtml']);
     const row = f._lkRowHtml({ personId: 'b', name: 'B', grade: 9, checkedIn: true, queued: true, action: { status: 'queued', type: 'checkIn' } });
     expect(row).toContain("LINK.doorHeld==='b'");

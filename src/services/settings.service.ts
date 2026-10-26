@@ -3,7 +3,7 @@ import { assertCan } from './access-control';
 import type { ISettingsRepository, IAuditRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
 import type { AppSettings } from '../core/entities/settings';
 import type { Actor, User } from '../core/entities/user';
-import { QUAD_LABELS, quadLabelFor, type UserRole } from '../core/types/enums';
+import { quadLabelFor, type UserRole } from '../core/types/enums';
 import { generateId } from '../utils/id';
 import { mergeMinistryConfig, mergeModulesUnresolved, MinistryConfigSchema, gradeRange, DEFAULT_LOCATION_QUESTION } from '../core/ministry-config';
 import { moduleProblems, resolveModules } from '../core/module-tree';
@@ -63,12 +63,12 @@ export function makeSettingsService(
   onIntakeOff?: () => Promise<void>,
 ): SettingsService {
   // Quad logins are picked by role + quad field (usernames can be edited). A hand-typed display
-  // name is overwritten in both directions. Returns how many were actually renamed.
-  async function renameQuads(simple: boolean): Promise<number> {
+  // name is overwritten with its Junior/Senior name. Returns how many were actually renamed.
+  async function renameQuads(): Promise<number> {
     let n = 0;
     for (const u of await users.findByRole('quad')) {
       if (!u.quad) continue;
-      const name = simple ? quadLabelFor(u.quad, true) : QUAD_LABELS[u.quad];
+      const name = quadLabelFor(u.quad);
       if (u.displayName === name) continue;
       await users.save({ ...u, displayName: name, updatedAt: new Date().toISOString() });
       n++;
@@ -278,7 +278,7 @@ export function makeSettingsService(
       // Quad names follow Simple logins on every save while on (repairs a failed rename), and
       // on the off flip. The count is returned when something was renamed or the switch flipped.
       if (simpleOnNow || simpleFlip) {
-        const n = await renameQuads(simpleOnNow);
+        const n = await renameQuads();
         if (n > 0 || simpleFlip) return { ...updated, renamedQuads: n };
       }
       return updated;

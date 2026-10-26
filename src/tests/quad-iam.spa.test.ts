@@ -23,7 +23,7 @@ describe('T4 "Who are you?" on quad login', () => {
 describe('migration 0025 (quad rename keyed on users.quad)', () => {
   const sql = readFileSync(join(__dirname, '..', '..', 'supabase', 'migrations', '0025_rename_quad_accounts_by_quad.sql'), 'utf8');
   it('maps every quad to its new login and display name, keyed on users.quad not the old username', () => {
-    for (const q of QUADS) expect(sql).toContain(`('${q}','${QUAD_USERNAMES[q]}','${quadLabelFor(q, true)}')`);
+    for (const q of QUADS) expect(sql).toContain(`('${q}','${QUAD_USERNAMES[q]}','${quadLabelFor(q)}')`);
     expect(sql).toMatch(/u\.quad\s*=\s*m\.quad/);
     expect(sql).not.toMatch(/lower\(u\.email\)\s*=\s*m\.old/);
     expect(sql).not.toMatch(/password_hash/);

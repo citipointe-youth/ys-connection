@@ -308,7 +308,7 @@ export function makeLifegroupStatsService(
           .filter((g) => !isEmptyGrade(g));
         if (current.uniqueAttenders === 0 && previous.uniqueAttenders === 0 &&
             current.members === 0 && previous.members === 0 && quadGrades.length === 0) continue;
-        byQuad.push({ quad, label: quadLabelFor(quad, false, structure.gradeMin), current, previous, grades: quadGrades });
+        byQuad.push({ quad, label: quadLabelFor(quad), current, previous, grades: quadGrades });
       }
 
       // ── Overall (scoped to the login): all visible groups, all visible students ──

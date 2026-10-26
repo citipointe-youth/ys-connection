@@ -7,7 +7,7 @@ import type {
 } from '../repositories/interfaces/entity-repositories';
 import type { Actor } from '../core/entities/user';
 import type { Quad } from '../core/types/enums';
-import { QUADS, quadLabelFor } from '../core/types/enums';
+import { QUADS, gradeBands, quadLabelFor } from '../core/types/enums';
 import { gradeRange, MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
 import { ResponseCache } from '../utils/response-cache';
 import { actorKey } from './actor-key';
@@ -99,17 +99,18 @@ export function makeOverviewService(
       // Leader-to-quad mapping: a leader belongs to a quad if their grade + gender aligns.
       // We use student quad membership (derived from grade+gender) so gender is unambiguous.
       const leaderQuadCounts: Record<Quad, number> = { g79: 0, b79: 0, g1012: 0, b1012: 0 };
+      const bands = gradeBands();
       for (const l of allLeaders) {
         const seenQuads = new Set<Quad>();
         for (const g of l.grades) {
           // A leader can appear in up to 2 quads (male and female for a grade)
           // but in practice is gender-scoped. Use leader gender if set.
           if (l.gender === 'female' || l.gender == null) {
-            const q = g >= 6 && g <= 9 ? 'g79' : g >= 10 && g <= 12 ? 'g1012' : null;
+            const q = bands.junior.includes(g) ? 'g79' : bands.senior.includes(g) ? 'g1012' : null;
             if (q && !seenQuads.has(q)) { leaderQuadCounts[q]++; seenQuads.add(q); }
           }
           if (l.gender === 'male' || l.gender == null) {
-            const q = g >= 6 && g <= 9 ? 'b79' : g >= 10 && g <= 12 ? 'b1012' : null;
+            const q = bands.junior.includes(g) ? 'b79' : bands.senior.includes(g) ? 'b1012' : null;
             if (q && !seenQuads.has(q)) { leaderQuadCounts[q]++; seenQuads.add(q); }
           }
         }
@@ -129,7 +130,7 @@ export function makeOverviewService(
         const qConn = connectable.filter((s) => s.quad === quad);
         return {
           quad,
-          label: quadLabelFor(quad, false, structure.gradeMin),
+          label: quadLabelFor(quad),
           totalStudents: qConn.length,
           connectedStudents: qConn.filter((s) => connectedIds.has(s.id)).length,
           unconnectedStudents: qConn.filter((s) => !connectedIds.has(s.id)).length,

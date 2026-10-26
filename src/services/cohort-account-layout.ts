@@ -121,7 +121,7 @@ export function buildTargetAccounts(
       }
     }
     for (const q of QUAD_TARGETS) {
-      out.push({ role: 'quad', username: QUAD_USERNAMES[q], displayName: quadLabelFor(q, simple), quad: q });
+      out.push({ role: 'quad', username: QUAD_USERNAMES[q], displayName: quadLabelFor(q), quad: q });
     }
   }
   return out;

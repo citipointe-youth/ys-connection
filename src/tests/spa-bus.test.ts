@@ -596,7 +596,7 @@ describe('operator 2026-10-23: _busRosterHtml sorts tonight riders by first name
       { id: 'e', name: 'Al Tran', gender: null, grade: 7 }, { id: 'f', name: 'ben Hall', gender: 'male', grade: 7 }];
     const prelude = `${stubs}
       const BUS = { search: '', generating: false, view: { run: { readOnly: false, lockBy: null, lockUntil: null }, riders: ${JSON.stringify(riders)}, vehicles: [] } };`;
-    const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy'], prelude, ['_busRosterHtml']);
+    const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy'], prelude + "function _gradeWord() { return 'Grade'; }", ['_busRosterHtml']);
     const ids = [..._busRosterHtml().matchAll(/busEditRider\('(\w)'\)/g)].map((m) => m[1]);
     expect(ids).toEqual(['e', 'c', 'b', 'f', 'd', 'a']);
   });
@@ -609,7 +609,7 @@ describe('R19-U14 #18 + flow S12: the Students vehicle pill sits in the meta lin
      function _busHitsHtml() { return ''; } function _busPastHtml() { return ''; } function _busGradeChip() { return ''; }`;
     const view = { run: { readOnly: false, lockBy: null, lockUntil: null }, vehicles: [{ id: 'v1', name: 'Van', kind: 'car', running: true, capacity: 4, colourIndex: 1 }, { id: 'b1', name: 'Charter', kind: 'bus', running: true, capacity: 3, colourIndex: 2 }],
       riders: [{ id: 'a', name: 'Amy', gender: 'female', grade: 7, runVehicleId: 'v1', address: 'Carina' }, { id: 'b', name: 'Bo', gender: 'male', grade: 8, runVehicleId: 'b1', address: 'Bus drop off' }] };
-    const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy'], `${stubs} const BUS = { search: '', generating: false, view: ${JSON.stringify(view)} };`, ['_busRosterHtml']);
+    const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy'], `${stubs} function _gradeWord() { return 'Grade'; } const BUS = { search: '', generating: false, view: ${JSON.stringify(view)} };`, ['_busRosterHtml']);
     const h = _busRosterHtml();
     expect(h).toMatch(/<div class="li-sub"><span class="car-pill" style="--c:#f0f">Van<\/span> Carina/);
     expect(h).toMatch(/<div class="li-sub"><span class="chip c-neutral">\[bus\] Charter<\/span>  /); // the chip says it: no "Bus drop off" text
@@ -643,7 +643,7 @@ describe('_busRosterHtml keeps search/Past riders visible during Generate; only 
       const BUS = { search: '', generating: ${generating},
         view: { run: { readOnly: ${readOnly}, lockBy: ${JSON.stringify(lockBy)}, lockUntil: ${JSON.stringify(lockUntil)} },
           riders: [{ id: 'r1', name: 'Amy' }], vehicles: [] } };`;
-    const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy', '_busGradeChip'], prelude, ['_busRosterHtml']);
+    const { _busRosterHtml } = loadFns(['_busRosterHtml', '_busLockedBy', '_busGradeChip'], prelude + "function _gradeWord() { return 'Grade'; }", ['_busRosterHtml']);
     return _busRosterHtml();
   };
   it('shows the search bar and remove button when nothing is blocking', () => {

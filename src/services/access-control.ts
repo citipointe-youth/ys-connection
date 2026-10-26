@@ -1,5 +1,5 @@
 import type { Actor } from '../core/entities/user';
-import type { UserRole } from '../core/types/enums';
+import { gradeBands, type UserRole } from '../core/types/enums';
 import { ForbiddenError } from '../core/errors/app-error';
 import type { MinistryConfig, NewYouthMode } from '../core/ministry-config';
 
@@ -266,6 +266,7 @@ export interface StructureScope {
   cohortModel?: 'grades-quads' | 'none';
   genderPolicy?: 'strict' | 'soft' | 'off';
   gradeMin?: number;
+  gradeMax?: number;
 }
 
 /**
@@ -295,11 +296,7 @@ export function canAccessGrade(actor: Actor, grade: number | null, structure?: S
       return grade != null && actorGrades(actor).includes(grade);
     case 'quad': {
       if (!actor.quad || grade == null) return false;
-      const isJunior = quadGradesOf('g79', structure).includes(grade); // T13/T14b: grade 6 is junior when Include Grade 6 is on
-      const isSenior = grade >= 10 && grade <= 12;
-      if (actor.quad === 'g79' || actor.quad === 'b79') return isJunior;
-      if (actor.quad === 'g1012' || actor.quad === 'b1012') return isSenior;
-      return false;
+      return quadGradesOf(actor.quad, structure).includes(grade); // grade 6 is junior when Include Grade 6 is on
     }
     default:
       return false;
@@ -325,9 +322,9 @@ export function quadGenderOf(quad: string | null | undefined): 'male' | 'female'
 
 /** The year bracket a quad login is scoped to. */
 export function quadGradesOf(quad: string | null | undefined, structure?: StructureScope): number[] {
-  // T14b: the one junior bracket. Grade 6 is in only when Include Grade 6 is on (gradeMin 6); no structure = 6 in.
-  if (quad === 'g79' || quad === 'b79') return [6, 7, 8, 9].filter((g) => g >= (structure?.gradeMin ?? 6));
-  if (quad === 'g1012' || quad === 'b1012') return [10, 11, 12];
+  // Grade 6 is junior only when Include Grade 6 is on (gradeMin 6); no structure = 6 in.
+  if (quad === 'g79' || quad === 'b79') return gradeBands(structure).junior;
+  if (quad === 'g1012' || quad === 'b1012') return gradeBands(structure).senior;
   return [];
 }
 

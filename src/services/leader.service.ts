@@ -47,7 +47,7 @@ function assertLeaderInQuadScope(actor: Actor, leader: Leader): void {
   const gradeOk = leader.grades.length === 0 || leader.grades.some((g) => bracket.includes(g));
   const genderOk = leader.gender == null || leader.gender === qg;
   if (!gradeOk || !genderOk) {
-    throw new ForbiddenError('You can only manage leaders in your quad');
+    throw new ForbiddenError('You can only manage leaders in your Junior/Senior group');
   }
 }
 
@@ -116,7 +116,7 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
       } else if (actor.role === 'quad') {
         // Quad login: new leaders auto-set to the quad's gender; year focus limited to the bracket.
         const bracket = quadGradesOf(actor.quad) as Grade[];
-        if (!bracket.length) throw new BadRequestError('Quad login has no quad assigned');
+        if (!bracket.length) throw new BadRequestError('This Junior/Senior login has no group set');
         const requested = (data.grades ?? []) as Grade[];
         const scoped = requested.filter((g) => bracket.includes(g));
         if (requested.length > 0 && scoped.length === 0) {

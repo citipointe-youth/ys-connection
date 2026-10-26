@@ -185,15 +185,14 @@ There is always exactly one `admin` account. It cannot be deleted. Director/Grad
 
 ### Quads
 
-Four quads group students by age bracket + gender:
-- `g79` — Girls Year 7–9 (Grade 6 joins when Include Grade 6 is on); login `juniorgirls`, "Junior Girls"
-- `b79` — Boys Year 7–9 (same); login `juniorguys`, "Junior Guys"
-- `g1012` — Girls Year 10–12; login `seniorgirls`, "Senior Girls"
-- `b1012` — Boys Year 10–12; login `seniorguys`, "Senior Guys"
+Four quads (internal ids; users see only Junior/Senior Girls/Guys, or "group") by age band + gender:
+- `g79` Junior Girls, `b79` Junior Guys, `g1012` Senior Girls, `b1012` Senior Guys
 
-The quad **values** (`users.quad`, `computeQuad`) are still `g79`/`b79`/`g1012`/`b1012`; only the **usernames** and display names changed (migration `0025`, keyed on `users.quad`; `0022` was a no-op on prod, whose logins were `quad79g`/`quad79b`/`quad1012g`/`quad1012b`; 2026-10-14b; `QUAD_USERNAMES` in `enums.ts` feeds `cohort-account-layout.ts` and `seed.ts`; passwords unchanged). Simple logins stays off; turning it off still renames the display names back to "Girls Yr 7–9" etc. (existing, pinned behaviour).
-
-Quad is computed automatically from `grade + gender` via `computeQuad()` in enums.
+The bands come from ONE helper, `gradeBands(structure)` in `src/core/types/enums.ts` (SPA mirror
+`gradeBands()` in `public/index.html`): junior = gradeMin (6 with Include Grade 6, else 7) to 9,
+senior = 10 to gradeMax. `GET /settings` returns it as `gradeBands: { junior, senior }` for the console
+(r27, additive). `computeQuad()`, `quadGradesOf()` and the SPA buckets all read it. Grade labels on
+screen use `structure.gradeLabel` (`_gradeWord()`), never a hard-coded "Yr".
 
 **One name per quad in the SPA (impeccable review 2026-10-24):** `quadLabel()` always returns Junior/Senior Girls/Guys (`SIMPLE_QUAD_LABELS`) on every screen (header badge, Home cards, Connection Audit, pickers), the same names as the quad logins, Notices and Lifegroups; Flows keeps its ruled "Jr/Sr Guys/Girls" pills. `QUAD_LABELS` ("Girls Yr 7–9") stays only for the server mirror (`quadLabelFor`) and the Simple-logins display-name switch.
 

@@ -92,7 +92,7 @@ describe('T12 the tab strip keeps its scroll across a same-page re-render', () =
 });
 
 describe('T13 grade 6 is a junior year when the ministry has it', () => {
-  const load = (gradeMin?: number) => loadFns(['_structure', '_juniorMin', 'quadGrades', 'computeQuad', '_hQuadGrades'],
+  const load = (gradeMin?: number) => loadFns(['_structure', 'gradeBands', '_juniorMin', 'quadGrades', 'computeQuad', '_hQuadGrades'],
     `const S = { settings: { ministryConfig: { structure: ${JSON.stringify(gradeMin == null ? {} : { gradeMin })} } } };`);
   it('default (gradeMin 7): juniors are 7-9', () => {
     const f = load(7);
@@ -117,7 +117,7 @@ describe('T13 grade 6 is a junior year when the ministry has it', () => {
     expect(f.computeQuad(5, 'male')).toBeNull();
   });
   it('the quad label is Junior Girls with or without grade 6 (impeccable 2026-10-24 unified the quad names)', () => {
-    const lab = (gradeMin: number) => loadFns(['_structure', '_juniorMin', '_simpleLoginsOn', 'quadLabel'],
+    const lab = (gradeMin: number) => loadFns(['_structure', 'gradeBands', '_juniorMin', '_simpleLoginsOn', 'quadLabel'],
       `const QUAD_LABELS = { g79:'Girls Yr 7–9' }; const SIMPLE_QUAD_LABELS = { g79:'Junior Girls' };
        const S = { settings: { ministryConfig: { structure: { gradeMin: ${gradeMin} }, logins: { simple: false } } } };`).quadLabel('g79');
     expect(lab(7)).toBe('Junior Girls');

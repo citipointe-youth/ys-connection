@@ -10,8 +10,8 @@ describe('S1.1 quadLabel and _simpleLoginsOn', () => {
     expect(QL.split('\n')).toHaveLength(2);
     const m = new Function(`${QL}\nreturn { QUAD_LABELS, SIMPLE_QUAD_LABELS };`)();
     for (const q of QUADS) {
-      expect(m.SIMPLE_QUAD_LABELS[q]).toBe(quadLabelFor(q, true));
-      expect(m.QUAD_LABELS[q]).toBe(quadLabelFor(q, false));
+      expect(m.SIMPLE_QUAD_LABELS[q]).toBe(quadLabelFor(q));
+      expect(m.QUAD_LABELS[q]).toBe(quadLabelFor(q));
     }
   });
   it('_simpleLoginsOn is false with an empty config', () => {
@@ -19,11 +19,11 @@ describe('S1.1 quadLabel and _simpleLoginsOn', () => {
     expect(f._simpleLoginsOn()).toBe(false);
   });
   it('quadLabel is Junior/Senior with Simple off too (impeccable 2026-10-24: one name per quad on every screen)', () => {
-    const f = loadFns(['_simpleLoginsOn', '_structure', '_juniorMin', 'quadLabel'], `${QL} const S = { settings: { ministryConfig: { logins: { simple: false } } } };`);
+    const f = loadFns(['_simpleLoginsOn', '_structure', 'gradeBands', '_juniorMin', 'quadLabel'], `${QL} const S = { settings: { ministryConfig: { logins: { simple: false } } } };`);
     expect(f.quadLabel('b1012')).toBe('Senior Guys');
   });
   it('quadLabel uses Senior Guys when Simple is on', () => {
-    const f = loadFns(['_simpleLoginsOn', '_structure', '_juniorMin', 'quadLabel'], `${QL} const S = { settings: { ministryConfig: { logins: { simple: true } } } };`);
+    const f = loadFns(['_simpleLoginsOn', '_structure', 'gradeBands', '_juniorMin', 'quadLabel'], `${QL} const S = { settings: { ministryConfig: { logins: { simple: true } } } };`);
     expect(f.quadLabel('b1012')).toBe('Senior Guys');
     expect(f.quadLabel('g79')).toBe('Junior Girls');
   });
@@ -117,7 +117,7 @@ let _setupServiceMinAttendance = 100; function _setupRerender() {}`;
 
 describe('S1.3 grade filter core', () => {
   // The real _simpleLoginsOn and quadGrades are loaded too (not copies).
-  const VG = ['_simpleLoginsOn', '_structure', '_juniorMin', 'quadGrades', '_vgActive', '_vgLeader', '_vgGrades', '_vgSet', '_vgToggle', '_vgAll', '_vgMine', '_vgSave', '_vgReset', '_vgBar'];
+  const VG = ['_simpleLoginsOn', '_structure', 'gradeBands', '_juniorMin', 'quadGrades', '_vgActive', '_vgLeader', '_vgGrades', '_vgSet', '_vgToggle', '_vgAll', '_vgMine', '_vgSave', '_vgReset', '_vgBar'];
   const prelude = (opts: { me?: string | null; role?: string; leaders?: any[]; preview?: boolean; simple?: boolean }) => `
     ${QL}
     const S = { page: 'at-risk', user: { role: ${JSON.stringify(opts.role ?? 'quad')}, quad: 'b79' }, settings: { ministryConfig: { logins: { simple: ${opts.simple ?? true} }, structure: {} } } };
