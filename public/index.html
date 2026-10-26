@@ -1752,7 +1752,7 @@ function _modOn(key) {
   return v === 'admin' || v === 'shadow' ? !!S.user && S.user.role === 'admin' : v !== false && v !== 'off';
 }
 // page id -> module key. The dispatcher (render) sends a page whose module is off to Home. Lanes fill this in.
-const PAGE_MODULE = { prayers: 'prayers', notices: 'notices' };
+const PAGE_MODULE = { prayers: 'prayers', notices: 'notices', 'ca-week': 'connectionAudit', 'ca-follow': 'connectionAudit', 'ca-term': 'connectionAudit', 'ca-quality': 'connectionAudit' }; /*CA-HOOK*/
 // A signed-in login hit MODULE_DISABLED on /prayers: pull fresh settings, rebuild the nav if it changed, leave the prayers page.
 let _mdBusy = false;
 async function _moduleDisabledRefresh() {

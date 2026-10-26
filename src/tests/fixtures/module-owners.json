@@ -1,4 +1,10 @@
 {
   "prayers": ["prayers"],
-  "notices": ["notices"]
+  "notices": ["notices"],
+  "connectionAudit": [
+    "ca-week",
+    "ca-follow",
+    "ca-term",
+    "ca-quality"
+  ]
 }

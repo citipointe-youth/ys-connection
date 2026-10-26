@@ -92,7 +92,9 @@ export function makeConnectionAuditService(
   const now = d.now ?? (() => new Date());
 
   async function ingest(body: AuditPushBody, by: 'console' | 'manual', actorId?: string): Promise<IngestResult> {
-    const cfg = auditConfigOf(await settingsRepo.getSettings());
+    const settings = await settingsRepo.getSettings();
+    const cfg = auditConfigOf(settings);
+    const off = settings.ministryConfig.modules.connectionAudit === false;
     const year = siteYear(new Date(body.exportedAt), cfg.timeZone);
     const source = body.source;
     const roster = (await d.link.roster()).filter((r) => r.active);
@@ -125,7 +127,8 @@ export function makeConnectionAuditService(
       return { status, skipped };
     });
     // After commit (spec §5.6 step 6). Counts only, never a name; record() never throws, the catch is the belt.
-    const rec = (code: string, route: string, n: number) => d.errorLog.record({ category: 'audit', code, route }, n);
+    // Module off: the copies are kept but no alert names Connection Audit, so every count is 0 (it also clears an old one).
+    const rec = (code: string, route: string, n: number) => d.errorLog.record({ category: 'audit', code, route }, off ? 0 : n);
     const writes: Promise<void>[] = [];
     if (out.status === 'failed-recorded' || out.status === 'shape') writes.push(rec('audit-source-failed', source, 1));
     if (out.status === 'stored') {
@@ -223,6 +226,8 @@ export function makeConnectionAuditService(
     async checkFeed() {
       try {
         const s = await settingsRepo.getSettings();
+        // Module off: no "hasn't updated" alert; 0 also clears one raised before it was turned off.
+        if (s.ministryConfig.modules.connectionAudit === false) { await d.errorLog.record({ category: 'audit', code: 'audit-feed-stale', route: '' }, 0); return; }
         const t = now();
         const row = await repo.findByYear(siteYear(t, s.ministryConfig.structure.timeZone));
         // ponytail: reads the whole year row; a fed_at column read if GET /admin/errors gets slow. Only a fed row ages: a v1
