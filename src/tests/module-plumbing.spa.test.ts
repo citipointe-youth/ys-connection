@@ -64,8 +64,8 @@ describe('MP1b page dispatcher guard', () => {
   it('inherited object members are not page entries', async () => {
     for (const page of ['constructor', 'toString', '__proto__']) expect(await run(page, {}, { [String(Object)]: false, [String(Object.prototype.toString)]: false }), page).toEqual([]);
   });
-  it('the shipped PAGE_MODULE map starts empty', () => {
-    expect(loadIndexHtml()).toMatch(/^const PAGE_MODULE = \{\};\r?$/m);
+  it('the shipped PAGE_MODULE map holds only the pages Lane 2.1 owns (Prayers, Notices)', () => {
+    expect(loadIndexHtml()).toMatch(/^const PAGE_MODULE = \{ prayers: 'prayers', notices: 'notices' \};\r?$/m);
   });
 });
 

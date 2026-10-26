@@ -1110,8 +1110,7 @@ const API = (() => {
           S.user.mustChangePassword = true; render();
         }
         // Prayers was switched off after this login signed in: refresh settings and go home.
-        if (e.code === 'MODULE_DISABLED' && /^\/prayers/.test(path) && S.user) _moduleDisabledRefresh();
-        if (e.code === 'MODULE_DISABLED' && /^\/notices/.test(path) && S.user) _moduleDisabledRefresh();
+        if (e.code === 'MODULE_DISABLED') _moduleOffHit(path, err);
         if (err.status === 401 && _t && path !== '/auth/login') _handleAuthExpired();
         throw err;
       }
@@ -1753,7 +1752,7 @@ function _modOn(key) {
   return v === 'admin' || v === 'shadow' ? !!S.user && S.user.role === 'admin' : v !== false && v !== 'off';
 }
 // page id -> module key. The dispatcher (render) sends a page whose module is off to Home. Lanes fill this in.
-const PAGE_MODULE = {};
+const PAGE_MODULE = { prayers: 'prayers', notices: 'notices' };
 // A signed-in login hit MODULE_DISABLED on /prayers: pull fresh settings, rebuild the nav if it changed, leave the prayers page.
 let _mdBusy = false;
 async function _moduleDisabledRefresh() {
@@ -1767,6 +1766,13 @@ async function _moduleDisabledRefresh() {
     // Only the Prayers page itself is gone; any other screen (My Connections, Youth Setup) stays.
     if (S.page === 'prayers' || S.page === 'notices') go('home'); else render();
   } catch (e) {} finally { _mdBusy = false; }
+}
+// A /prayers or /notices call the server refused because the module is off. The message the caller shows is plain words
+// (never the module's name, which a boss would otherwise see), and the settings refresh takes the page Home.
+function _moduleOffHit(path, err) {
+  if (!/^\/(prayers|notices)/.test(path)) return;
+  err.message = "That's not available here any more.";
+  if (S.user) _moduleDisabledRefresh();
 }
 
 // ============================================================
