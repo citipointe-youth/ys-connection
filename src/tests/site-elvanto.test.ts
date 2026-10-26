@@ -201,7 +201,7 @@ describe('POST /settings/elvanto-check', () => {
     const BUS_ID = '8c9f0929-5b36-4ab7-b9bd-8b4082b013dc';
     const BUS = readFileSync(join(__dirname, 'fixtures/elvanto-bus-consent-form.html'), 'utf8');
     const prev = (await services.settings.get()).ministryConfig.elvanto;
-    await services.settings.update(act('admin'), { ministryConfig: { elvanto: { ...prev, busConsentFormId: BUS_ID } } });
+    await services.settings.update(act('admin'), { ministryConfig: { elvanto: { ...prev, busConsentFormId: BUS_ID }, modules: { busMinistry: true, busConsentForm: true } } }); // the bus form is checked only while the Public consent form is on
     try {
       fetchStub = vi.fn(async (url: string) => new Response(url.endsWith(B.studentFormId) ? STUDENT : url.endsWith(B.parentFormId) ? PARENT : url.endsWith(BUS_ID) ? BUS : '', { status: url.endsWith(B.studentFormId) || url.endsWith(B.parentFormId) || url.endsWith(BUS_ID) ? 200 : 404 }));
       vi.stubGlobal('fetch', fetchStub);

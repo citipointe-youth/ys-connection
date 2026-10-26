@@ -303,6 +303,7 @@ export function makeNewYouthService(
     assertCan(actor, 'bus:use');
     const settings = await settingsRepo.getSettings();
     if (!settings.ministryConfig.modules.busMinistry) throw new ModuleDisabledError('Bus Ministry');
+    if (!settings.ministryConfig.modules.busConsentForm) throw new ModuleDisabledError('Public consent form');
     if (!EF.elvantoBusReady(settings.ministryConfig)) throw new AppError('ELVANTO_NOT_SET', "The bus consent form isn't set up here yet. Ask your admin.", 409);
     const elv = settings.ministryConfig.elvanto;
     const p = BusSchema.safeParse(input);

@@ -102,12 +102,13 @@ export function makeSettingsService(
         }
       };
       // F11: the bus form is checked whenever a bus link is set (saved or sent), so Brisbane is covered on ship.
-      const [s, p, b] = await Promise.allSettled([get('student'), get('parent'), e.busConsentFormId ? get('busConsent') : Promise.resolve('')]);
+      const busForm = cfg.modules.busConsentForm ? e.busConsentFormId : ''; // Public consent form off: its form is not checked
+      const [s, p, b] = await Promise.allSettled([get('student'), get('parent'), busForm ? get('busConsent') : Promise.resolve('')]);
       if (s.status === 'rejected') throw s.reason;
       if (p.status === 'rejected') throw p.reason;
       if (b.status === 'rejected') throw b.reason;
       const main = checkForms(s.value, p.value, e.location, gradeRange(cfg.structure), e.locationQuestion);
-      if (!e.busConsentFormId) return main;
+      if (!busForm) return main;
       const bus = checkBusForm(b.value, gradeRange(cfg.structure));
       return { ...main, ok: main.ok && bus.ok, n: main.n + bus.n, fields: { ...main.fields, ...bus.fields }, options: { ...main.options, ...bus.options },
         missing: [...main.missing, ...bus.missing], missingKeys: [...main.missingKeys, ...bus.missingKeys], lines: [...main.lines, ...bus.lines] };

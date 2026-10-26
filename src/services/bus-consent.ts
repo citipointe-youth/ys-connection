@@ -46,6 +46,7 @@ export function sameAddress(form: BusConsentData['address'], saved: string): boo
 export async function ingestBusConsentForms(d: { bus: IBusRepository; students: IStudentRepository; settings: ISettingsRepository },
   req: BusConsentFormsPushBody, now = new Date()) {
   const s = await d.settings.getSettings();
+  if (!s.ministryConfig.modules.busConsentForm) return { applied: false as const, rows: 0, new: 0, unmatched: 0 }; // module off: the push is not applied (the forms stay where they are)
   const tz = s.ministryConfig.structure.timeZone;
   const [existing, submits] = await Promise.all([d.bus.listConsentForms(), d.bus.listConsentSubmits()]);
   const byKey = new Map(existing.map((f) => [`${f.submissionId}:${f.childIndex}`, f]));

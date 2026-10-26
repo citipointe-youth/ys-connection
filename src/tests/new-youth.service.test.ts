@@ -335,7 +335,7 @@ describe('sendBusConsent', () => {
     const repo = new InMemorySettingsRepository();
     await repo.init();
     await repo.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, elvanto: over.elvanto ?? BUS_ELV,
-      modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, busMinistry: over.busMinistry ?? true } } } as any);
+      modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, busMinistry: over.busMinistry ?? true, busConsentForm: over.busMinistry ?? true } } } as any);
     return repo;
   }
   function busFetch(post: () => Response, html = BUS_HTML) {

@@ -536,6 +536,7 @@ describe('sync.service bus consent (rev 18, spec 2026-10-22 bus consent)', () =>
   });
   it('container: a console bus consent push lands in the store (wiring)', async () => {
     const c = await buildContainer();
+    await c.services.settings.update({ id: 'u-admin', role: 'admin' } as any, { ministryConfig: { modules: { busMinistry: true, busConsentForm: true } } }); // the push is applied only while the Public consent form is on
     const r = await c.services.sync.push('busConsentForms', fx('push-bus-consent-forms.json'));
     expect(r).toMatchObject({ applied: true, rows: 2, new: 2 });
   });

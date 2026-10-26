@@ -9,7 +9,7 @@ describe('bus consent wiring (F4)', () => {
   it('POST /bus/consent-form calls services.newYouth.sendBusConsent with the body', async () => {
     const { services, repos } = await buildContainer();
     const cfg = (await repos.settings.getSettings()).ministryConfig;
-    await repos.settings.updateSettings({ ministryConfig: mergeMinistryConfig(cfg, { modules: { busMinistry: true } }) });
+    await repos.settings.updateSettings({ ministryConfig: mergeMinistryConfig(cfg, { modules: { busMinistry: true, busConsentForm: true } }) });
     await repos.students.save(student('s1', 'Jess', 'Tran', 9, 'female'));
     const spy = vi.spyOn(services.newYouth, 'sendBusConsent').mockResolvedValue({ result: 'failed', dropoff: null } as any);
     const route = buildRoutes(services).find((r) => r.method === 'POST' && r.path === '/bus/consent-form')!;

@@ -1112,6 +1112,7 @@ const API = (() => {
         // Prayers was switched off after this login signed in: refresh settings and go home.
         if (e.code === 'MODULE_DISABLED' && /^\/prayers/.test(path) && S.user) _moduleDisabledRefresh();
         if (e.code === 'MODULE_DISABLED' && /^\/notices/.test(path) && S.user) _moduleDisabledRefresh();
+        if (e.code === 'MODULE_DISABLED' && /^\/bus/.test(path) && S.user) _moduleDisabledRefresh();
         if (err.status === 401 && _t && path !== '/auth/login') _handleAuthExpired();
         throw err;
       }
@@ -1753,7 +1754,7 @@ function _modOn(key) {
   return v === 'admin' || v === 'shadow' ? !!S.user && S.user.role === 'admin' : v !== false && v !== 'off';
 }
 // page id -> module key. The dispatcher (render) sends a page whose module is off to Home. Lanes fill this in.
-const PAGE_MODULE = {};
+const PAGE_MODULE = { bus: 'busMinistry' };
 // A signed-in login hit MODULE_DISABLED on /prayers: pull fresh settings, rebuild the nav if it changed, leave the prayers page.
 let _mdBusy = false;
 async function _moduleDisabledRefresh() {
@@ -8089,9 +8090,9 @@ function _setupElvCardHtml(cfg) {
   return `<div class="help-text" style="margin-bottom:8px">New person sends these two Elvanto forms. Paste each form's public link.</div>
     ${link('student', 'Student form link')}${link('parent', 'Parent form link')}
     ${s.err ? `<div class="alert al-warn" role="alert" style="margin-bottom:10px">${esc(s.err)}</div>` : ''}
-    <div class="fg"><label class="fl" for="setup-elv-bus">Bus consent form link (optional)</label>
+    ${_modOn('busConsentForm') ? `<div class="fg"><label class="fl" for="setup-elv-bus">Bus consent form link (optional)</label>
       <input class="fi" id="setup-elv-bus" inputmode="url" autocomplete="off" placeholder="https://your-org.elvanto.com.au/form/..." value="${esc(_setupElvBusText())}" onchange="_setupElvBusLink(this.value)"></div>
-    ${s.busErr ? `<div class="alert al-warn" role="alert" style="margin-bottom:10px">${esc(s.busErr)}</div>` : ''}
+    ${s.busErr ? `<div class="alert al-warn" role="alert" style="margin-bottom:10px">${esc(s.busErr)}</div>` : ''}` : ''}
     ${text('locationQuestion', 'Location question on the form')}${text('location', 'Location to tick')}${text('peopleFlowPrefix', 'New People flow name starts with')}
     ${text('consentFlowPrefix', 'Parent Consent flow name starts with')}${text('state', 'State for new addresses (e.g. QLD)')}
     <button type="button" class="btn btn-secondary btn-full" ${s.busy || s.err || s.busErr ? 'disabled' : ''} onclick="_setupElvCheck()">${s.busy ? 'Checking…' : 'Check forms'}</button>
@@ -9831,7 +9832,7 @@ function _busSuburb(address) {
 }
 // Warning-only chip (spec §10a) — never blocks placing, moving or generating.
 function _busConsentChip(r, tap) {
-  const c = r && r.consent; if (!c || !c.year) return '';
+  const c = r && r.consent; if (!c || !c.year || !_modOn('busConsentForm')) return '';
   if (c.current) return `<span class="pill ok bus-chip">${icS('check')}${esc('Consent ' + c.year)}</span>${_busPickupChip(c)}`;
   // R11: a warning, never a block. A coordinator's tap (tap=true, Students rows) opens the consent form.
   const go = tap && r.id ? ` role="button" onclick="event.stopPropagation();busConsentForm({riderId:'${esc(r.id)}'})"` : '';
@@ -9858,7 +9859,7 @@ function _busConsentDetailsHtml(c) {
     ${_busPickupLine(c) ? `<div class="lk-d">${esc(_busPickupLine(c))}</div>` : ''}${row('School', sch)}</div>`;
 }
 function _busConsentHintHtml(r) {
-  const c = r && r.consent;
+  const c = r && r.consent; if (!_modOn('busConsentForm')) return '';
   // Operator 2026-10-23: a one-line chip (was a 44px button); .bus-hit keeps a 44px tap band with no visual growth.
   return c && c.differs && c.details ? `<button type="button" class="chip c-warn bus-chip bus-hit bus-differs" onclick="event.stopPropagation();busEditRider('${esc(r.id)}', 'consent:${esc(c.details.formId)}')">${icS('alert')}Consent address differs</button>` : '';
 }
@@ -9868,7 +9869,7 @@ function _busChipRow(r, tap, hint) {
   return h ? `<div class="bus-chips">${h}</div>` : '';
 }
 function _busConsentStatusHtml(st) {
-  if (!st) return '';
+  if (!st || !_modOn('busConsentForm')) return '';
   const last = st.lastChecked ? 'Last checked ' + fmtDay(st.lastChecked, true) + ' · ' + st.lastNew + ' new' : 'Never checked';
   const btn = st.canCheck ? `<button type="button" class="btn btn-secondary btn-sm" ${st.checking ? 'disabled' : ''} onclick="busConsentCheck()">${st.checking ? 'Checking…' : 'Check for new consent forms'}</button>` : '';
   const un = st.unmatched && st.unmatched.length ? `<details class="card"><summary>${esc("Forms we couldn't match: " + st.unmatched.length)}</summary>
@@ -9954,7 +9955,7 @@ async function busRefresh() {
     // fan-out-avoidance reasoning as the rest of this app's /batch pattern.
     try {
       // The read-only All cars list has its own fetch (busCarsRefresh), only while that tab is open.
-      const [view, myCar, cst] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car', _busTripQs()), _busGet('/bus/consent/status').catch(() => null)]);
+      const [view, myCar, cst] = await Promise.all([_busGet('/bus/run'), _busGet('/bus/my-car', _busTripQs()), _modOn('busConsentForm') ? _busGet('/bus/consent/status').catch(() => null) : null]);
       if (gen === BUS.gen) { if (cst) BUS.consentStatus = cst; if (BUS.view && BUS.view.run.id !== view.run.id) BUS.routeMin = {}; BUS.view = view; BUS.version = view.run.version; BUS.myCar = myCar; BUS.failed = false; }
     } catch (e) {
       if (gen === BUS.gen) { BUS.failed = true; toast(e.message || 'Bus Ministry unavailable'); }
@@ -14970,7 +14971,7 @@ async function renderBus() {
   const isAdmin = u.role === 'admin', seesPast = u.role === 'admin' || u.role === 'director';
   // 2026-10-15: route analysis for every Bus login except a junior leader on "My car only"; Past stays director/admin.
   const seesAnalysis = seesPast || v.canCoordinate || u.role !== 'leader';
-  const seesForms = isAdmin || !!v.canCoordinate; // consent hub: Bus > Forms
+  const seesForms = (isAdmin || !!v.canCoordinate) && _modOn('busConsentForm'); // consent hub: Bus > Forms
   const tabs = [
     canRoster && { id: 'roster', label: 'Students' },
     { id: 'cars', label: 'Car setup' }, // every Bus login (2026-10-15)
@@ -15251,7 +15252,7 @@ function busPick(i) {
   const h = BUS.hits[i];
   // F21: consent details and the Consent form button, for a student who is not on the bus yet.
   modal(`<div class="mo-title">${esc(h.name)}${h.grade ? ` · Y${h.grade}` : ''}</div>${_busConsentDetailsHtml(h.consent)}
-    <button type="button" class="btn btn-secondary btn-sm" onclick="busConsentHit(${i})">Consent form</button>
+    ${_modOn('busConsentForm') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="busConsentHit(${i})">Consent form</button>` : ''}
     ${_busAddressPicker(h.addresses, null, false, _busConsentPickerRow(h.consent))}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busAdd(${i})">Add</button></div>`);
@@ -15402,7 +15403,7 @@ async function busEditRider(id, pick) {
   let addrs;
   try { addrs = await _busGet('/bus/riders/' + id + '/addresses'); } catch (e) { toast(e.message); return; }
   modal(`<div class="mo-title">${esc(r.name)}</div>${_busConsentDetailsHtml(r.consent)}
-    <button type="button" class="btn btn-secondary btn-sm" onclick="busConsentForm({ riderId: '${esc(id)}' })">Consent form</button>
+    ${_modOn('busConsentForm') ? `<button type="button" class="btn btn-secondary btn-sm" onclick="busConsentForm({ riderId: '${esc(id)}' })">Consent form</button>` : ''}
     ${_busAddressPicker(addrs, { riderId: id, currentId: r.addressId }, false, _busConsentPickerRow(r.consent, r.consent && r.consent.details && pick === 'consent:' + r.consent.details.formId))}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="busSaveRider('${id}')">Save</button></div>`);
@@ -15511,6 +15512,7 @@ function _bcResultRaw(r) {
 // that sees no student or guest id on its rows still works; the server resolves the person.
 function _bcQuery(who) { return who.riderId ? 'riderId=' + encodeURIComponent(who.riderId) : who.studentId ? 'studentId=' + encodeURIComponent(who.studentId) : 'guestId=' + encodeURIComponent(who.guestId); }
 async function busConsentForm(who, keep) {
+  if (!_modOn('busConsentForm')) return;
   if (!keep) {
     let p; try { p = await _busGet('/bus/consent/prefill', _bcQuery(who)); } catch (e) { toast(e.message); return; }
     BUS.bc = { who, p, requestId: (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) };
@@ -15572,10 +15574,10 @@ function busSettings() {
     ${b.churchAddress && !b.churchPlaceId ? `<div class="alert al-warn">${icS('pin')} Pick the church from the suggestions so routes can start there.</div>` : ''}
     <label class="fl">Bus coordinators ${helpTip("Leaders who can set up cars and move riders from any login, once they've picked who they are.")}</label>
     <div class="bus-checks">${leaders.map((l) => `<label class="cbx-row"><input type="checkbox" value="${l.id}" ${(b.coordinatorLeaderIds || []).includes(l.id) ? 'checked' : ''}> ${esc(l.name)}</label>`).join('')}</div>
-    <label class="fl" for="bus-decl">Bus consent declaration</label>
+    <div ${_modOn('busConsentForm') ? '' : 'hidden'}><label class="fl" for="bus-decl">Bus consent declaration</label>
     <textarea class="fi" id="bus-decl" rows="6" maxlength="2000">${esc(b.consentDeclaration || MINISTRY_CONFIG_DEFAULTS_CLIENT.busMinistry.consentDeclaration)}</textarea>
     <div class="help-text">The leader reads this to the parent. [child] becomes the student's name.</div>
-    <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('bus-decl').value = MINISTRY_CONFIG_DEFAULTS_CLIENT.busMinistry.consentDeclaration">Reset to default</button>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('bus-decl').value = MINISTRY_CONFIG_DEFAULTS_CLIENT.busMinistry.consentDeclaration">Reset to default</button></div>
     ${BUS.view.google ? `<div class="help-text" style="margin-top:8px"><b>${esc(BUS.view.google.text)}</b></div>
       <button class="btn btn-secondary btn-full" onclick="busGoogleCheck()">Test Google connection</button>
       <div id="bus-gcheck"></div>` : ''}
