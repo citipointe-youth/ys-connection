@@ -10,10 +10,11 @@
   "busMinistry": ["bus"],
   "busConsentForm": ["forms"],
   "newYouthForms": ["new-youth"],
-  "intakeAdmin": ["link-intake"],
+  "intakeAdmin": [],
   "flows": ["link-flows"],
   "checkin": ["link-checkin"],
   "lifegroupReport": ["link-groups"],
   "liveLink": ["link", "link-admin"],
-  "consentsHub": ["link-intake"]
+  "consentsHub": ["link-intake"],
+  "core": ["home", "at-risk", "my-students", "birthdays", "students", "trends", "leaders", "admin", "import", "more", "problems", "accounts", "youthsetup", "newyear"]
 }

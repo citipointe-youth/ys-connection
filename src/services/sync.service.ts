@@ -5,6 +5,7 @@ import type { z } from 'zod';
 import { CONSENT_LOOKUP_KINDS, CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, MIN_CONSOLE_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
 import type { ClaimResponse, LeadersResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
+import { ModuleDisabledError } from '../core/errors/app-error';
 import type { ActionType, ClaimArgs, LinkFlowStep, LinkRosterRow, MirrorKind, OutboxRow, PushKind, ResultReply } from '../core/link-types';
 import type { AuditPushBody, BusConsentFormsPushBody, BusConsentFormsResponse, ConsentLookupPush, ConsentPush, ConsentSnapshotPush, DoorSearchPush, IntakePush } from '../core/link-contract';
 import type { ConnectionAuditService, IngestResult } from './connection-audit.service';
@@ -269,6 +270,8 @@ export function makeSyncService(d: SyncDeps) {
         const ok = await d.link.putConsentSnapshot({ kind: req.kind, total: req.total, rows: req.rows, takenAt: req.takenAt, consoleId: req.consoleId });
         return ok ? { applied: true, rows: req.rows.length } : { applied: false };
       }
+      // Modular setup: Live Elvanto link off refuses the mirror and audit pushes, so no console copy lands while the link is off.
+      if (['roster', 'services', 'groups', 'flows', 'audit'].includes(pk) && (await d.settings.getSettings()).ministryConfig.modules.liveLink === false) throw new ModuleDisabledError('Elvanto link');
       if (pk === 'audit') { // rev 16: not a mirror (no link_mirror_state); its own store, staleness and transaction
         const req = parseBody(PUSH_SCHEMAS.audit, body) as AuditPushBody;
         if (!d.audit) return { applied: false };

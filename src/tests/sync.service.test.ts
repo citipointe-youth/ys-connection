@@ -266,6 +266,16 @@ describe('sync.service push', () => {
     expect((await link.mirrorState()).find((m) => m.kind === 'flows')).toMatchObject({ takenAt: later, rowCount: 0 });
   });
 
+  it('CG-sync (modular setup): Live Elvanto link off refuses the mirror and audit pushes and stores nothing; on, they apply', async () => {
+    const off = await setup({ modules: { liveLink: false } as any });
+    for (const [kind, file] of [['roster', 'push-roster.json'], ['services', 'push-services.json'], ['groups', 'push-groups.json'], ['flows', 'push-flows.json'], ['audit', 'push-audit-service.json']] as const)
+      await expect(off.svc.push(kind, fx(file)), kind).rejects.toMatchObject({ code: 'MODULE_DISABLED', statusCode: 404 });
+    expect(await off.link.roster()).toEqual([]);
+    expect(await off.link.flows()).toEqual([]);
+    const on = await setup();
+    expect((await on.svc.push('flows', fx('push-flows.json'))).applied).toBe(true);
+  });
+
   it('groups get grade/gender from parseGroupName', async () => {
     const { svc, link } = await setup();
     const body = fx('push-groups.json');

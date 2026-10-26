@@ -39,7 +39,7 @@ describe('OFF-nav', () => {
     }
   });
   it('Intakes off: the admin login loses link-intake only; the other roles never had it', () => {
-    expect(OWNERS.intakeAdmin).toEqual(['link-intake']);
+    expect(OWNERS.consentsHub).toEqual(['link-intake']); // the one owner of link-intake (task 2.9)
     for (const role of ROLES) {
       if (role === 'admin') expectSubtraction(navWithModules(role), navWithModules(role, { intakeAdmin: 'off' }), ['link-intake']);
       else expect(navWithModules(role, { intakeAdmin: 'off' })).toEqual(navWithModules(role));
