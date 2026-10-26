@@ -508,13 +508,13 @@ describe('sync.service bus consent (rev 18, spec 2026-10-22 bus consent)', () =>
     expect(await svc.push('busConsentForms', fx('push-bus-consent-forms.json'))).toEqual({ applied: false, rows: 0, new: 0, unmatched: 0 });
   });
   it('every link screen off but the Bus module on: the claim leases (max > 0) the busConsentCheck row', async () => {
-    const { svc, link } = await setup({ mode: 'off', modules: { busMinistry: true as any } });
+    const { svc, link } = await setup({ mode: 'off', modules: { busMinistry: true as any, busConsentForm: true as any } });
     await link.insertAction(BCC);
     const reply = await svc.claim(req18);
     expect(reply.rows.map((r) => r.type)).toEqual(['busConsentCheck']);
   });
   it('fix round 1: every link screen off, Bus on: a queued checkIn is not leased (stop button holds); only busConsentCheck stays listed', async () => {
-    const { svc, link } = await setup({ mode: 'off', modules: { busMinistry: true as any } });
+    const { svc, link } = await setup({ mode: 'off', modules: { busMinistry: true as any, busConsentForm: true as any } });
     await link.insertAction(rowFromFixture(claimRes.rows.find((r: any) => r.type === 'checkIn')));
     await link.insertAction(BCC);
     const reply = await svc.claim(req18);
@@ -522,12 +522,20 @@ describe('sync.service bus consent (rev 18, spec 2026-10-22 bus consent)', () =>
     expect(Object.keys((await link.listConsoles())[0]!.capabilities)).toEqual(['busConsentCheck']);
   });
   it('fix round 1: screens off, Bus on, intake on: the intake/consent capabilities stay listed too', async () => {
-    const { svc, link } = await setup({ mode: 'off', modules: { busMinistry: true as any, intakeAdmin: 'on' } });
+    const { svc, link } = await setup({ mode: 'off', modules: { busMinistry: true as any, busConsentForm: true as any, intakeAdmin: 'on' } });
     await svc.claim({ ...req18, capabilities: { ...req18.capabilities, intakeAnswer: 'live', consentLookup: 'live' } });
     expect(Object.keys((await link.listConsoles())[0]!.capabilities).sort()).toEqual(['busConsentCheck', 'consentLookup', 'intakeAnswer']);
   });
   it('Bus module off: the claim strips busConsentCheck from the stored capabilities and never leases it', async () => {
-    const { svc, link } = await setup({ modules: { busMinistry: false as any } });
+    const { svc, link } = await setup({ modules: { busMinistry: false as any, busConsentForm: false as any } }); // the save resolves the child off with its parent
+    await link.insertAction(BCC);
+    const reply = await svc.claim(req18);
+    expect(reply.rows.map((r) => r.type)).not.toContain('busConsentCheck');
+    expect((await link.listConsoles())[0]!.capabilities.busConsentCheck).toBeUndefined();
+    expect((await link.listConsoles())[0]!.capabilities.checkIn).toBe('live');
+  });
+  it('Public consent form off with Bus on: the claim strips busConsentCheck and never leases it (the form is the gate, not Bus)', async () => {
+    const { svc, link } = await setup({ modules: { busMinistry: true as any, busConsentForm: false as any } });
     await link.insertAction(BCC);
     const reply = await svc.claim(req18);
     expect(reply.rows.map((r) => r.type)).not.toContain('busConsentCheck');

@@ -116,7 +116,7 @@ export function makeSyncService(d: SyncDeps) {
       const capabilities = { ...req.capabilities };
       if (m.intakeAdmin !== 'on') for (const t of INTAKE_TYPES) delete capabilities[t];
       if (!hub) for (const t of CONSENT_TYPES) delete capabilities[t]; // rev 6: the Consents screen's types (modular setup: consentsHubOn)
-      if (!m.busMinistry) delete capabilities.busConsentCheck; // rev 18: Bus module off = never leased
+      if (!m.busConsentForm) delete capabilities.busConsentCheck; // rev 18: the Public consent form off = never leased
       // Fix round 1: Bus on keeps the claim leasing, but the screens' stop button still holds. With every link screen off,
       // only busConsentCheck (and the intake types while intake is on, the consent types while the hub is on) stays listed, so an older queued row is never sent.
       if (screensOff) {

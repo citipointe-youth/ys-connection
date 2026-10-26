@@ -194,7 +194,9 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       // in its service window (the window cadence is the console's own; review L8 #3).
       const lookedUp = async () => !inWindow && (!caps || (caps.consentLookup ?? 'off') !== 'off')
         && (await d.link.listActions({ types: ['consentLookup'], limit: 1 })).some((r) => t.getTime() - Date.parse(r.createdAt) < HURRY_LOOKUP_MS);
-      if (mode === 'off') return { mode, hurry: soon(await d.link.listActions({ statuses: ['pending'] })), refresh: [] };
+      // A bus-only hub (Public consent form on, Intakes off) still gets the consent follow-up below; with no hub either, nothing more to work out.
+      const hub = consentsHubOn(settings.ministryConfig.modules);
+      if (mode === 'off' && !hub) return { mode, hurry: soon(await d.link.listActions({ statuses: ['pending'] })), refresh: [] };
       // Live settings always carry structure (parseMinistryConfig); this fallback is for test fixtures that pass a partial
       // { ministryConfig: { modules } }. The default zone is a harmless default (SPEC §0.2).
       const tz = settings.ministryConfig.structure?.timeZone ?? MINISTRY_CONFIG_DEFAULTS.structure.timeZone;
@@ -203,7 +205,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       const [pending, viewed, dates] = await Promise.all([
         d.link.listActions({ statuses: ['pending'] }), d.intake.viewedAt(), d.intake.dates()]);
       const hurry = soon(pending) || (!!viewed && t.getTime() - Date.parse(viewed) < HURRY_VIEW_MS) || await lookedUp();
-      const refresh = dates.filter((x) => x.refreshAskedAt && t.getTime() - Date.parse(x.refreshAskedAt) < REFRESH_ASK_MS && x.date >= addDays(today, -REFRESH_BACK_DAYS) && x.date <= (x.mode === 'consent' ? addDays(today, 7) : today))
+      const refresh = dates.filter((x) => (mode === 'on' || x.mode === 'consent') && x.refreshAskedAt && t.getTime() - Date.parse(x.refreshAskedAt) < REFRESH_ASK_MS && x.date >= addDays(today, -REFRESH_BACK_DAYS) && x.date <= (x.mode === 'consent' ? addDays(today, 7) : today))
         .sort((a, b) => Date.parse(b.refreshAskedAt!) - Date.parse(a.refreshAskedAt!)).slice(0, 4)
         .map((x) => ({ mode: x.mode, date: x.date }));
       return { mode, hurry, refresh };

@@ -211,9 +211,9 @@ export interface LinkService {
   /** L7: what one re-check found, in plain words (admin only). */
   recheckState(actor: Actor, id: string): Promise<RecheckView>;
   log(actor: Actor, q: unknown): Promise<{ rows: LinkLogRow[] }>;
-  /** Rev 6 (R2 b/c): the console's answer to one consentLookup row (admin only, module intakeAdmin). */
+  /** Rev 6 (R2 b/c): the console's answer to one consentLookup row (admin only, the Consents hub: Public consent form or Intakes). */
   consentLookup(actor: Actor, q: unknown): Promise<ConsentLookupView>;
-  /** Rev 19: the console's cached consent lists (admin only, module intakeAdmin). live = the newest console is rev 19+. */
+  /** Rev 19: the console's cached consent lists (admin only, the Consents hub: Public consent form or Intakes). live = the newest console is rev 19+. */
   consentSnapshot(actor: Actor): Promise<{ live: boolean; askedAt: string | null; kinds: Record<ConsentLookupKind, { total: number | null; takenAt: string; rows: unknown[] } | null> }>;
   consentSnapshotRefresh(actor: Actor): Promise<{ asked: boolean }>;
 }
@@ -369,7 +369,7 @@ const FEATURES: Feature[] = ['checkin', 'lifegroupReport', 'flows'];
 const FEATURE_OF: Partial<Record<ActionType, Feature>> = { checkIn: 'checkin', checkOut: 'checkin', firstTimerCheckIn: 'checkin',
   submitReport: 'lifegroupReport', editReport: 'lifegroupReport', completeStep: 'flows',
   addGroupMember: 'lifegroupReport', removeGroupMember: 'lifegroupReport', removeFromFlowStep: 'flows',
-  doorSearch: 'checkin' }; // rev 20: any login the door is on for, never admin-only. The intake + consent types: module intakeAdmin (X19, rev 6)
+  doorSearch: 'checkin' }; // rev 20: any login the door is on for, never admin-only. The intake types: module Intakes; the consent types: the Consents hub (X19, rev 6)
 /** `?? newYouthForms`: a json-mode settings file stored before T10 is never re-parsed. */
 const usable = (a: Actor, s: AppSettings, f: Feature) =>
   can(a, 'link:use') && modeAllows(a, s.ministryConfig.modules[f] ?? s.ministryConfig.modules.newYouthForms);

@@ -131,7 +131,7 @@ export function makeSetupService(deps: {
       // Not known (no settings source, DB down or slow): optional, as before.
       const mods = dbOk && deps.settings
         ? await within3s(deps.settings.getSettings()).then((s) => s.ministryConfig.modules, () => undefined) : undefined;
-      const linkNeeded = !!mods && [mods.newYouthForms, mods.checkin, mods.flows, mods.lifegroupReport, mods.intakeAdmin].some((m) => m !== 'off');
+      const linkNeeded = !!mods && ([mods.newYouthForms, mods.checkin, mods.flows, mods.lifegroupReport, mods.intakeAdmin].some((m) => m !== 'off') || mods.busConsentForm);
       checks.push(!linkNeeded ? { id: 'link', state: 'optional', label: linkLabel }
         : linkSet ? ok('link', linkLabel) : fix('link', linkLabel, LINK_TOKEN_FIX));
       // Y2a: step-0 Complete refuses while this is unknown. Not on the first-admin page (no flows yet; it would block the create).

@@ -423,6 +423,22 @@ describe('sync: intake hint, pushes, results', () => {
     expect(clear).not.toHaveBeenCalled();
     expect(await h.intakeRepo.dates()).not.toEqual([]);
   });
+  it('bus-only hub (Public consent form on, Intakes off): the claim hint still carries the consent refresh; a consent lookup hurries the console', async () => {
+    const h = await setup();
+    await h.intake.refresh(ADMIN, { mode: 'consent', date: '2026-10-09' });
+    await h.intake.refresh(ADMIN, { mode: 'intake', date: '2026-10-09' });
+    const mods = (o: Record<string, unknown>) => h.settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
+      modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, ...o } } } as never);
+    await mods({ intakeAdmin: 'off', busConsentForm: true });
+    const hubOnly = await h.intake.hint(await h.settings.getSettings(), { consentLookup: 'live' } as Capabilities);
+    expect(hubOnly.mode).toBe('off');
+    expect(hubOnly.refresh).toEqual([{ mode: 'consent', date: '2026-10-09' }]); // the intake date's ask is dropped with Intakes
+    await h.link.insertAction({ id: nid(), type: 'consentLookup', payload: {}, note: null, dedupeKey: 'cl-hub', serviceDate: DATE, studentId: null, personId: null,
+      createdBy: ADMIN_ID, leaderId: null, leaderName: 'A' } as never);
+    expect((await h.intake.hint(await h.settings.getSettings(), { consentLookup: 'live' } as Capabilities)).hurry).toBe(true);
+    await mods({ intakeAdmin: 'off', busConsentForm: false });
+    expect(await h.intake.hint(await h.settings.getSettings(), { consentLookup: 'live' } as Capabilities)).toMatchObject({ mode: 'off', refresh: [] }); // no hub, nothing more
+  });
   it('a push with a bad row is a 400 for the whole push (strict whitelist)', async () => {
     const h = await setup({ push: false });
     const p = fx('push-intake.json'); p.rows[0].forms.student.values.suburb = 'Carindale';
