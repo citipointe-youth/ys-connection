@@ -1742,6 +1742,18 @@ function _prayersOn() {
   const mc = (S.settings && S.settings.ministryConfig) || {};
   return !(mc.modules && mc.modules.prayers === false);
 }
+// Modular setup: is this module on for this login? Reads the resolved ministryConfig.modules. 'admin' mode counts as on
+// for an admin login only (as _linkOn). 'consentsHub' is derived like consentsHubOn on the server. Settings not loaded
+// yet = on (unknown shows). Lanes ADD `&& _modOn(k)` next to existing gates; they never replace one.
+function _modOn(key) {
+  const m = ((S.settings && S.settings.ministryConfig) || {}).modules;
+  if (!m) return true;
+  if (key === 'consentsHub') return !!m.busConsentForm || m.intakeAdmin === 'on';
+  const v = m[key];
+  return v === 'admin' ? !!S.user && S.user.role === 'admin' : v !== false && v !== 'off';
+}
+// page id -> module key. The dispatcher (render) sends a page whose module is off to Home. Lanes fill this in.
+const PAGE_MODULE = {};
 // A signed-in login hit MODULE_DISABLED on /prayers: pull fresh settings, rebuild the nav if it changed, leave the prayers page.
 let _mdBusy = false;
 async function _moduleDisabledRefresh() {
@@ -2799,6 +2811,7 @@ async function render() {
   // other route home (defence-in-depth; the server also scopes/403s their data).
   if (S.user.role === 'leader' && !['home','my-students','at-risk','prayers','birthdays','bus','new-youth'].includes(p) && p !== 'link-checkin') { go('home'); return; }
   if (p === 'prayers' && !_prayersOn()) { go('home'); return; }
+  if (PAGE_MODULE[p] && !_modOn(PAGE_MODULE[p])) { go('home'); return; }
   if (p === 'notices' && !_noticesOn()) { go('home'); return; }
   if (p && p.indexOf('ca-') === 0 && window.CA) { await CA.render(p); return; } /*CA-HOOK*/
   if (p==='home') await renderHome();
