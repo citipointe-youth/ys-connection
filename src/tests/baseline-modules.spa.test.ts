@@ -29,7 +29,7 @@ const ROLES = ['admin', 'director', 'grade', 'quad', 'leader'] as const;
 const MINISTRY_CONFIG = () => MinistryConfigSchema.parse({ modules: LIVE_MODULES });
 
 // ---------- BL1a: nav ----------
-const NAV_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', '_busOn', '_prayersOn', 'moreItems', '_navItemsBase',
+const NAV_FNS = ['_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', '_busOn', '_prayersOn', '_modOn', 'moreItems', '_navItemsBase',
   '_navSlots', 'navItems', 'bottomNavItems', 'quickActionItems', '_navClick'];
 function navFor(role: string) {
   const fns = new Function('S', 'L', 'modal', 'icN', 'esc', `${withPlain(NAV_FNS.map((x) => extractFn(HTML, x)).join('\n'))};
