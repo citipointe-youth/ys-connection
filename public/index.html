@@ -8095,7 +8095,7 @@ function _setupElvCardHtml(cfg) {
     ${s.busErr ? `<div class="alert al-warn" role="alert" style="margin-bottom:10px">${esc(s.busErr)}</div>` : ''}` : ''}
     ${text('locationQuestion', 'Location question on the form')}${text('location', 'Location to tick')}${text('peopleFlowPrefix', 'New People flow name starts with')}
     ${text('consentFlowPrefix', 'Parent Consent flow name starts with')}${text('state', 'State for new addresses (e.g. QLD)')}
-    <button type="button" class="btn btn-secondary btn-full" ${s.busy || s.err || s.busErr ? 'disabled' : ''} onclick="_setupElvCheck()">${s.busy ? 'Checking…' : 'Check forms'}</button>
+    <button type="button" class="btn btn-secondary btn-full" ${s.busy || s.err || (s.busErr && _modOn('busConsentForm')) ? 'disabled' : ''} onclick="_setupElvCheck()">${s.busy ? 'Checking…' : 'Check forms'}</button>
     ${s.lines ? `<div role="status" style="margin-top:8px">${s.lines.map((l, i) => `<p class="help-text" style="margin:4px 0">${esc(l)}</p>` + _setupElvIdHtml(e, s, i)).join('')}</div>` : ''}`;
 }
 function _setupElvIdHtml(e, s, i) {

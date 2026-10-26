@@ -70,10 +70,22 @@ describe('OFF-api', () => {
     for (const call of CONSENT_CALLS(t)) await expect(call()).rejects.toThrow(ModuleDisabledError);
     await expect(t.svc.getRun(t.ctx('admin'))).rejects.toThrow(ModuleDisabledError);
   });
-  it('Public consent form off: a consent-form address pick is refused, not looked up', async () => {
+  // s2 has a consent form of their own (f2), so the pick is valid and only the module can refuse it.
+  const pick = (t: Awaited<ReturnType<typeof mk>>) => t.svc.addRider(t.ctx('admin'), { studentId: 's2', consentFormId: 'f2' });
+  const withS2Form = async () => {
     const t = await mk();
+    await t.bus.upsertConsentForms([form({ id: 'f2', submissionId: 'b5c10000-0000-4000-8000-000000000002', studentId: 's2', first: 'Sam', last: 'Ode' })]);
+    return t;
+  };
+  it('Public consent form off: a consent-form address pick is refused with ModuleDisabledError', async () => {
+    const t = await withS2Form();
     await t.set({ busConsentForm: false });
-    await expect(t.svc.addRider(t.ctx('admin'), { studentId: 's2', consentFormId: 'f1' })).rejects.toThrow();
+    await expect(pick(t)).rejects.toThrow(ModuleDisabledError);
+  });
+  it('Public consent form on: the same pick adds the rider at the form address', async () => {
+    const t = await withS2Form();
+    const r = await pick(t);
+    expect(r).toMatchObject({ studentId: 's2' });
   });
   it('Public consent form off: the new-person service refuses to send the bus form', async () => {
     const repo = new InMemorySettingsRepository();
