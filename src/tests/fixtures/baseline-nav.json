@@ -1,0 +1,952 @@
+{
+ "BL1": {
+  "roles": {
+   "admin": {
+    "nav": {
+     "navItems": [
+      {
+       "id": "home",
+       "label": "Home"
+      },
+      {
+       "id": "at-risk",
+       "label": "Health"
+      },
+      {
+       "id": "more",
+       "label": "More"
+      },
+      {
+       "id": "leaders",
+       "label": "Setup"
+      },
+      {
+       "id": "admin",
+       "label": "Admin"
+      },
+      {
+       "id": "trends",
+       "label": "Trends"
+      },
+      {
+       "id": "students",
+       "label": "Student Search"
+      },
+      {
+       "id": "my-students",
+       "label": "My Connections"
+      },
+      {
+       "id": "import",
+       "label": "Import"
+      },
+      {
+       "id": "ca-week",
+       "label": "Connection Audit"
+      },
+      {
+       "id": "birthdays",
+       "label": "Upcoming Birthdays"
+      }
+     ],
+     "bottomNavItems": [
+      "home",
+      "at-risk",
+      "more",
+      "leaders",
+      "admin"
+     ],
+     "moreItems": [
+      "prayers",
+      "bus",
+      "new-youth",
+      "link-checkin",
+      "link-groups",
+      "link-flows",
+      "link-intake"
+     ],
+     "quickActionItems": [
+      "trends",
+      "students",
+      "my-students",
+      "import",
+      "ca-week",
+      "birthdays"
+     ]
+    },
+    "home": {
+     "body": [
+      "#home-attn",
+      "go('trends')",
+      "go('link-checkin')",
+      "go('bus')",
+      "go('students')",
+      "go('my-students')",
+      "go('ca-week')",
+      "go('birthdays')",
+      "h:Connection by Grade",
+      "h:service By Quad",
+      "#hq-g79",
+      "_drop('hq-g79')",
+      "#hq-b1012",
+      "_drop('hq-b1012')",
+      "h:smallGroupPlural by Quad",
+      "#hlq-g79",
+      "_drop('hlq-g79')",
+      "#hlqg-g79-8",
+      "_drop('hlqg-g79-8')",
+      "#home-flows",
+      "#home-followup"
+     ],
+     "flows": [
+      "#home-flows-card"
+     ],
+     "attn": {
+      "slot": true,
+      "lines": [
+       "switchAdminTab('errors')",
+       "switchAdminTab('unsent')",
+       "go('link-admin')",
+       "go('link-admin')",
+       "go('link-admin')",
+       "go('link-admin')",
+       "switchAdminTab('system')",
+       "go('link-intake')"
+      ],
+      "reads": [
+       "/admin/errors",
+       "/admin/unsent",
+       "/setup/status",
+       "/link/actions?serviceDate=",
+       "/link/actions?status=",
+       "/link/status",
+       "/link/intake?mode="
+      ]
+     }
+    },
+    "bus": [
+     "h:busMinistry",
+     "busOpenAnalysis()",
+     "busOpenPast()",
+     "busOpenForms()",
+     "busSettings()",
+     "h:Students",
+     "h:Car setup",
+     "h:Assign",
+     "h:My car"
+    ],
+    "adminTabs": [
+     {
+      "id": "link",
+      "label": "Elvanto link"
+     },
+     {
+      "id": "problems",
+      "label": "Problems"
+     },
+     {
+      "id": "import",
+      "label": "Import"
+     },
+     {
+      "id": "accounts",
+      "label": "Accounts"
+     },
+     {
+      "id": "youthsetup",
+      "label": "Youth Setup"
+     },
+     {
+      "id": "newyear",
+      "label": "New Year"
+     }
+    ],
+    "youthSetup": [
+     "#su-structure",
+     "_setupToggle('structure')",
+     "h:Structure & Roles",
+     "pickMinistryPreset('large-graded-au')",
+     "pickMinistryPreset('simple')",
+     "#fl-cohort-model",
+     "_setupSetCohortModel(this.value)",
+     "_setupSetGrade()",
+     "#fl-gender-policy",
+     "_setupSet('structure.genderPolicy', this.value)",
+     "h:Roles",
+     "_setupSet('roles.enabled.director', this.checked)",
+     "_setupSet('roles.enabled.grade', this.checked)",
+     "_setupSet('roles.enabled.quad', this.checked)",
+     "_setupSet('roles.enabled.leader', this.checked)",
+     "_setupSet('logins.simple', this.checked)",
+     "h:Service and attendance",
+     "#fl-service-day",
+     "_setupSetNum('structure.serviceDayOfWeek', this.value)",
+     "#fl-time-zone",
+     "_setupSet('structure.timeZone', this.value.trim()",
+     "#setup-tz",
+     "#fl-consent-closes-at",
+     "_setupSet('structure.consentCutoff', this.value)",
+     "#fl-min-attendance-for-a-valid-service",
+     "_setupSetMinAtt(this.value)",
+     "#fl-term-gap-days",
+     "_setupSetTermGap(this.value)",
+     "#su-branding",
+     "_setupToggle('branding')",
+     "h:Branding",
+     "#fl-ministry-name",
+     "_setupSet('branding.ministryName', this.value)",
+     "#fl-app-name",
+     "_setupSet('branding.appName', this.value)",
+     "#fl-short-name",
+     "_setupSet('branding.shortName', this.value)",
+     "_setupSet('branding.accent', this.value)",
+     "_setupSet('branding.accentDark', this.value)",
+     "_setupSet('branding.accentLight', this.value)",
+     "_setupSet('branding.navy', this.value)",
+     "_setupSetLogoMode('default')",
+     "_setupSetLogoMode('image')",
+     "#su-terminology",
+     "_setupToggle('terminology')",
+     "h:Terminology",
+     "#fl-small-group-singular",
+     "_setupSetSmallGroup(this.value)",
+     "#fl-service-main-gathering",
+     "_setupSet('labels.service', this.value)",
+     "#fl-service-night-wording",
+     "_setupSet('labels.serviceNight', this.value)",
+     "#fl-grade-word",
+     "_setupSet('structure.gradeLabel', this.value)",
+     "#fl-group-name-prefixes-to-strip",
+     "_setupSetList('labels.groupNameStrip', this.value)",
+     "#fl-bus-ministry",
+     "_setupSet('labels.busMinistry', this.value)",
+     "#su-modules",
+     "_setupToggle('modules')",
+     "h:Modules & Import",
+     "_setupSet('modules.connectionAudit', this.checked)",
+     "_setupSet('modules.lifegroups', this.checked)",
+     "_setupPrayersToggle(this)",
+     "_setupSet('modules.busMinistry', this.checked)",
+     "#setup-notices",
+     "_setupSet('modules.notices', this.value)",
+     "#setup-newYouthForms",
+     "_setupSetModule('newYouthForms', this.value)",
+     "#setup-checkin",
+     "_setupSetModule('checkin', this.value)",
+     "#setup-lifegroupReport",
+     "_setupSetModule('lifegroupReport', this.value)",
+     "#setup-flows",
+     "_setupSetModule('flows', this.value)",
+     "#setup-fh-f1",
+     "_setupSet('modules.flowHiddenStep.f1', this.value)",
+     "#setup-intakeAdmin",
+     "_setupSet('modules.intakeAdmin', this.value)",
+     "#su-elvanto",
+     "_setupToggle('elvanto')",
+     "h:Elvanto for this location",
+     "#setup-elv-student",
+     "_setupElvLink('student', this.value)",
+     "#setup-elv-parent",
+     "_setupElvLink('parent', this.value)",
+     "#setup-elv-bus",
+     "_setupElvBusLink(this.value)",
+     "#setup-elv-locationQuestion",
+     "_setupSet('elvanto.locationQuestion', this.value.trim()",
+     "#setup-elv-location",
+     "_setupSet('elvanto.location', this.value.trim()",
+     "#setup-elv-peopleFlowPrefix",
+     "_setupSet('elvanto.peopleFlowPrefix', this.value.trim()",
+     "#setup-elv-consentFlowPrefix",
+     "_setupSet('elvanto.consentFlowPrefix', this.value.trim()",
+     "#setup-elv-state",
+     "_setupSet('elvanto.state', this.value.trim()",
+     "_setupElvCheck()",
+     "#su-share",
+     "_setupToggle('share')",
+     "h:Use this setup at another location",
+     "exportSettingsFile()",
+     "loadSettingsFile(this)",
+     "confirmSaveMinistrySetup()"
+    ]
+   },
+   "director": {
+    "nav": {
+     "navItems": [
+      {
+       "id": "home",
+       "label": "Home"
+      },
+      {
+       "id": "at-risk",
+       "label": "Health"
+      },
+      {
+       "id": "more",
+       "label": "More"
+      },
+      {
+       "id": "trends",
+       "label": "Trends"
+      },
+      {
+       "id": "leaders",
+       "label": "Setup"
+      },
+      {
+       "id": "students",
+       "label": "Student Search"
+      },
+      {
+       "id": "my-students",
+       "label": "My Connections"
+      },
+      {
+       "id": "import",
+       "label": "Import"
+      },
+      {
+       "id": "ca-week",
+       "label": "Connection Audit"
+      },
+      {
+       "id": "birthdays",
+       "label": "Upcoming Birthdays"
+      }
+     ],
+     "bottomNavItems": [
+      "home",
+      "at-risk",
+      "more",
+      "trends",
+      "leaders"
+     ],
+     "moreItems": [
+      "prayers",
+      "bus",
+      "new-youth",
+      "import"
+     ],
+     "quickActionItems": [
+      "students",
+      "my-students",
+      "import",
+      "ca-week",
+      "birthdays"
+     ]
+    },
+    "home": {
+     "body": [
+      "#home-attn",
+      "go('trends')",
+      "go('bus')",
+      "go('students')",
+      "go('my-students')",
+      "go('ca-week')",
+      "go('birthdays')",
+      "h:Connection by Grade",
+      "h:service By Quad",
+      "#hq-g79",
+      "_drop('hq-g79')",
+      "#hq-b1012",
+      "_drop('hq-b1012')",
+      "h:smallGroupPlural by Quad",
+      "#hlq-g79",
+      "_drop('hlq-g79')",
+      "#hlqg-g79-8",
+      "_drop('hlqg-g79-8')",
+      "#home-flows",
+      "#home-followup"
+     ],
+     "flows": [],
+     "attn": {
+      "slot": true,
+      "lines": [
+       "switchAdminTab('errors')",
+       "switchAdminTab('unsent')",
+       "",
+       "",
+       "",
+       "",
+       "switchAdminTab('system')",
+       "go('link-intake')"
+      ],
+      "reads": []
+     }
+    },
+    "bus": [
+     "h:busMinistry",
+     "busOpenAnalysis()",
+     "busOpenPast()",
+     "h:Students",
+     "h:Car setup",
+     "h:Assign",
+     "h:My car"
+    ]
+   },
+   "grade": {
+    "nav": {
+     "navItems": [
+      {
+       "id": "home",
+       "label": "Home"
+      },
+      {
+       "id": "at-risk",
+       "label": "Health"
+      },
+      {
+       "id": "my-students",
+       "label": "My Connections"
+      },
+      {
+       "id": "more",
+       "label": "More"
+      },
+      {
+       "id": "leaders",
+       "label": "Setup"
+      },
+      {
+       "id": "trends",
+       "label": "Trends"
+      },
+      {
+       "id": "birthdays",
+       "label": "Upcoming Birthdays"
+      }
+     ],
+     "bottomNavItems": [
+      "home",
+      "at-risk",
+      "my-students",
+      "more",
+      "leaders"
+     ],
+     "moreItems": [
+      "prayers",
+      "bus",
+      "new-youth"
+     ],
+     "quickActionItems": [
+      "trends",
+      "birthdays"
+     ]
+    },
+    "home": {
+     "body": [
+      "go('trends')",
+      "go('bus')",
+      "go('birthdays')",
+      "#home-flows",
+      "#home-followup"
+     ],
+     "flows": [],
+     "attn": null
+    },
+    "bus": [
+     "h:busMinistry",
+     "busOpenAnalysis()",
+     "h:Students",
+     "h:Car setup",
+     "h:Assign",
+     "h:My car"
+    ]
+   },
+   "quad": {
+    "nav": {
+     "navItems": [
+      {
+       "id": "home",
+       "label": "Home"
+      },
+      {
+       "id": "at-risk",
+       "label": "Health"
+      },
+      {
+       "id": "my-students",
+       "label": "My Connections"
+      },
+      {
+       "id": "more",
+       "label": "More"
+      },
+      {
+       "id": "leaders",
+       "label": "Setup"
+      },
+      {
+       "id": "trends",
+       "label": "Trends"
+      },
+      {
+       "id": "students",
+       "label": "Student Search"
+      },
+      {
+       "id": "birthdays",
+       "label": "Upcoming Birthdays"
+      }
+     ],
+     "bottomNavItems": [
+      "home",
+      "at-risk",
+      "my-students",
+      "more",
+      "leaders"
+     ],
+     "moreItems": [
+      "prayers",
+      "bus",
+      "new-youth"
+     ],
+     "quickActionItems": [
+      "trends",
+      "students",
+      "birthdays"
+     ]
+    },
+    "home": {
+     "body": [
+      "go('trends')",
+      "_setHomeGrade(null)",
+      "_setHomeGrade(7)",
+      "_setHomeGrade(8)",
+      "_setHomeGrade(9)",
+      "go('bus')",
+      "go('students')",
+      "go('birthdays')",
+      "h:Connection by Grade",
+      "h:Attendance by Grade",
+      "#hlg-8",
+      "_drop('hlg-8')",
+      "#hlg-8-lg",
+      "_drop('hlg-8-lg')",
+      "#home-flows",
+      "#home-followup"
+     ],
+     "flows": [],
+     "attn": null
+    },
+    "bus": [
+     "h:busMinistry",
+     "busOpenAnalysis()",
+     "h:Students",
+     "h:Car setup",
+     "h:Assign",
+     "h:My car"
+    ]
+   },
+   "leader": {
+    "nav": {
+     "navItems": [
+      {
+       "id": "home",
+       "label": "Home"
+      },
+      {
+       "id": "more",
+       "label": "More"
+      },
+      {
+       "id": "at-risk",
+       "label": "Health"
+      },
+      {
+       "id": "my-students",
+       "label": "My Connections"
+      },
+      {
+       "id": "birthdays",
+       "label": "Upcoming Birthdays"
+      }
+     ],
+     "bottomNavItems": [
+      "home",
+      "more",
+      "at-risk",
+      "my-students",
+      "birthdays"
+     ],
+     "moreItems": [
+      "prayers",
+      "bus",
+      "new-youth"
+     ],
+     "quickActionItems": []
+    },
+    "home": {
+     "body": [
+      "h:Name ·",
+      "go('bus')",
+      "go('prayers')",
+      "go('at-risk')",
+      "go('my-students')",
+      "go('birthdays')",
+      "#home-flows",
+      "#home-followup"
+     ],
+     "flows": [],
+     "attn": null
+    },
+    "bus": [
+     "h:busMinistry",
+     "h:Car setup",
+     "h:Assign",
+     "h:My car"
+    ]
+   },
+   "leader (bus coordinator)": {
+    "bus": [
+     "h:busMinistry",
+     "busOpenAnalysis()",
+     "busOpenForms()",
+     "h:Students",
+     "h:Car setup",
+     "h:Assign",
+     "h:My car"
+    ]
+   }
+  },
+  "shared": {
+   "busConsentChips": {
+    "current_parent": {
+     "tap": [
+      ".bus-chips",
+      ".pill ok bus-chip",
+      ".pill ok bus-chip"
+     ],
+     "plain": [
+      ".bus-chips",
+      ".pill ok bus-chip",
+      ".pill ok bus-chip"
+     ]
+    },
+    "current_named": {
+     "tap": [
+      ".bus-chips",
+      ".pill ok bus-chip",
+      ".pill ok bus-chip"
+     ],
+     "plain": [
+      ".bus-chips",
+      ".pill ok bus-chip",
+      ".pill ok bus-chip"
+     ]
+    },
+    "current_dropHome": {
+     "tap": [
+      ".bus-chips",
+      ".pill ok bus-chip",
+      ".chip c-warn bus-chip"
+     ],
+     "plain": [
+      ".bus-chips",
+      ".pill ok bus-chip",
+      ".chip c-warn bus-chip"
+     ]
+    },
+    "not_current": {
+     "tap": [
+      ".bus-chips",
+      ".chip c-warn bus-chip",
+      "busConsentForm()"
+     ],
+     "plain": [
+      ".bus-chips",
+      ".chip c-warn bus-chip"
+     ]
+    },
+    "differs": {
+     "tap": [
+      ".bus-chips",
+      ".pill ok bus-chip",
+      ".chip c-warn bus-chip bus-hit bus-differs",
+      "busEditRider()"
+     ],
+     "plain": [
+      ".bus-chips",
+      ".pill ok bus-chip"
+     ]
+    },
+    "none": {
+     "tap": [],
+     "plain": []
+    }
+   },
+   "errorLog": {
+    "groups": [
+     "h:Error log",
+     "#el-clrfyi",
+     "elClearFyi()",
+     "h:Act now (1)",
+     "elToggle('now')",
+     "h:Act later (1)",
+     "elToggle('later')",
+     "h:FYI (1)",
+     "elToggle('fyi')"
+    ],
+    "categories": [
+     "server",
+     "link",
+     "elvanto-form",
+     "client",
+     "reconcile",
+     "audit"
+    ],
+    "tiers": [
+     "now",
+     "later",
+     "fyi"
+    ],
+    "serverCodes": {
+     "BUS_CONSENT_FORM_FAILED": "now",
+     "BUS_CONSENT_FORM_UNCONFIRMED": "now",
+     "CONSENT_ADDRESS_UNMATCHED": "fyi",
+     "ELVANTO_FORM_CHANGED": "now",
+     "ELVANTO_UNREACHABLE": "now",
+     "INTERNAL": "later",
+     "INTERNAL_ERROR": "later",
+     "LINK_OFF": "now",
+     "NY_REQ_FAILED": "fyi",
+     "PARENT_FORM_FAILED": "now",
+     "PARENT_FORM_UNCONFIRMED": "now",
+     "PUSH_FAILED": "fyi",
+     "PUSH_OFF": "later",
+     "REQUEST_TIMEOUT": "fyi",
+     "ROUTING_FAILED": "later",
+     "SERVICE_UNAVAILABLE": "fyi",
+     "SETUP_INCOMPLETE": "now",
+     "STUDENT_FORM_FAILED": "now",
+     "STUDENT_FORM_UNCONFIRMED": "now",
+     "UNSENT_SAVE_FAILED": "now",
+     "ambiguous-first-timer": "fyi",
+     "assignee-needed": "fyi",
+     "audit-feed-stale": "now",
+     "audit-rows-skipped": "later",
+     "audit-source-failed": "now",
+     "bad-answer": "fyi",
+     "chain-not-done": "fyi",
+     "console-cannot-read": "later",
+     "did-not-meet-conflict": "fyi",
+     "fix-no-date": "fyi",
+     "fix-no-field": "fyi",
+     "fix-no-total": "fyi",
+     "form-unknown": "later",
+     "group-unknown": "later",
+     "intake-unreadable": "later",
+     "leader-member": "fyi",
+     "lease-lost": "now",
+     "locked": "later",
+     "member-left": "fyi",
+     "multi-service": "fyi",
+     "needs-you": "later",
+     "no-room": "later",
+     "not-in-group": "fyi",
+     "not-landed": "now",
+     "note-too-long": "fyi",
+     "note-unreadable": "later",
+     "pending-24h": "now",
+     "person-unknown": "later",
+     "plan-changed": "fyi",
+     "recon-checkins": "now",
+     "recon-failed": "later",
+     "recon-lifegroup-noid": "later",
+     "recon-lifegroups": "now",
+     "recon-members": "now",
+     "recon-unmatched": "later",
+     "report-changed": "fyi",
+     "report-exists": "fyi",
+     "report-not-found": "fyi",
+     "saved-before": "fyi",
+     "service-not-offered": "fyi",
+     "step-moved": "fyi",
+     "too-old": "later",
+     "unclear": "now",
+     "unkept-notes": "fyi",
+     "unknown": "later"
+    },
+    "clientCodes": {
+     "HTTP_401": "fyi",
+     "HTTP_403": "fyi",
+     "JS": "later",
+     "NETWORK": "fyi",
+     "OTHER": "fyi"
+    }
+   }
+  }
+ },
+ "BL2": [
+  "DELETE /accounts/users/:id",
+  "DELETE /admin/errors",
+  "DELETE /admin/errors/:id",
+  "DELETE /admin/unsent/:id",
+  "DELETE /audits/:year",
+  "DELETE /bus/past-riders",
+  "DELETE /bus/riders/:id",
+  "DELETE /bus/riders/:id/addresses/:addressId",
+  "DELETE /bus/run/own-car",
+  "DELETE /connections/:studentId/:leaderId",
+  "DELETE /import/history",
+  "DELETE /import/history/:id",
+  "DELETE /leaders/:id",
+  "DELETE /notices/:id",
+  "DELETE /prayers/:id",
+  "DELETE /students/:id",
+  "GET /accounts/users",
+  "GET /admin/errors",
+  "GET /admin/reconcile/latest",
+  "GET /admin/unsent",
+  "GET /at-risk",
+  "GET /audits",
+  "GET /audits/:year",
+  "GET /audits/export-all",
+  "GET /auth/me",
+  "GET /batch",
+  "GET /bus/addresses",
+  "GET /bus/analysis",
+  "GET /bus/analysis/map",
+  "GET /bus/consent/forms",
+  "GET /bus/consent/prefill",
+  "GET /bus/consent/status",
+  "GET /bus/guests/pending",
+  "GET /bus/history",
+  "GET /bus/history/:runId/map",
+  "GET /bus/my-car",
+  "GET /bus/places/autocomplete",
+  "GET /bus/places/details",
+  "GET /bus/riders/:id/addresses",
+  "GET /bus/run",
+  "GET /bus/run/cars",
+  "GET /bus/run/version",
+  "GET /bus/search",
+  "GET /connections",
+  "GET /connections/allocations/export",
+  "GET /connections/export",
+  "GET /connections/leader/:leaderId",
+  "GET /connections/leader/:leaderId/followup",
+  "GET /connections/leader/:leaderId/summary",
+  "GET /connections/student/:studentId",
+  "GET /import/history",
+  "GET /leaders",
+  "GET /leaders/:id",
+  "GET /lifegroups/stats",
+  "GET /link/actions",
+  "GET /link/admin/log",
+  "GET /link/admin/recheck/:id",
+  "GET /link/admin/roster",
+  "GET /link/checkin",
+  "GET /link/consents/lookup",
+  "GET /link/consents/snapshot",
+  "GET /link/flows",
+  "GET /link/intake",
+  "GET /link/intake/row",
+  "GET /link/lifegroups",
+  "GET /link/lifegroups/:groupId/members",
+  "GET /link/status",
+  "GET /link/youth",
+  "GET /manifest.json",
+  "GET /notices",
+  "GET /notices/push",
+  "GET /overview",
+  "GET /prayers",
+  "GET /prayers/export",
+  "GET /settings",
+  "GET /setup/status",
+  "GET /students",
+  "GET /students/:id",
+  "GET /students/graduated",
+  "GET /trends",
+  "PATCH /accounts/users/:id",
+  "PATCH /accounts/users/:id/status",
+  "PATCH /admin/errors/:id",
+  "PATCH /bus/leader-prefs/:leaderId",
+  "PATCH /bus/riders/:id",
+  "PATCH /bus/run/pool",
+  "PATCH /bus/run/vehicles/:id",
+  "PATCH /bus/runs/:id/riders/:riderId",
+  "PATCH /bus/vehicles/:id",
+  "PATCH /leaders/:id",
+  "PATCH /leaders/:id/grades",
+  "PATCH /leaders/:id/sms-template",
+  "PATCH /leaders/:id/view-grades",
+  "PATCH /prayers/:id",
+  "PATCH /prayers/:id/status",
+  "PATCH /settings",
+  "PATCH /students/:id",
+  "POST /accounts/cohort-layout/apply",
+  "POST /accounts/cohort-layout/preview",
+  "POST /accounts/me/password",
+  "POST /accounts/users",
+  "POST /accounts/users/:id/preview",
+  "POST /accounts/users/password",
+  "POST /admin/clear-service-group",
+  "POST /admin/errors/client",
+  "POST /admin/reconcile/resend",
+  "POST /admin/reset",
+  "POST /admin/unsent/:id/retry",
+  "POST /audits/import-all",
+  "POST /audits/sources/:source",
+  "POST /auth/login",
+  "POST /auth/logout",
+  "POST /bus/analysis/extra-cars",
+  "POST /bus/consent-form",
+  "POST /bus/consent/check",
+  "POST /bus/google-check",
+  "POST /bus/guests",
+  "POST /bus/guests/:id/dismiss",
+  "POST /bus/guests/:id/link",
+  "POST /bus/riders",
+  "POST /bus/riders/:id/dropped",
+  "POST /bus/riders/:id/move",
+  "POST /bus/run/generate",
+  "POST /bus/run/my-car/optimise",
+  "POST /bus/run/my-car/stops",
+  "POST /bus/run/own-car",
+  "POST /bus/run/unassign-all",
+  "POST /bus/run/undo",
+  "POST /bus/vehicles",
+  "POST /connections",
+  "POST /connections/allocations/import",
+  "POST /import/csv",
+  "POST /import/group-csv",
+  "POST /intake/new-youth",
+  "POST /leaders",
+  "POST /link/admin/create-students",
+  "POST /link/admin/roster/:personId",
+  "POST /link/admin/unclear/:id",
+  "POST /link/admin/unclear/:id/recheck",
+  "POST /link/batch",
+  "POST /link/consents/refresh",
+  "POST /link/flows/assign",
+  "POST /link/intake/refresh",
+  "POST /notices",
+  "POST /notices/push",
+  "POST /notices/push/off",
+  "POST /prayers",
+  "POST /prayers/import",
+  "POST /settings/elvanto-check",
+  "POST /setup/admin",
+  "POST /students",
+  "POST /students/:id/ungraduate",
+  "POST /sync/claim",
+  "POST /sync/leaders",
+  "POST /sync/push/:kind",
+  "POST /sync/reconcile/latest",
+  "POST /sync/result"
+ ],
+ "BL3": {
+  "connectionAudit": true,
+  "lifegroups": true,
+  "exportGuides": "elvanto",
+  "busMinistry": true,
+  "newYouthForms": "on",
+  "prayers": true,
+  "notices": "off",
+  "checkin": "admin",
+  "lifegroupReport": "admin",
+  "flows": "admin",
+  "intakeAdmin": "on",
+  "flowHiddenStep": {}
+ }
+}

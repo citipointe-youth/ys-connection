@@ -1,0 +1,14 @@
+{
+  "connectionAudit": true,
+  "lifegroups": true,
+  "exportGuides": "elvanto",
+  "busMinistry": true,
+  "newYouthForms": "on",
+  "prayers": true,
+  "notices": "off",
+  "checkin": "admin",
+  "lifegroupReport": "admin",
+  "flows": "admin",
+  "intakeAdmin": "on",
+  "flowHiddenStep": {}
+}
