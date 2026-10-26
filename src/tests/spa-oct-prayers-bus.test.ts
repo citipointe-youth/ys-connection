@@ -44,8 +44,8 @@ function __s() { return S; }`;
   });
   it('the API wrapper calls the handler on MODULE_DISABLED from a prayers path', () => {
     const html = loadIndexHtml();
-    expect(html).toMatch(/e\.code === 'MODULE_DISABLED' && [^\n]*_moduleDisabledRefresh\(\)/);
-    expect(html).toContain("/^\\/prayers/.test(path)");
+    expect(html).toMatch(/e\.code === 'MODULE_DISABLED'\) _moduleOffHit\(path, err\)/);
+    expect(html).toMatch(/function _moduleOffHit\(path, err\) \{[^}]*_moduleDisabledRefresh\(\);/);
   });
   it('the Prayers toggle asks to export first and only turns off on confirm', () => {
     const calls: string[] = [];

@@ -1,4 +1,4 @@
-const CACHE = 'ysc-v155';
+const CACHE = 'ysc-v156';
 const SHELL_WAIT_MS = 3000; // impeccable 2026-10-24 #10: then the cached shell, if any
 const APP_SHELL = ['/'];
 
