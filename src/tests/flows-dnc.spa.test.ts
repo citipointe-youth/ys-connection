@@ -324,7 +324,7 @@ describe('Y6c DNC line on Home (Needs attention)', () => {
   it('fix round: Home makes one /link/status read a minute (Needs attention and the offline line share it)', async () => {
     const calls: string[] = [];
     (globalThis as any).__y6 = calls;
-    const h = loadFns(['_attnLoad', '_attnCounts', '_attnMine', '_lkHomeFlows', '_lkBoss', '_lkOfflineHtml', '_lkOfflineSince', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], `
+    const h = loadFns(['_attnLoad', '_modOn', '_attnCounts', '_attnMine', '_lkHomeFlows', '_lkBoss', '_lkOfflineHtml', '_lkOfflineSince', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], `
       var S = { user: { id: 'u', role: 'admin' }, page: 'home', settings: { ministryConfig: { structure: { timeZone: 'Australia/Brisbane' }, modules: {} } } };
       var LINK = { status: null, statusAt: 0, flowsAt: 0 };
       let _attn = null, _attnBusy = null;

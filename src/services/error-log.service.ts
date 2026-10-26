@@ -8,6 +8,7 @@ import type { Actor } from '../core/entities/user';
 import { NotFoundError } from '../core/errors/app-error';
 import { ERROR_CATEGORIES, type ErrorCategory, type ErrorLogRow, type IErrorLogRepository } from '../repositories/interfaces/error-log.repository';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
+import type { ISettingsRepository } from '../repositories/interfaces/entity-repositories';
 import type { ActionType } from '../core/link-types';
 import { ACTION_TYPES } from '../core/link-contract';
 import { ERROR_TIERS, TEXT, TIER_RANK, textFor } from './error-log-text';
@@ -89,6 +90,8 @@ export interface ErrorLogDeps {
   now?: () => Date;
   /** Spec 2026-10-22 §7: re-evaluates audit-feed-stale (setCount) before the admin view reads. */
   auditFeed?: () => Promise<void>;
+  /** Modular setup: with Live Elvanto link off the admin view leaves out the link and reconcile entries (they are kept). */
+  settings?: Pick<ISettingsRepository, 'getSettings'>;
 }
 
 export function makeErrorLogService(d: ErrorLogDeps) {
@@ -222,7 +225,8 @@ export function makeErrorLogService(d: ErrorLogDeps) {
         const con = [...((await d.link?.listConsoles?.()) ?? [])].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt))[0];
         live = con?.capabilities?.recheck === 'live';
       } catch { /* no consoles read: the old wording */ }
-      const rows = (await d.repo.list()).map((r) => toView(r, live));
+      const linkOff = d.settings ? await d.settings.getSettings().then((x) => x.ministryConfig.modules.liveLink === false, () => false) : false;
+      const rows = (await d.repo.list()).filter((r) => !linkOff || (r.category !== 'link' && r.category !== 'reconcile')).map((r) => toView(r, live));
       rows.sort((a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier] || b.lastSeen.localeCompare(a.lastSeen));
       return { rows };
     },

@@ -33,7 +33,7 @@ import { createLogger } from '../utils/logger';
 import { isDbError } from '../utils/transient-db';
 import type { ErrorLogService } from './error-log.service';
 import type { ILinkIntakeRepository } from '../repositories/interfaces/link-intake.repository';
-import { checkIntakeItem, intakeGate, isIntakeType } from './link-intake.service';
+import { checkIntakeItem, consentsGate, intakeGate, isIntakeType } from './link-intake.service';
 import {
   can, canAccessGender, canAccessGrade, canAccessQuadGroup, canAccessStudent, canEditGroupMembers, genderScopeOf, isAdminRole, leaderInScope, modeAllows, type StructureScope,
 } from './access-control';
@@ -472,6 +472,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
   }
   async function access(actor: Actor, need: Feature[] | 'any' | 'admin'): Promise<AppSettings> {
     const settings = await d.settings.getSettings();
+    if (settings.ministryConfig.modules.liveLink === false) throw new ModuleDisabledError('Elvanto link'); // modular setup: Live Elvanto link off = every link read, admin too
     const admin = can(actor, 'link:admin');
     if (need === 'admin') {
       if (!admin) throw new ForbiddenError('Only the admin can do this.');
@@ -631,7 +632,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     if (it.type === 'recheck') throw new BadRequestError('Use Check again in Admin > Elvanto link.'); // L7: admin route only
     const intake = isIntakeType(it.type);
     const consentType = isConsentType(it.type);
-    if (intake || consentType) intakeGate(c.actor, c.settings);
+    if (intake) intakeGate(c.actor, c.settings);
+    else if (consentType) consentsGate(c.actor, c.settings); // modular setup: the Consents hub's types follow consentsHubOn
     else if (!usable(c.actor, c.settings, FEATURE_OF[it.type]!)) throw new ModuleDisabledError('Elvanto link');
     if (it.type === 'removeFromFlowStep' && !can(c.actor, 'link:flowRemove')) throw new ForbiddenError('Only the admin or a director can remove someone from a step.');
     // 2. replay / id reuse
@@ -1233,7 +1235,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
      */
     async consentLookup(actor, q) {
       const settings = await d.settings.getSettings();
-      intakeGate(actor, settings);
+      consentsGate(actor, settings);
       const { id } = z.object({ id: Uuid }).parse(q ?? {});
       const row = await d.link.getAction(id);
       if (!row || row.type !== 'consentLookup') throw new NotFoundError('That lookup is not known.');
@@ -1252,7 +1254,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
 
     async consentSnapshot(actor) {
       const settings = await d.settings.getSettings();
-      intakeGate(actor, settings);
+      consentsGate(actor, settings);
       const [snaps, meta, consoles] = await Promise.all([d.link.consentSnapshots(), d.link.consentSnapshotMeta(), d.link.listConsoles()]);
       const kinds = {} as Record<ConsentLookupKind, { total: number | null; takenAt: string; rows: unknown[] } | null>;
       for (const k of CONSENT_LOOKUP_KINDS) {
@@ -1263,7 +1265,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       return { live: (newest(consoles)?.linkRev ?? 0) >= 19, askedAt: meta.askedAt, kinds };
     },
     async consentSnapshotRefresh(actor) {
-      intakeGate(actor, await d.settings.getSettings());
+      consentsGate(actor, await d.settings.getSettings());
       return { asked: await d.link.askConsentSnapshot() };
     },
 
@@ -1296,7 +1298,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     async youth(actor, q) {
       // L6: ?scope=consents = the Consents screen's person search (intake gate: admin + module), not the lifegroup one.
       let c;
-      if ((q as { scope?: string } | undefined)?.scope === 'consents') { const s = await d.settings.getSettings(); intakeGate(actor, s); c = context(actor, s); }
+      if ((q as { scope?: string } | undefined)?.scope === 'consents') { const s = await d.settings.getSettings(); consentsGate(actor, s); c = context(actor, s); }
       else c = context(actor, await gate(actor, ['lifegroupReport']));
       const cmp = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity: 'base' });
       const rows = (await c.roster()).filter((r) => r.active && r.kind !== 'other' && personVisible(actor, r, c.structure))

@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 import { navWithModules, expectSubtraction } from './helpers/module-off';
 import { MinistryConfigSchema } from '../core/ministry-config';
-import { consentsHubOn } from '../core/module-tree';
+import { consentsHubOn, MODULE_TREE } from '../core/module-tree';
 
 const modOn = (role: string | null, modules: Record<string, unknown> | undefined, key: string): boolean =>
   loadFns(['_modOn'], `var S = ${JSON.stringify({ user: role ? { role } : null, settings: { ministryConfig: modules ? { modules } : {} } })};`)._modOn(key);
@@ -64,8 +64,10 @@ describe('MP1b page dispatcher guard', () => {
   it('inherited object members are not page entries', async () => {
     for (const page of ['constructor', 'toString', '__proto__']) expect(await run(page, {}, { [String(Object)]: false, [String(Object.prototype.toString)]: false }), page).toEqual([]);
   });
-  it('the shipped PAGE_MODULE map is a plain object literal', () => {
-    expect(loadIndexHtml()).toMatch(/^const PAGE_MODULE = \{.*\};.*$/m);
+  it('the shipped PAGE_MODULE map names only tree modules (or the computed consentsHub)', () => {
+    const map = new Function(`${loadIndexHtml().match(/^const PAGE_MODULE = .*$/m)![0]}; return PAGE_MODULE;`)();
+    const keys = new Set([...MODULE_TREE.map((n) => n.key), 'consentsHub']);
+    for (const [page, key] of Object.entries(map)) expect(keys.has(key as string), `${page} -> ${key}`).toBe(true);
   });
 });
 

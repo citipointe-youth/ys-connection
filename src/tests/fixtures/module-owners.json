@@ -13,5 +13,7 @@
   "intakeAdmin": ["link-intake"],
   "flows": ["link-flows"],
   "checkin": ["link-checkin"],
-  "lifegroupReport": ["link-groups"]
+  "lifegroupReport": ["link-groups"],
+  "liveLink": ["link", "link-admin"],
+  "consentsHub": ["link-intake"]
 }

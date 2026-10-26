@@ -49,7 +49,7 @@ describe('B1: 6 Admin tabs, pills on every width, old ids as aliases', () => {
     expect(TABS).toBe("const ADMIN_TABS = [['link','Elvanto link'],['problems','Problems'],['import','Import'],['accounts','Accounts'],['youthsetup','Youth Setup'],['newyear','New Year']];");
   });
   it('an old id lights the pill of the tab that holds it; no <select>', () => {
-    const f = loadFns(['_adminTabsHtml'], `${TABS}\n${HOME}\n${esc}`);
+    const f = loadFns(['_adminTabsHtml', '_modOn'], `var S = {};\n${TABS}\n${HOME}\n${esc}`);
     for (const [old, home] of [['errors', 'problems'], ['unsent', 'problems'], ['system', 'problems'], ['loginActivity', 'accounts'], ['data', 'newyear']]) {
       const h = f._adminTabsHtml(old);
       expect(h, old).toContain(`tbbtn on" onclick="switchAdminTab('${home}')"`);

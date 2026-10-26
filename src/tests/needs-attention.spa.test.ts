@@ -10,8 +10,8 @@ const ADMIN_TABS = [/^const ADMIN_TABS = .*$/m, /^const ADMIN_TAB_HOME = .*$/m].
 const NOW = Date.parse('2026-10-20T10:00:00.000Z');
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
 
-const ATTN = ['_attnCounts', '_attnLines', '_attnHtml', '_attnBadges', '_attnMine', '_attnSlot', '_attnLoad', '_adminTabsHtml',
-  '_lkSeen', '_lkTime', '_lkAt', 'fmtDay', 'esc', '_modOn'];
+const ATTN = ['_modOn', '_attnCounts', '_attnLines', '_attnHtml', '_attnBadges', '_attnMine', '_attnSlot', '_attnLoad', '_adminTabsHtml',
+  '_lkSeen', '_lkTime', '_lkAt', 'fmtDay', 'esc'];
 
 // The routes, as each one answers today. A healthy Brisbane: every count zero, the console online.
 function healthy(): Record<string, any> {
