@@ -15,8 +15,8 @@ Rollback = Vercel dashboard > Deployments > the previous good build > Instant Ro
 **fix24/ys (flows reassign + consent hub "Saving X of N" + `fix-no-field`, SW `ysc-v149`): no migration (`/health` `schema.current` stays `0046`), `LINK_REV` stays 19, ship order vs the console does not matter; rollback = Instant Rollback to 20c0632 (`ysc-v148`), nothing to undo.**
 
 <!-- live -->
-- master sha: 41b127b (docs/post-cutover-first-change)
-- last ship: 2026-10-25 17:03 EAST
+- master sha: 6815433 (modules/p0-baseline)
+- last ship: 2026-10-26 23:44 EAST
 - migration: 0049
 - SW version: ysc-v153
 - promote: auto (Vercel promotes every master build); check /health after the build
