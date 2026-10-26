@@ -64,8 +64,8 @@ describe('MP1b page dispatcher guard', () => {
   it('inherited object members are not page entries', async () => {
     for (const page of ['constructor', 'toString', '__proto__']) expect(await run(page, {}, { [String(Object)]: false, [String(Object.prototype.toString)]: false }), page).toEqual([]);
   });
-  it('the shipped PAGE_MODULE map starts empty', () => {
-    expect(loadIndexHtml()).toMatch(/^const PAGE_MODULE = \{\};\r?$/m);
+  it('the shipped PAGE_MODULE map is one object literal (lanes add entries; each lane test checks its own)', () => {
+    expect(loadIndexHtml()).toMatch(/^const PAGE_MODULE = \{.*\};\r?$/m);
   });
 });
 
