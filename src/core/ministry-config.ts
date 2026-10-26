@@ -124,19 +124,6 @@ export const MinistryConfigSchema = z.object({
       gradeMin: z.number().int().default(7),
       gradeMax: z.number().int().default(12),
       gradeLabel: z.string().max(20).default('Grade'),
-      brackets: z
-        .array(
-          z.object({
-            id: z.string(),
-            label: z.string(),
-            gradeMin: z.number().int(),
-            gradeMax: z.number().int(),
-          }),
-        )
-        .default([
-          { id: '79', label: 'Yr 7–9', gradeMin: 7, gradeMax: 9 },
-          { id: '1012', label: 'Yr 10–12', gradeMin: 10, gradeMax: 12 },
-        ]),
       genderPolicy: z.enum(['strict', 'soft', 'off']).default('strict'),
       serviceDayOfWeek: z.number().int().min(0).max(6).default(5),
       timeZone: z.string().max(60).refine(isTimeZone, TZ_MSG).default('Australia/Brisbane'),

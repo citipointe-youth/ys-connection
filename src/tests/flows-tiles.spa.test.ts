@@ -17,7 +17,7 @@ const PRELUDE = `
   const document = { getElementById: () => null };
   function _lkQGet() { return []; }
   function _lkBoss() { return ROLE === 'admin' || ROLE === 'director'; }
-  function _juniorMin() { return 7; }
+  function _juniorMin() { return 7; } function gradeBands() { return { junior: [7, 8, 9], senior: [10, 11, 12] }; }
   function _lkToday() { return '2026-10-17'; }
   function _lkFlowDue() { return ''; }
   function _lkStatusHtml(a) { return 'ST:' + a.status; } function _lkStatusTone() { return 'wait'; } function _lkLastSeen() { return ''; }

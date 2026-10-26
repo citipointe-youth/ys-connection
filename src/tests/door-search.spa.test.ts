@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { loadFns, loadIndexHtml } from './helpers/extract-fn';
 
-const NAMES = ['esc', '_lkEsOn', '_lkEsCur', '_lkEsHtml', '_lkEsPaint', '_lkEsCancel', '_lkEsEnd', '_lkEsGo', '_lkEsPoll', '_lkRowHtml'];
+const NAMES = ['esc', '_lkEsOn', '_lkEsCur', '_lkEsHtml', '_lkEsPaint', '_lkEsCancel', '_lkEsEnd', '_lkEsGo', '_lkEsPoll', '_lkRowHtml', '_structure', '_gradeWord'];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Env = Record<string, any>;
 let E: Env;
@@ -65,7 +65,7 @@ describe('rev 20 door: Slow: Search Elvanto', () => {
     E.due = [{ personId: 'p1', name: 'Sam Sample', grade: 9, gender: 'female', checkedIn: false }];
     expect(html()).toContain('Found in Elvanto');
     const row = F._lkRowHtml(E.due[0]);
-    expect(row).toContain('Year 9 · Girl');
+    expect(row).toContain('Grade 9 · Girl');
     expect(row).toContain("_lkCheck('p1','checkIn')");
     E.LINK.es = null;
     expect(F._lkRowHtml(E.due[0])).not.toContain('Girl'); // a plain door row is unchanged

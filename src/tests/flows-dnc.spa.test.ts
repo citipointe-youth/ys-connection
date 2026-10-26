@@ -20,7 +20,7 @@ const PRELUDE = `
   const LK_OFFLINE_MS = 15 * 60000;
   function _lkQGet() { return QUEUE.slice(); }
   function _lkBoss() { return ROLE === 'admin' || ROLE === 'director'; }
-  function _juniorMin() { return 7; }
+  function _juniorMin() { return 7; } function gradeBands() { return { junior: [7, 8, 9], senior: [10, 11, 12] }; }
   function _lkToday() { return '2026-10-15'; }
   function _lkFlowDue() { return ''; }
   function _lkStatusHtml(a) { return 'ST:' + a.status; }
@@ -40,27 +40,28 @@ const R = (o: any) => ({ rowId: o.rowId ?? 'r' + (++n), flowId: 'F1', flowName: 
   personId: 'p' + n, name: 'Zed ' + n, due: null, grade: 8, gender: 'male', mobile: '0412345678', consent: 'ok', dnc: false, consentStep: false, ...o });
 const reset = (o: any = {}) => { f.set({ role: 'admin', queue: [], throw: false, store: {}, hub: false, ...o }); Object.assign(L, { flows: [], fSteps: [], fres: {}, fsel: {}, status: null, ff: undefined }); };
 
+const B7 = { junior: [7, 8, 9], senior: [10, 11, 12] }, B6 = { junior: [6, 7, 8, 9], senior: [10, 11, 12] };
 describe('R4 filter buckets: junior Y7-9 (+Y6 with Include Grade 6), senior Y10-12, unknown always shows', () => {
   it('buckets by grade and gender', () => {
-    expect(f._lkFlowBucket(R({ grade: 7, gender: 'male' }), 7)).toBe('jg');
-    expect(f._lkFlowBucket(R({ grade: 9, gender: 'female' }), 7)).toBe('jf');
-    expect(f._lkFlowBucket(R({ grade: 10, gender: 'male' }), 7)).toBe('sg');
-    expect(f._lkFlowBucket(R({ grade: 12, gender: 'female' }), 7)).toBe('sf');
+    expect(f._lkFlowBucket(R({ grade: 7, gender: 'male' }), B7)).toBe('jg');
+    expect(f._lkFlowBucket(R({ grade: 9, gender: 'female' }), B7)).toBe('jf');
+    expect(f._lkFlowBucket(R({ grade: 10, gender: 'male' }), B7)).toBe('sg');
+    expect(f._lkFlowBucket(R({ grade: 12, gender: 'female' }), B7)).toBe('sf');
   });
   it('Grade 6 is junior only when includeGrade6 (jMin 6)', () => {
-    expect(f._lkFlowBucket(R({ grade: 6, gender: 'female' }), 6)).toBe('jf');
-    expect(f._lkFlowBucket(R({ grade: 6, gender: 'female' }), 7)).toBeNull();
+    expect(f._lkFlowBucket(R({ grade: 6, gender: 'female' }), B6)).toBe('jf');
+    expect(f._lkFlowBucket(R({ grade: 6, gender: 'female' }), B7)).toBeNull();
   });
   it('unknown grade or gender -> null', () => {
-    expect(f._lkFlowBucket(R({ grade: null }), 7)).toBeNull();
-    expect(f._lkFlowBucket(R({ gender: null }), 7)).toBeNull();
-    expect(f._lkFlowBucket(R({ gender: 'other' }), 7)).toBeNull();
+    expect(f._lkFlowBucket(R({ grade: null }), B7)).toBeNull();
+    expect(f._lkFlowBucket(R({ gender: null }), B7)).toBeNull();
+    expect(f._lkFlowBucket(R({ gender: 'other' }), B7)).toBeNull();
   });
   it('filtering keeps the chips that are on plus every unknown row', () => {
     const rows = [R({ rowId: 'jg', grade: 8 }), R({ rowId: 'sf', grade: 11, gender: 'female' }), R({ rowId: 'u', grade: null })];
-    expect(f._lkFlowShown(rows, ['sf'], 7).map((r: any) => r.rowId)).toEqual(['sf', 'u']);
-    expect(f._lkFlowShown(rows, [], 7).map((r: any) => r.rowId)).toEqual(['u']);
-    expect(f._lkFlowShown(rows, ['jg', 'jf', 'sg', 'sf'], 7)).toHaveLength(3);
+    expect(f._lkFlowShown(rows, ['sf'], B7).map((r: any) => r.rowId)).toEqual(['sf', 'u']);
+    expect(f._lkFlowShown(rows, [], B7).map((r: any) => r.rowId)).toEqual(['u']);
+    expect(f._lkFlowShown(rows, ['jg', 'jf', 'sg', 'sf'], B7)).toHaveLength(3);
   });
 });
 

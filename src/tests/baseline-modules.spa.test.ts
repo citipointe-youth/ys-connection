@@ -104,7 +104,7 @@ const homeEnv = (role: string) => baseEnv(role, {
   Cache: { get: () => null, getStale: () => null },
   BUS: { view: { vehicles: [], riders: [], pendingNewPeople: 0 }, failed: false },
   LINK: { statusAt: Date.now(), flowsAt: Date.now(), status: null },
-  _homeGrade: () => null, _juniorMin: () => 7, _gradeList: () => [7, 8, 9, 10, 11, 12], _hasAttended: () => true, _lkSvcDay: () => '2026-10-23', _serviceDow: () => 5,
+  _homeGrade: () => null, _juniorMin: () => 7, _gradeWord: () => 'Grade', gradeBands: () => ({ junior: [7, 8, 9], senior: [10, 11, 12] }), _gradeList: () => [7, 8, 9, 10, 11, 12], _hasAttended: () => true, _lkSvcDay: () => '2026-10-23', _serviceDow: () => 5,
   getMyLeaderId: () => 'l1', renderHomeFollowup: async () => {}, _attnLoad: () => {}, _attn: null, _attnBusy: null, userGrades: (u: any) => [u.grade], _cohortModel: () => 'grades-quads',
   _genderHidden: () => false, SIMPLE_QUAD_LABELS: {}, helpTip: () => '', _lkHomeFlowsHtml: () => '<div id="home-flows-card"></div>', _lkOfflineHtml: () => '',
   _structure: () => ({}), document: { getElementById: (id: string) => (id === 'home-flows' ? flowsHost : null) },

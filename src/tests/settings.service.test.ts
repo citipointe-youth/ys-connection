@@ -318,7 +318,7 @@ describe('SettingsService — Simple (Junior/Senior) logins', () => {
     }
   });
 
-  it('off: restores only listed ids that are still inactive grade users; Grade restored; list cleared in one write; quads renamed back', async () => {
+  it('off: restores only listed ids that are still inactive grade users; Grade restored; list cleared in one write; quads keep their Junior/Senior names', async () => {
     const { service, repo, users } = await fixture();
     await users.save(makeUser({ id: 'g10', role: 'grade', grade: 10 }));
     await users.save(makeUser({ id: 'g11', role: 'grade', grade: 11 }));
@@ -344,8 +344,8 @@ describe('SettingsService — Simple (Junior/Senior) logins', () => {
     expect(await status(users, 'g9')).toBe('inactive');
     expect(await status(users, 'g10')).toBe('inactive');
     expect((await users.findById('g12'))!.updatedAt).toBe('by-hand');
-    expect((await users.findById('q1'))!.displayName).toBe('Girls Yr 7–9');
-    expect((await users.findById('q4'))!.displayName).toBe('Boys Yr 10–12');
+    expect((await users.findById('q1'))!.displayName).toBe('Junior Girls');
+    expect((await users.findById('q4'))!.displayName).toBe('Senior Guys');
   });
 
   it('off restores Grade from gradeRoleWasOn (false stays false)', async () => {

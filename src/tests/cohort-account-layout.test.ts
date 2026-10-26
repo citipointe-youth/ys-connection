@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { QUAD_LABELS, QUAD_USERNAMES } from '../core/types/enums';
+import { quadLabelFor, QUAD_USERNAMES } from '../core/types/enums';
 import { gradeBrackets, buildTargetAccounts, planCohortAccountLayout } from '../services/cohort-account-layout';
 
 describe('gradeBrackets', () => {
@@ -44,7 +44,7 @@ describe('buildTargetAccounts', () => {
     expect(targets.filter((t) => t.role === 'grade')).toHaveLength(12);
     expect(targets.filter((t) => t.role === 'quad')).toHaveLength(4);
     expect(targets[0]).toEqual({ role: 'grade', username: 'grade7g', displayName: 'Grade 7 Girls', grades: [7], gender: 'female' });
-    expect(targets).toContainEqual({ role: 'quad', username: 'juniorgirls', displayName: QUAD_LABELS.g79, quad: 'g79' });
+    expect(targets).toContainEqual({ role: 'quad', username: 'juniorgirls', displayName: quadLabelFor('g79'), quad: 'g79' });
   });
 });
 
@@ -153,7 +153,7 @@ describe('Simple (Junior/Senior) logins on', () => {
   });
   it('plan does not create the 4 quads when they exist, and creates no grade accounts', () => {
     const existing = (['g79', 'b79', 'g1012', 'b1012'] as const).map((q, i) =>
-      ({ id: `q${i}`, role: 'quad', email: QUAD_USERNAMES[q], displayName: QUAD_LABELS[q], status: 'active', quad: q }));
+      ({ id: `q${i}`, role: 'quad', email: QUAD_USERNAMES[q], displayName: quadLabelFor(q), status: 'active', quad: q }));
     const plan = planCohortAccountLayout('grades-quads', 7, 12, 'Grade', existing, true);
     expect(plan.toCreate).toEqual([]);
     expect(plan.toDeactivate).toEqual([]);

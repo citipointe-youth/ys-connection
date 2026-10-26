@@ -9,7 +9,7 @@ const QUAD_SRC = HTML.match(/^const QUAD_LABELS = .*$/m)![0] + '\n' + HTML.match
 const PRE = `${QUAD_SRC}
 var S = { settings: { ministryConfig: { structure: { gradeMin: 7, gradeMax: 12, timeZone: 'Australia/Brisbane' }, logins: { simple: true } } } };`;
 const NAMES = ['caNum', 'caCompare', 'caLabel', 'caWeekTiles', 'caHeadline', 'caSparkSvg', 'caLeak', 'caFlags', 'caFooter',
-  'caFollowRows', 'caCsvRows', 'fmtDay', 'quadLabel', '_simpleLoginsOn', '_juniorMin', '_structure'];
+  'caFollowRows', 'caCsvRows', 'fmtDay', 'quadLabel', '_simpleLoginsOn', 'gradeBands', '_juniorMin', '_structure'];
 
 beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-22T00:00:00Z')); });
 afterAll(() => { vi.useRealTimers(); });
@@ -273,10 +273,10 @@ describe('caFollowRows + caCsvRows', () => {
   it('the CSV marks parent phones, says Do not contact, and adds Quad only for All', () => {
     const rows = f.caFollowRows(s, 'drifting', '');
     const csv = f.caCsvRows(rows, true);
-    expect(csv[0]).toEqual(['Name', 'Quad', 'Grade', 'Gender', 'Phone', "Parent's phone", 'Reason', 'Last seen']);
+    expect(csv[0]).toEqual(['Name', 'Group', 'Grade', 'Gender', 'Phone', "Parent's phone", 'Reason', 'Last seen']);
     expect(csv.find((r: string[]) => r[0] === 'Ava Delta')).toEqual(['Ava Delta', 'Junior Guys', '8', 'Male', '0400 000 001', 'Yes', 'Stopped coming', '2026-09-11']);
     expect(csv.find((r: string[]) => r[0] === 'Ava Gamma')[4]).toBe('Do not contact');
-    expect(csv.find((r: string[]) => r[0] === 'Ava Echo')[1]).toBe('No quad');
+    expect(csv.find((r: string[]) => r[0] === 'Ava Echo')[1]).toBe('No group');
     expect(f.caCsvRows(f.caFollowRows(s, 'connectedNeverCame', ''), false)[1]).toEqual(['Ava Golf', '11', 'Female', '0400 000 001', 'No', 'Connected, not back yet', 'Not seen yet']);
   });
   it('the CSV defuses spreadsheet formulas (= + - @ tab CR at the start of a cell)', () => {
@@ -295,7 +295,7 @@ describe('caLabel: the glossary words', () => {
     expect(f.caLabel('reason', 'budget')).toBe('Ran out of time on Friday');
     expect(f.caLabel('note', 'grade-out-of-range', { min: 7, max: 12 })).toBe('Grade outside Year 7–12, so grade is blank');
     expect(f.caLabel('quad', 'g79')).toBe('Junior Girls');
-    expect(f.caLabel('quad', null)).toBe('No quad');
+    expect(f.caLabel('quad', null)).toBe('No group');
     expect(f.caLabel('upload', 'stale')).toBe('Not used: a newer copy is already here. Pick a later export date.');
   });
 });
@@ -332,7 +332,7 @@ describe('quad filter consistency', () => {
 const CA_BLOCK = HTML.slice(HTML.indexOf('/* ── CA MODULE START ── */'), HTML.indexOf('/* ── CA MODULE END ── */'));
 const XLSX_SRC = readFileSync(join(__dirname, '..', '..', 'public', 'vendor', 'xlsx.full.min.js'), 'utf8');
 const loadXlsx = () => new Function(`var module, define, window; ${XLSX_SRC}; return XLSX;`)();
-const HELPERS = ['esc', 'fmtDay', 'quadLabel', '_simpleLoginsOn', '_juniorMin', '_gradeList', '_gradeWord', 'rowsToCsv', 'readXlsx', 'phoneLink', 'fmtPhone'];
+const HELPERS = ['esc', 'fmtDay', 'quadLabel', '_simpleLoginsOn', 'gradeBands', '_juniorMin', '_gradeList', '_gradeWord', 'rowsToCsv', 'readXlsx', 'phoneLink', 'fmtPhone'];
 function caWorld(audit: any, o: { role?: string; gradeMin?: number } = {}) {
   const env: any = { audit, app: '', posts: [] as any[], toasts: [] as string[], downloads: [] as any[], went: [] as string[], dom: {} as any, reply: null, X: loadXlsx() };
   const { CA, S } = new Function('env', `
@@ -383,7 +383,7 @@ describe('Y10 screens', () => {
     expect(html).toContain('>Term report<');
     expect(html).toContain('>All (6)<');
     expect(html).toContain('>Junior Girls (1)<');
-    expect(html).toContain('>No quad (0)<');
+    expect(html).toContain('>No group (0)<');
     expect(html).toContain('Fri 16 Oct: 48 at youth, 4 more than last week; 4 decisions and 3 new connects.');
     expect((html.match(/class="ca-spark"/g) || []).length).toBe(4);
     expect(html).toContain('Updated Fri 16 Oct, 9:14pm (5 days ago) · 5 of 5 lists · all linked →');
@@ -454,11 +454,11 @@ describe('Y10 screens', () => {
     w.CA.followCsv();
     expect(w.env.downloads[0].n).toMatch(/^follow-up-all-2026-10-22\.csv$/);
     expect(w.env.downloads[0].m).toBe('text/csv');
-    expect(w.env.downloads[0].t.split('\r\n')[0]).toBe('"Name","Quad","Grade","Gender","Phone","Parent\'s phone","Reason","Last seen"');
+    expect(w.env.downloads[0].t.split('\r\n')[0]).toBe('"Name","Group","Grade","Gender","Phone","Parent\'s phone","Reason","Last seen"');
     expect(w.env.downloads[0].t).toContain('"Ava Lb","Senior Girls","11","Female","0400 000 001","Yes","Stopped coming","2026-09-11"');
     w.CA.setQuad('b79');
     w.CA.followCsv();
-    expect(w.env.downloads[1].t.split('\r\n')[0]).not.toContain('Quad');
+    expect(w.env.downloads[1].t.split('\r\n')[0]).not.toContain('Group');
   });
   it('consent audit #8 #9 #14: people inside their consent week are not offered; every count equals its list', async () => {
     const a = audit26();
@@ -493,7 +493,7 @@ describe('Y10 screens', () => {
     expect(html).toContain('3 stopped coming</a>');
     expect(html).toContain('1 decided, not in a lifegroup</a>');
     expect(html).toContain('1 connected, not back yet</a>');
-    expect(html).toContain('No quad (0)');
+    expect(html).toContain('No group (0)');
     expect(html).not.toContain('ca-deck-term');
     expect((html.match(/CA\.setTerm\(/g) || []).length).toBe(3);
     expect((html.match(/>Year so far</g) || []).length).toBe(1);

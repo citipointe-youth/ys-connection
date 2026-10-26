@@ -16,8 +16,8 @@ describe.each([[6, true], [7, false]] as const)('junior/senior quad brackets, gr
     expect(canAccessGrade(sr, 6, st)).toBe(false);
     expect(canAccessGrade(sr, 10, st)).toBe(true);
   });
-  it('label shows the real range', () => {
-    expect(quadLabelFor('g79', false, gradeMin)).toBe(on ? 'Girls Yr 6–9' : 'Girls Yr 7–9');
-    expect(quadLabelFor('b1012', false, gradeMin)).toBe('Boys Yr 10–12');
+  it('label is the Junior/Senior name', () => {
+    expect(quadLabelFor('g79')).toBe('Junior Girls');
+    expect(quadLabelFor('b1012')).toBe('Senior Guys');
   });
 });

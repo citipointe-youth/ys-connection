@@ -230,7 +230,7 @@ export function makeTrendsService(
           scopedStudents.filter((s) => s.quad === quad).map((s) => s.id),
         );
         const withOutliers = buildPoints(quadStudentIds, quadStudentIds.size);
-        return { quad, label: quadLabelFor(quad, false, structure.gradeMin), sessions: withOutliers, averageAttendance: averageOf(withOutliers) };
+        return { quad, label: quadLabelFor(quad), sessions: withOutliers, averageAttendance: averageOf(withOutliers) };
       });
 
       const byGrade: GradeTrend[] = !cohorted ? [] : gradeRange(structure).map((grade) => {

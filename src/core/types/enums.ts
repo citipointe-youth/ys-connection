@@ -4,19 +4,12 @@ export type Gender = (typeof GENDERS)[number];
 export const GRADES = [7, 8, 9, 10, 11, 12] as const;
 export type Grade = (typeof GRADES)[number];
 
-// Quad = a grouping of two grade-years: 7-9 girls, 7-9 boys, 10-12 girls, 10-12 boys
+// Quad (internal id) = Junior/Senior x Girls/Guys; its grades come from gradeBands()
 export const QUADS = ['g79', 'b79', 'g1012', 'b1012'] as const;
 export type Quad = (typeof QUADS)[number];
 
-export const QUAD_LABELS: Record<Quad, string> = {
-  g79: 'Girls Yr 7–9',
-  b79: 'Boys Yr 7–9',
-  g1012: 'Girls Yr 10–12',
-  b1012: 'Boys Yr 10–12',
-};
-
-// Simple logins (October rework): the quad logins read as Junior/Senior Girls/Guys.
-const SIMPLE_QUAD_LABELS: Record<Quad, string> = {
+// The one name per quad on every screen: Junior/Senior Girls/Guys.
+const QUAD_NAMES: Record<Quad, string> = {
   g79: 'Junior Girls',
   b79: 'Junior Guys',
   g1012: 'Senior Girls',
@@ -31,18 +24,31 @@ export const QUAD_USERNAMES: Record<Quad, string> = {
   b1012: 'seniorguys',
 };
 
-export function quadLabelFor(quad: Quad, simple: boolean, gradeMin = 7): string {
-  // T14b: with Include Grade 6 on, the junior range label reads Yr 6�9.
-  return simple ? SIMPLE_QUAD_LABELS[quad] : QUAD_LABELS[quad].replace('Yr 7–9', `Yr ${Math.min(gradeMin, 7)}–9`);
+export function quadLabelFor(quad: Quad): string {
+  return QUAD_NAMES[quad];
 }
 
-// Compute the quad a student belongs to from grade + gender
+// Highest Junior grade; above it is Senior. The one junior/senior split for the server
+// (the SPA mirrors it in public/index.html `gradeBands`).
+const JUNIOR_TOP = 9;
+const range = (lo: number, hi: number) => Array.from({ length: Math.max(0, hi - lo + 1) }, (_, i) => lo + i);
+
+/** Junior and Senior grades from the structure config. Include Grade 6 = gradeMin 6. No structure = grade 6 in. */
+export function gradeBands(structure?: { gradeMin?: number; gradeMax?: number }): { junior: number[]; senior: number[] } {
+  return {
+    junior: range(Math.max(6, structure?.gradeMin ?? 6), JUNIOR_TOP),
+    senior: range(JUNIOR_TOP + 1, Math.min(12, structure?.gradeMax ?? 12)),
+  };
+}
+
+// Compute the quad a student belongs to from grade + gender (grade 6 is always junior here).
 export function computeQuad(grade: number | null, gender: string): Quad | null {
   if (!grade) return null;
   const g = gender.toLowerCase();
   const isFemale = g === 'female' || g === 'f';
-  if (grade >= 6 && grade <= 9) return isFemale ? 'g79' : 'b79'; // T13: grade 6 is junior
-  if (grade >= 10 && grade <= 12) return isFemale ? 'g1012' : 'b1012';
+  const { junior, senior } = gradeBands();
+  if (junior.includes(grade)) return isFemale ? 'g79' : 'b79';
+  if (senior.includes(grade)) return isFemale ? 'g1012' : 'b1012';
   return null;
 }
 
@@ -61,7 +67,7 @@ export function groupQuadOf(name: string): Quad | null {
 //   leader — sees ONLY their own connected students (own-connections-only
 //            scope). Optional role, off by default (§5.2, roles.enabled.leader).
 //   grade  — login scoped to one grade level (e.g. Grade 9), or several (§5.1a)
-//   quad   — login scoped to one quad (e.g. Girls Yr 7-9). Optional (roles.enabled.quad)
+//   quad   — Junior/Senior login scoped to one group (e.g. Junior Girls). Optional (roles.enabled.quad)
 //   director — ministry-wide read/write. Optional (roles.enabled.director)
 //   admin  — everything + back-office. Always available.
 export const USER_ROLES = ['leader', 'grade', 'quad', 'director', 'admin'] as const;

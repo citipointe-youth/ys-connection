@@ -20,7 +20,7 @@ const PRELUDE = `
   function _ikModuleOn() { return false; } // consent hub (Task 11): module off, Flow steps as before
   function _lkBoss() { return ROLE === 'admin' || ROLE === 'director'; }
   function _lkCapOff() { return false; }
-  function _juniorMin() { return 7; }
+  function _juniorMin() { return 7; } function gradeBands() { return { junior: [7, 8, 9], senior: [10, 11, 12] }; }
   function _lkToday() { return '2026-10-16'; }
   function _lkFlowDue() { return ''; }
   function _lkStatusHtml(a) { return 'ST:' + a.status; }

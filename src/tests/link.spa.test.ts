@@ -23,7 +23,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFfGet',
   '_lkFfHtml', '_lkFfToggle', '_lkFlowShown', '_lkFlowBucket', '_lkTickable', '_lkSelIds', '_lkSel', '_lkSelAll', '_lkSelClear', '_lkFlowsDraw',
   '_lkBulkOpen', '_lkBulkSend', '_lkRemoveHtml', '_lkRemoveAsk', '_lkRemoveBack', '_lkRemoveSend', '_lkStepBtns', 'dncChip', 'dncBanner',
-  '_structure', '_juniorMin', '_ikModuleOn'];
+  '_structure', '_gradeWord', 'gradeBands', '_juniorMin', '_ikModuleOn'];
 
 const SVC = { serviceTimeId: '11111111-1111-4111-8111-111111111111', serviceId: '22222222-2222-4222-8222-222222222222',
   name: 'Youth', startsAt: '2026-10-16T08:30:00.000Z', ymd: '2026-10-16' };
@@ -731,7 +731,7 @@ describe('F1.3 door', () => {
   it('a leader row shows the "Leader" chip; a student row its grade chip (neutral)', () => {
     const h = setup();
     expect(h.fns._lkRowHtml(people[1])).toContain('<span class="lk-chip lead">Leader</span>');
-    expect(h.fns._lkRowHtml(people[0])).toContain('<span class="lk-chip">Yr 7</span>');
+    expect(h.fns._lkRowHtml(people[0])).toContain('<span class="lk-chip">Grade 7</span>');
     expect(html).toMatch(/\.lk-chip\{[^}]*background:var\(--chip\)/);
   });
   it('search matches words in any order', () => {
@@ -2203,7 +2203,7 @@ describe('F4.2 admin page', () => {
     ];
     const out = strip(h.fns._lkAdmMatchHtml());
     expect(out).toContain('Elvanto: Olivia FS');
-    expect(out).toContain('In YS: Olivia FS · Yr 7 · born 2013-12-15');
+    expect(out).toContain('In YS: Olivia FS · Grade 7 · born 2013-12-15');
     expect(out).toContain('Not a YS student yet.');
     expect(out).toContain('Several possible');
     h.get().LINK.adm.mf = 'manual';

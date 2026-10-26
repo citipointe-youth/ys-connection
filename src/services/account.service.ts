@@ -143,7 +143,7 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
         throw new BadRequestError('Grade login requires a gender scope');
       }
       if (data.role === 'quad' && data.quad == null) {
-        throw new BadRequestError('Quad login requires a quad');
+        throw new BadRequestError('A Junior/Senior login needs a group');
       }
       if (data.role === 'leader' && !data.leaderId) {
         throw new BadRequestError('Junior leader login requires a linked leader record');
@@ -278,7 +278,7 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
         throw new BadRequestError('Only active accounts can be previewed');
       }
       if (existing.role !== 'grade' && existing.role !== 'quad') {
-        throw new BadRequestError('Only grade/quad accounts can be previewed');
+        throw new BadRequestError('Only Grade and Junior/Senior accounts can be previewed');
       }
       return toSafe(existing);
     },

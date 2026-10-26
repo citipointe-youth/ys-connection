@@ -2005,30 +2005,34 @@ async function noticePushOff() {
 // ============================================================
 // HELPERS
 // ============================================================
-const QUAD_LABELS = { g79:'Girls Yr 7–9', b79:'Boys Yr 7–9', g1012:'Girls Yr 10–12', b1012:'Boys Yr 10–12' };
-const SIMPLE_QUAD_LABELS = { g79:'Junior Girls', b79:'Junior Guys', g1012:'Senior Girls', b1012:'Senior Guys' };
+const QUAD_LABELS = { g79:'Junior Girls', b79:'Junior Guys', g1012:'Senior Girls', b1012:'Senior Guys' };
+const SIMPLE_QUAD_LABELS = QUAD_LABELS; // one name per group; alias kept for the Youth Setup account planner
 // Junior/Senior logins (ministryConfig.logins.simple) rename the four quad logins everywhere.
 function _simpleLoginsOn() {
   const lg = S.settings && S.settings.ministryConfig && S.settings.ministryConfig.logins;
   return !!(lg && lg.simple);
 }
-// Grade 6 counts as a junior year when the ministry has it (structure.gradeMin 6): the junior quads cover 6-9.
-function _juniorMin() { return (_structure().gradeMin || 7) <= 6 ? 6 : 7; }
+// The one Junior/Senior split (mirrors gradeBands() in src/core/types/enums.ts; GET /settings also returns it).
+// Junior = the lowest grade (6 with Include Grade 6, else 7) to 9; Senior = 10 to the top grade.
+function gradeBands() {
+  const st = _structure(), r = (a, b) => Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => a + i);
+  return { junior: r(Math.max(6, st.gradeMin || 7), 9), senior: r(10, Math.min(12, st.gradeMax || 12)) };
+}
+function _juniorMin() { return gradeBands().junior[0]; }
 // Impeccable review 2026-10-24: one name per quad on every screen (header badge, Home cards, Connection Audit, pickers):
 // Junior/Senior Girls/Guys, the quad logins' names (0025) and what Notices, Lifegroups and Flows already say (Flows
-// abbreviates them Jr/Sr by ruling). QUAD_LABELS ("Girls Yr 7–9") stays for the server mirror (quadLabelFor) and the
-// Simple-logins display-name switch only.
+// abbreviates them Jr/Sr by ruling). Mirrors quadLabelFor() on the server.
 function quadLabel(q) { return SIMPLE_QUAD_LABELS[q] || q; }
 // Fixed role labels (not per-deployment configurable, §5.2). grade/quad
 // logins keep their own richer badges (grade numbers / quad name) — see
 // roleBadge/roleBadgeInner below.
-const _ROLE_LABEL_DEFAULTS = { admin: 'Admin', director: 'Director', leader: 'Leader', grade: 'Grade', quad: 'Quad' };
+const _ROLE_LABEL_DEFAULTS = { admin: 'Admin', director: 'Director', leader: 'Leader', grade: 'Grade', quad: 'Junior/Senior' };
 function _roleLabel(role) {
   return _ROLE_LABEL_DEFAULTS[role] || (role.charAt(0).toUpperCase() + role.slice(1));
 }
 const ROLE_TIPS = {
   grade: (u) => `${gradeBadgeLabel(u)} login — manages leaders and connections for ${gradeBadgeLabel(u)}`,
-  quad:  (u) => `${quadLabel(u.quad)} login — quads fully manage leaders and connections within their gender+bracket`,
+  quad:  (u) => `${quadLabel(u.quad)} login — fully manages leaders and connections within its Junior/Senior group`,
   leader: () => `${_roleLabel('leader')} — sees and follows up only their own connected students`,
   director: () => `${_roleLabel('director')} — full ministry access, can import data`,
   admin: () => `${_roleLabel('admin')} — full access including settings and accounts`,
@@ -2457,7 +2461,7 @@ function _relTime(iso) {
 }
 
 // Quad helpers (gender + year bracket) — mirror backend quadGenderOf/quadGradesOf
-function quadGrades(q) { return (q === 'g79' || q === 'b79') ? [6, 7, 8, 9].filter((g) => g >= _juniorMin()) : (q === 'g1012' || q === 'b1012') ? [10, 11, 12] : []; }
+function quadGrades(q) { return (q === 'g79' || q === 'b79') ? gradeBands().junior : (q === 'g1012' || q === 'b1012') ? gradeBands().senior : []; }
 function quadGender(q) { return (q === 'g79' || q === 'g1012') ? 'female' : (q === 'b79' || q === 'b1012') ? 'male' : null; }
 // The gender a login is scoped to: quad logins from their quad; grade logins from
 // the email convention (grade7g -> female, grade7b -> male). null = both (ungendered).
@@ -3579,14 +3583,14 @@ async function _renderHomeInner(stale, fromCache) {
       if (['admin', 'director'].includes(u.role)) {
         const vq = (stats.byQuad || []).filter(q => q.totalStudents > 0);
         if (vq.length) {
-          body += '<div class="sh">' + L('service') + ' By Quad</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
+          body += '<div class="sh">' + L('service') + ' By Group</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
           for (const q of vq) {
             const qStud = sc.filter(s => s.quad === q.quad);
             // Gendered per-grade rows, rendered up-front (hidden until expanded).
             let gradeRows = '';
             for (const gr of _hQuadGrades(q.quad)) {
               const gradeStuds = qStud.filter(s => s.grade === gr);
-              gradeRows += _hGradeMini('Yr ' + gr + _gsfx(quadGender(q.quad)), gradeStuds, _hGradeSvcAvg(gradeStuds));
+              gradeRows += _hGradeMini(_gradeWord() + ' ' + gr + _gsfx(quadGender(q.quad)), gradeStuds, _hGradeSvcAvg(gradeStuds));
             }
             const qBorder = quadGender(q.quad) === 'female' ? '#ec4899' : null;
             body += _hAttTile(quadLabel(q.quad), qStud, _hQuadAvg(trends, q.quad), { dropId: 'hq-' + q.quad, gradeRows, hideLifegroupRow: true, borderColor: qBorder });
@@ -3607,7 +3611,7 @@ async function _renderHomeInner(stale, fromCache) {
             attOpts.dropId = 'hlg-' + gr;
             attOpts.gradeRows = _lgGradeBlock(gLg, false, _gsfx(_loginGender(u)), 'hlg-' + gr + '-lg');
           }
-          body += _hAttTile('Yr ' + gr + _gsfx(_loginGender(u)), sc.filter(s => s.grade === gr), _hGradeAvg(trends, gr), attOpts);
+          body += _hAttTile(_gradeWord() + ' ' + gr + _gsfx(_loginGender(u)), sc.filter(s => s.grade === gr), _hGradeAvg(trends, gr), attOpts);
         }
         body += '</div>';
       }
@@ -3618,7 +3622,7 @@ async function _renderHomeInner(stale, fromCache) {
       if (lifegroupsOn && lgStats && ['admin', 'director'].includes(u.role)) {
         const quads = (lgStats.byQuad || []).filter(q => q.current.uniqueAttenders > 0 || q.current.members > 0);
         if (quads.length) {
-          body += '<div class="sh">' + L('smallGroupPlural') + ' by Quad</div><div style="margin-bottom:16px">';
+          body += '<div class="sh">' + L('smallGroupPlural') + ' by Group</div><div style="margin-bottom:16px">';
           for (const q of quads) {
             const qid = 'hlq-' + q.quad;
             body += `<div class="card drop" id="${qid}" style="margin-bottom:8px;padding:11px">
@@ -3827,14 +3831,14 @@ function showAddLeader() {
   ).join('');
   const qg = u.role === 'quad' ? quadGender(u.quad) : null;
   const genderField = qg
-    ? `<div class="fg"><label class="fl" for="lg">Gender</label><select class="fs" id="lg"><option value="${qg}" selected>${qg==='female'?'Female':'Male'}</option></select><p style="font-size:11px;color:var(--ink-mid);margin-top:3px">Scoped to your quad</p></div>`
+    ? `<div class="fg"><label class="fl" for="lg">Gender</label><select class="fs" id="lg"><option value="${qg}" selected>${qg==='female'?'Female':'Male'}</option></select><p style="font-size:11px;color:var(--ink-mid);margin-top:3px">Scoped to your Junior/Senior group</p></div>`
     : `<div class="fg"><label class="fl" for="lg">Gender</label><select class="fs" id="lg"><option value="">Any gender</option><option value="female">Female</option><option value="male">Male</option></select></div>`;
   modal(`
     <div class="mo-title">Add Leader</div>
     <div id="le"></div>
     <div class="fg"><label class="fl" for="ln">Full Name *</label><input class="fi" id="ln" placeholder="Sarah Mitchell"></div>
     ${genderField}
-    ${u.role!=='grade'?`<div class="fg"><label class="fl">Grade Focus${u.role==='quad'?' (your bracket)':' (leave blank = all)'}</label>${gcbs}</div>`:'<p style="font-size:12px;color:var(--ink-mid);margin-bottom:12px">Leader will be scoped to your grade automatically</p>'}
+    ${u.role!=='grade'?`<div class="fg"><label class="fl">Grade Focus${u.role==='quad'?' (your group)':' (leave blank = all)'}</label>${gcbs}</div>`:'<p style="font-size:12px;color:var(--ink-mid);margin-bottom:12px">Leader will be scoped to your grade automatically</p>'}
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary" style="flex:1" onclick="submitAddLeader()">Add Leader</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -4969,7 +4973,7 @@ function _prayerGroupHtml(sectionKey, group) {
   const gid = 'pg-' + sectionKey + '-' + group.key.replace(/[^a-zA-Z0-9]/g, '_');
   const shown = group.prayers.slice(0, 3);
   const rest = group.prayers.slice(3);
-  const gradeBit = (!group.isGeneral && group.grade != null) ? ` <span style="color:var(--ink-faint);font-weight:400">Yr${group.grade}</span>` : '';
+  const gradeBit = (!group.isGeneral && group.grade != null) ? ` <span style="color:var(--ink-faint);font-weight:400">${esc(_gradeWord())} ${group.grade}</span>` : '';
   const headerLabel = group.isGeneral ? `General &mdash; ${esc(group.label)}` : esc(group.label);
   let html = `<div style="margin-bottom:10px">
     <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;padding:6px 0 2px;border-top:1px solid var(--paper-dark)">
@@ -5059,7 +5063,7 @@ function openPrayerModal(studentId, prayerId) {
 
   let forHtml;
   if (lockedStudent) {
-    forHtml = `<div style="padding:9px 12px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:14px;font-weight:600;background:var(--paper)">${esc(lockedName)}${lockedStudent.grade != null ? ` <span style="font-weight:400;color:var(--ink-faint)">· Yr${lockedStudent.grade}</span>` : ''}</div>`;
+    forHtml = `<div style="padding:9px 12px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:14px;font-weight:600;background:var(--paper)">${esc(lockedName)}${lockedStudent.grade != null ? ` <span style="font-weight:400;color:var(--ink-faint)">· ${esc(_gradeWord())} ${lockedStudent.grade}</span>` : ''}</div>`;
   } else if (isGeneral) {
     forHtml = `<div style="padding:9px 12px;border:1.5px solid var(--paper-dark);border-radius:var(--radius-sm);font-size:14px;font-weight:600;background:var(--paper);color:var(--ink-mid)">General — no specific student</div>`;
   } else {
@@ -5103,7 +5107,7 @@ function _prayerFilterStudents() {
     .slice(0, 8);
   el.innerHTML = matches.length
     ? matches.map(s => `<button type="button" onclick="_prayerPickStudent('${s.id}')" style="display:flex;justify-content:space-between;width:100%;text-align:left;background:var(--paper);border:1px solid var(--paper-dark);border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer;font-size:14px">
-        <span>${esc(s.firstName)} ${esc(s.lastName || '')}</span><span style="color:var(--ink-faint)">Yr${s.grade != null ? s.grade : '—'}</span>
+        <span>${esc(s.firstName)} ${esc(s.lastName || '')}</span><span style="color:var(--ink-faint)">${esc(_gradeWord())} ${s.grade != null ? s.grade : '—'}</span>
       </button>`).join('')
     : `<div style="padding:8px;color:var(--ink-faint);font-size:13px">No matching student</div>`;
 }
@@ -5654,7 +5658,7 @@ function _lgGradeBlock(g, showPrev, gsfx, id) {
   let h = `<div class="drop" id="${id}">
     <div class="drop-head" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:7px 0;border-top:1px solid var(--paper-dark)" onclick="_drop('${id}')">
       <span class="drop-chev" style="font-size:12px">›</span>
-      <div style="flex:1;font-size:13px;font-weight:700">Year ${g.grade}${gsfx}</div>
+      <div style="flex:1;font-size:13px;font-weight:700">${esc(_gradeWord())} ${g.grade}${gsfx}</div>
       <span style="font-size:12px;color:var(--ink-mid)">${g.current.uniqueAttenders} seen · ${g.current.avgPerWeek} weekly</span>
     </div>`;
   if (showPrev && (g.previous.uniqueAttenders > 0 || g.previous.members > 0)) h += `<div style="font-size:11px;color:var(--ink-faint);padding:0 0 4px 20px">prev term: ${g.previous.uniqueAttenders} seen · ${g.previous.avgPerWeek} weekly</div>`;
@@ -5672,7 +5676,7 @@ function _lgGradeInline(g, showPrev, gsfx) {
   gsfx = gsfx || '';
   let h = `<div style="padding:7px 0;border-top:1px solid var(--paper-dark)">
     <div style="display:flex;align-items:center;gap:8px">
-      <div style="flex:1;font-size:13px;font-weight:700">Year ${g.grade}${gsfx}</div>
+      <div style="flex:1;font-size:13px;font-weight:700">${esc(_gradeWord())} ${g.grade}${gsfx}</div>
       <span style="font-size:12px;color:var(--ink-mid)">${g.current.uniqueAttenders} seen · ${g.current.avgPerWeek} weekly</span>
     </div>`;
   if (showPrev && (g.previous.uniqueAttenders > 0 || g.previous.members > 0)) h += `<div style="font-size:11px;color:var(--ink-faint);padding:0 0 4px 0">prev term: ${g.previous.uniqueAttenders} seen · ${g.previous.avgPerWeek} weekly</div>`;
@@ -5834,7 +5838,7 @@ async function renderTrends() {
         if (!gl2.length) continue;
         const gc = _svcAgg(gl2, false), gp = _svcAgg(gl2, true);
         body += `<div style="border-top:1px solid var(--paper-dark);padding:7px 0 5px 20px">
-          <div style="font-size:13px;font-weight:600">Year ${gr}${_gsfx(_loginGender(u))}</div>
+          <div style="font-size:13px;font-weight:600">${esc(_gradeWord())} ${gr}${_gsfx(_loginGender(u))}</div>
           <div style="font-size:12px;color:var(--ink-mid)"><b style="color:var(--ink)">${gc.uniq}</b> seen · <b style="color:var(--ink)">${gc.avg}</b> weekly</div>
           ${gp.weeks>0?`<div style="font-size:11px;color:var(--ink-faint)">prev term: ${gp.uniq} seen · ${gp.avg} weekly</div>`:''}
         </div>`;
@@ -5842,7 +5846,7 @@ async function renderTrends() {
       body += '</div>';
     } else {
       // Director / admin: collapsible quad cards (current + previous term)
-      body += `<div class="sh">By Quad</div>`;
+      body += `<div class="sh">By Group</div>`;
       for (const q of byQuad) {
         if (!q.count) continue;
         const ql = students.filter(s => s.quad === q.quad);
@@ -5863,7 +5867,7 @@ async function renderTrends() {
             if (!gl2.length) continue;
             const gc = _svcAgg(gl2, false), gp = _svcAgg(gl2, true);
             body += `<div style="border-top:1px solid var(--paper-dark);padding:7px 0 5px">
-                <div style="font-size:13px;font-weight:600;padding-left:20px;margin-bottom:2px">Year ${gr}${_gsfx(quadGender(q.quad))}</div>
+                <div style="font-size:13px;font-weight:600;padding-left:20px;margin-bottom:2px">${esc(_gradeWord())} ${gr}${_gsfx(quadGender(q.quad))}</div>
                 <div style="padding-left:20px;font-size:12px;color:var(--ink-mid)"><b style="color:var(--ink)">${gc.uniq}</b> seen · <b style="color:var(--ink)">${gc.avg}</b> weekly${gp.weeks>0?` <span style="color:var(--ink-faint)">(prev ${gp.uniq} · ${gp.avg})</span>`:''}</div>
               </div>`;
           }
@@ -5928,7 +5932,7 @@ async function renderTrends() {
         else body += `<div style="color:var(--ink-faint);font-size:13px">No lifegroup data yet</div>`;
         body += '</div>';
       } else {
-        body += `<div class="sh">By Quad</div>`;
+        body += `<div class="sh">By Group</div>`;
         const quads = (lgStats.byQuad || []);
         for (const q of quads) {
           const qid = 'tlq-' + q.quad;
@@ -6307,7 +6311,7 @@ async function previewServiceImport(filename, rows) {
     const g = parseInt(r.grade, 10);
     if (r.grade != null && r.grade !== '') { if (_gradeList().includes(g)) grades.add(g); else unknownGrade++; }
   }
-  const warn = unknownGrade ? `<div style="color:var(--warn);font-size:12px;margin-top:6px">${unknownGrade} row(s) have a grade outside Yr ${_gradeList()[0]}–${_gradeList().slice(-1)[0]}.</div>` : '';
+  const warn = unknownGrade ? `<div style="color:var(--warn);font-size:12px;margin-top:6px">${unknownGrade} row(s) have a grade outside ${esc(_gradeWord())} ${_gradeList()[0]}–${_gradeList().slice(-1)[0]}.</div>` : '';
   modal(`<div class="mo-title">Service import — confirm</div>
     <div style="font-size:13px;color:var(--ink-mid);line-height:1.7">
       <div><strong>${rows.length}</strong> attendance rows</div>
@@ -6710,7 +6714,7 @@ function _laRelTime(iso) {
   return _laFmtBrisbane(iso).split(',')[0];
 }
 function _laGroup(users) {
-  const defs = [['admin', 'Admins'], ['grade', 'Grade accounts'], ['quad', 'Quad accounts']];
+  const defs = [['admin', 'Admins'], ['grade', 'Grade accounts'], ['quad', 'Junior/Senior accounts']];
   const known = defs.map(d => d[0]);
   const out = defs.map(d => ({ key: d[0], label: d[1], users: users.filter(u => u.role === d[0]) }));
   out.push({ key: 'other', label: 'Other', users: users.filter(u => !known.includes(u.role)) });
@@ -6768,7 +6772,7 @@ function _loginActivityBodyHtml(users) {
   return `<div class="card" style="margin-bottom:10px">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px">${never} of ${users.length} accounts never logged in · ${quiet} quiet for 30+ days</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${chip('all', 'All')}${chip('never', 'Never logged in')}${chip('quiet', 'Quiet 30+ days')}</div>
-      <div class="help-text" style="margin-top:8px">Grade and quad accounts are shared, so several devices is normal. A device is a browser or phone; clearing site data counts as a new one. Times are ${esc(_tzCity())} time.</div>
+      <div class="help-text" style="margin-top:8px">Grade and Junior/Senior accounts are shared, so several devices is normal. A device is a browser or phone; clearing site data counts as a new one. Times are ${esc(_tzCity())} time.</div>
     </div>${list}`;
 }
 
@@ -8294,7 +8298,7 @@ async function showAddUser() {
       <select class="fs" id="u-role" onchange="toggleUserRoleFields();suggestEmail()">${_accRoleOptions('')}</select>
     </div>
     <div id="u-grade-f" class="fg">
-      <label class="fl">Grade(s) ${helpTip('One or more grades this login manages. A login covering several grades keeps the lean grade-login view — for aggregate trends across grades, create a quad account instead.')}</label>
+      <label class="fl">Grade(s) ${helpTip('One or more grades this login manages. A login covering several grades keeps the lean grade-login view — for aggregate trends across grades, create a Junior/Senior account instead.')}</label>
       <div id="u-grades" onchange="suggestEmail()">${_accGradeChecks([])}</div>
     </div>
     <div id="u-gender-f" class="fg">
@@ -8306,7 +8310,7 @@ async function showAddUser() {
       </select>
     </div>
     <div id="u-quad-f" class="fg" style="display:none">
-      <label class="fl" for="u-quad">Quad</label>
+      <label class="fl" for="u-quad">Group</label>
       <select class="fs" id="u-quad" onchange="suggestEmail()">
         ${['g79','b79','g1012','b1012'].map(q=>`<option value="${q}">${esc(quadLabel(q))}</option>`).join('')}
       </select>
@@ -8411,7 +8415,7 @@ async function showEditUser(id) {
       <select class="fs" id="u-role" onchange="toggleUserRoleFields()">${_accRoleOptions(u.role)}</select>
     </div>
     <div id="u-grade-f" class="fg" style="${u.role!=='grade'?'display:none':''}">
-      <label class="fl">Grade(s) ${helpTip('One or more grades this login manages. A login covering several grades keeps the lean grade-login view — for aggregate trends across grades, create a quad account instead.')}</label>
+      <label class="fl">Grade(s) ${helpTip('One or more grades this login manages. A login covering several grades keeps the lean grade-login view — for aggregate trends across grades, create a Junior/Senior account instead.')}</label>
       <div id="u-grades" onchange="suggestEmail()">${_accGradeChecks(userGrades(u))}</div>
     </div>
     <div id="u-gender-f" class="fg" style="${u.role!=='grade'?'display:none':''}">
@@ -8423,7 +8427,7 @@ async function showEditUser(id) {
       </select>
     </div>
     <div id="u-quad-f" class="fg" style="${u.role!=='quad'?'display:none':''}">
-      <label class="fl" for="u-quad">Quad</label>
+      <label class="fl" for="u-quad">Group</label>
       <select class="fs" id="u-quad">${['g79','b79','g1012','b1012'].map(q=>`<option value="${q}" ${q===u.quad?'selected':''}>${esc(quadLabel(q))}</option>`).join('')}</select>
     </div>
     <div id="u-leader-f" class="fg" style="${u.role!=='leader'?'display:none':''}">
@@ -8639,7 +8643,7 @@ function caCompare(value,ref,kind){
 }
 // Display words (spec §6.1 glossary + Data check tables). Quads come from quadLabel(), never a table here.
 function caLabel(kind,code,x){
-  if(kind==='quad')return code&&code!=='none'?quadLabel(code):'No quad';
+  if(kind==='quad')return code&&code!=='none'?quadLabel(code):'No group';
   const W={
     source:{service:'Youth service',group:'Lifegroups',team:'Student team',connect:'Connect forms',decision:'Decision forms'},
     tile:{youth:'Youth service',lifegroup:'At lifegroup',connects:'New connects',decisions:'Decisions'},
@@ -8783,7 +8787,7 @@ function caFollowRows(snap,list,quad){
 }
 // Follow-up CSV cells (header first). withQuad adds a Quad column (the All filter). DNC rows say so in Phone.
 function caCsvRows(rows,withQuad){
-  const q=withQuad?['Quad']:[];
+  const q=withQuad?['Group']:[];
   // Spreadsheet formula guard: a cell starting = + - @ tab or CR opens as text.
   const safe=c=>/^[=+\-@\t\r]/.test(c)?"'"+c:c;
   return[['Name',...q,'Grade','Gender','Phone',"Parent's phone",'Reason','Last seen']].concat((rows||[]).map(r=>[r.name,...(withQuad?[caLabel('quad',r.quad)]:[]),
@@ -8839,8 +8843,9 @@ function computeQuad(grade,gender){
   if(!grade)return null;
   const g=String(gender||'').toLowerCase();
   const isFemale=g==='female'||g==='f';
-  if(grade>=_juniorMin()&&grade<=9)return isFemale?'g79':'b79';
-  if(grade>=10&&grade<=12)return isFemale?'g1012':'b1012';
+  const b=gradeBands();
+  if(b.junior.includes(grade))return isFemale?'g79':'b79';
+  if(b.senior.includes(grade))return isFemale?'g1012':'b1012';
   return null;
 }
 function fmtD(iso){return fmtDay(iso)||'—';}
@@ -9011,7 +9016,7 @@ function model(){
       trend=cur-prev>=0.20?'rising':prev-cur>=0.20?'declining':'stable';
     }
     const loose=enrolled>=10&&va<3&&trend==='stable';
-    groups.push({id:'co-'+gr+(gender==='female'?'f':'m'),name:'Yr '+gr+' '+(gender==='female'?'Girls':'Boys'),grade:gr,gender,mem,enrolled,active,va,breadth,weeksRun,trend,trendPct,loose});
+    groups.push({id:'co-'+gr+(gender==='female'?'f':'m'),name:_gradeWord()+' '+gr+' '+(gender==='female'?'Girls':'Boys'),grade:gr,gender,mem,enrolled,active,va,breadth,weeksRun,trend,trendPct,loose});
   }
   mdl={people,rungs,groups,kpis:{act,inLG,avgFri,svcD,grpD,actTrend,decisions}};
   return mdl;
@@ -9076,7 +9081,7 @@ function emptyYear(){return '<div class="card ca-empty">No data for '+esc(String
 function quadChips(){
   const c={'':0,none:0};for(const s of (AUDIT&&AUDIT.students)||[]){c['']++;const q=s.quad||'none';c[q]=(c[q]||0)+1;}
   const chip=(q,lb)=>caChip(QF===q,'CA.setQuad(\''+q+'\')',esc(lb)+' ('+(c[q]||0)+')');
-  return '<div class="ca-scope-ctl ca-quads">'+chip('','All')+Object.keys(QUAD_LABELS).map(q=>chip(q,quadLabel(q))).join('')+chip('none','No quad')+'</div>';
+  return '<div class="ca-scope-ctl ca-quads">'+chip('','All')+Object.keys(QUAD_LABELS).map(q=>chip(q,quadLabel(q))).join('')+chip('none','No group')+'</div>';
 }
 function setQuad(q){QF=q;LGQ=q==='none'?'uncl':q;PF.quad=q;PF.cap=60;rerender();}
 function footerHtml(){
@@ -9132,7 +9137,7 @@ function rFollow(){
     b+='<details class="card ca-fu"'+(l===open?' open':'')+'><summary><b>'+esc(caLabel('list',l))+'</b> · '+rows.length+'<div class="ca-cap">'+esc(caLabel('hint',l))+'</div></summary>';
     if(!rows.length)b+='<div class="ca-cap">Nobody here this week.</div>';
     else b+='<div class="ca-fu-cards">'+rows.map(r=>'<div class="li rc ca-fu-card"><div class="rc-top"><span class="lk-nm">'+esc(r.name)+'</span><span class="rc-pills"><span class="ca-cap">'+esc(caLabel('quad',r.quad))+'</span></span></div><div class="lk-d">'+esc(r.why)+'</div><div class="rc-foot">'+fuPhone(r,false)+'</div></div>').join('')+'</div>'
-      +'<table class="ca-fu-table"><thead><tr><th>Name</th><th>Quad</th><th>Why</th><th>Phone</th></tr></thead><tbody>'
+      +'<table class="ca-fu-table"><thead><tr><th>Name</th><th>Group</th><th>Why</th><th>Phone</th></tr></thead><tbody>'
       +rows.map(r=>'<tr><td>'+esc(r.name)+'</td><td>'+esc(caLabel('quad',r.quad))+'</td><td>'+esc(r.why)+'</td><td>'+fuPhone(r,true)+'</td></tr>').join('')+'</tbody></table>';
     b+='</details>';
   }
@@ -9160,10 +9165,10 @@ function quadSectionHtml(m){
       +(n=>n+(n===1?' person':' people'))(m.people.filter(p=>p.quad===q&&p.stage>0).length)+' · '+pct(ss.reduce((t,s)=>t+s.sA,0),ss.reduce((t,s)=>t+s.sT,0))+'% of youth nights · '
       +pct(ss.filter(s=>s.gA>0).length,cur)+'% in a lifegroup'+(c?' · '+esc(c.text):'')+'</summary>'
       +(cohorts.length?cohorts.map(g=>'<div class="ca-alr" onclick="CA.showGroup(\''+g.id+'\')"><div style="font-size:.78rem;font-weight:600">'+esc(g.name)+'</div>'
-        +(g.enrolled>0&&g.active===0?'<span class="chip c-danger">No attendance this term</span>':gChip(g))+'</div>').join(''):'<div class="ca-cap">No grades in this quad</div>')
+        +(g.enrolled>0&&g.active===0?'<span class="chip c-danger">No attendance this term</span>':gChip(g))+'</div>').join(''):'<div class="ca-cap">No grades in this group</div>')
       +'</details>';
   }
-  if(!QF||QF==='none')b+='<div class="ca-cap">No quad ('+m.people.filter(p=>!p.quad&&p.stage>0).length+')</div>';
+  if(!QF||QF==='none')b+='<div class="ca-cap">No group ('+m.people.filter(p=>!p.quad&&p.stage>0).length+')</div>';
   return b+'</div>';
 }
 function ladderHtml(R){
@@ -9263,7 +9268,7 @@ function funnelHtml(){
   let b='';
   b+='<div class="card"><div class="ca-ct">This term&#39;s conversion '+helpTip('Stages run Interacted, '+L('service')+', Regular, '+L('smallGroup')+', then Student team. Each bar shows how many people reached that stage this term.')+'</div><div style="font-size:.62rem;color:var(--ca-muted);margin-bottom:10px">'+R[0].lb+' → '+R[4].lb+'</div>'+f+'</div>';
   b+='<div class="card" style="background:#fff5f5;border-left:3px solid var(--ca-rose)"><div style="font-size:.66rem;font-weight:800;color:#b91c1c;text-transform:uppercase;letter-spacing:.05em">Biggest leak</div><div style="font-size:.78rem;margin-top:3px">'+R[leak].lb+' → '+R[leak+1].lb+' loses <b>'+lost+' people</b>.'+(worst?' Largest cluster: '+quadLabel(worst[0])+' ('+worst[1]+').':'')+'</div></div>';
-  if(!QF)b+='<button class="btn btn-secondary btn-full" onclick="CA.fquad()">'+(FQ?'Hide quad funnels ▴':'View funnel per quad ▾')+'</button>';
+  if(!QF)b+='<button class="btn btn-secondary btn-full" onclick="CA.fquad()">'+(FQ?'Hide group funnels ▴':'View funnel per group ▾')+'</button>';
   if(FQ&&!QF){
     for(const q of Object.keys(QUAD_LABELS)){
       const qp=m.people.filter(p=>p.quad===q);
@@ -9278,7 +9283,7 @@ function funnelHtml(){
       }
       b+='</div>';
     }
-    b+='<div style="font-size:.6rem;color:var(--ca-muted);text-align:center;margin:4px 0 8px">Upload-only people with no platform match are placed by the grade/gender on their Connect or Decision form; without those columns they have no quad and are excluded from these breakdowns.</div>';
+    b+='<div style="font-size:.6rem;color:var(--ca-muted);text-align:center;margin:4px 0 8px">Upload-only people with no platform match are placed by the grade/gender on their Connect or Decision form; without those columns they have no group and are excluded from these breakdowns.</div>';
   }
   return b;
 }
@@ -9309,8 +9314,8 @@ function groupsHtml(){
   if(LGQ)rows=rows.filter(r=>r.quad===LGQ);
   rows.sort((a,b)=>b.unique-a.unique||a.name.localeCompare(b.name));
   let b='';
-  b+='<div class="ca-ct" style="margin-bottom:6px">'+L('smallGroup')+' Health '+helpTip('A named lifegroup average divides by the weeks that group actually ran. Grade, quad and overall averages divide by valid services in the term instead, so they are not directly comparable.')+'</div>';
-  if(!rows.length){b+='<div class="card" style="text-align:center;color:var(--ca-muted);font-size:.78rem">No lifegroups'+(LGQ?' in this quad':' yet')+'</div>';return b;}
+  b+='<div class="ca-ct" style="margin-bottom:6px">'+L('smallGroup')+' Health '+helpTip('A named lifegroup average divides by the weeks that group actually ran. Grade, group and overall averages divide by valid services in the term instead, so they are not directly comparable.')+'</div>';
+  if(!rows.length){b+='<div class="card" style="text-align:center;color:var(--ca-muted);font-size:.78rem">No lifegroups'+(LGQ?' in this group':' yet')+'</div>';return b;}
   const rc='text-align:center;padding:7px 8px;white-space:nowrap';
   b+='<div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.72rem">'
     +'<thead><tr style="color:var(--ca-muted)"><th style="text-align:left;padding:8px 10px">'+L('smallGroup')+'</th>'
@@ -9375,7 +9380,7 @@ function plist(){
   for(const p of list.slice(0,PF.cap)){
     const s=p.s;
     const stChip='<span class="chip '+(p.stage>=4?'c-success':p.stage>0?'c-accent':'c-neutral')+'">'+p.stage+' - '+STG_SHORT()[p.stage]+'</span>';
-    const meta=s?'<span style="font-size:.72rem;color:var(--ca-muted)">Yr '+(s.grade||'—')+' · '+(s.gender==='female'?'F':'M')+'</span>':'<span class="chip ca-cw">Not in platform</span>';
+    const meta=s?'<span style="font-size:.72rem;color:var(--ca-muted)">'+esc(_gradeWord())+' '+(s.grade||'—')+' · '+(s.gender==='female'?'F':'M')+'</span>':'<span class="chip ca-cw">Not in platform</span>';
     const declChip=p.trend==='declining'?'<span class="chip c-danger">▼ Declining</span>':'';
     const tail=s
       ?''
@@ -9406,7 +9411,7 @@ function showPerson(id){
   const cons=s&&s.sT>0?Math.round(10*s.sA/s.sT):0;
   const tm=p.trend==='rising'?5:p.trend==='declining'?-10:0;
   let h='<div style="font-size:1rem;font-weight:800;margin-bottom:6px">'+esc(p.name)+'</div>';
-  h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+(s?'<span class="chip c-neutral">Yr '+(s.grade||'—')+' · '+(s.gender==='female'?'F':'M')+'</span>':'<span class="chip ca-cw">Not in platform</span>')+'<span class="chip c-accent">'+p.stage+' - '+STG_SHORT()[p.stage]+'</span>'+(p.trend==='rising'?'<span class="chip c-success">▲ Rising</span>':p.trend==='declining'?'<span class="chip c-danger">▼ Declining</span>':'')+'</div>';
+  h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+(s?'<span class="chip c-neutral">'+esc(_gradeWord())+' '+(s.grade||'—')+' · '+(s.gender==='female'?'F':'M')+'</span>':'<span class="chip ca-cw">Not in platform</span>')+'<span class="chip c-accent">'+p.stage+' - '+STG_SHORT()[p.stage]+'</span>'+(p.trend==='rising'?'<span class="chip c-success">▲ Rising</span>':p.trend==='declining'?'<span class="chip c-danger">▼ Declining</span>':'')+'</div>';
   h+='<div class="card" style="margin-bottom:10px"><div class="ca-ct">Score · '+p.score+'</div><div style="font-size:.74rem;line-height:1.8;color:var(--ca-muted)">Stage base <b style="color:var(--ca-ink)">'+base+'</b> · Consistency <b style="color:var(--ca-ink)">+'+cons+'</b>'+(s&&s.sT?' ('+s.sA+'/'+s.sT+' '+L('service')+')':'')+' · Trend <b style="color:var(--ca-ink)">'+(tm>=0?'+':'')+tm+'</b></div></div>';
   const ev=[];
   if(p.connect)ev.push(['Connect card',p.connect]);
@@ -9530,15 +9535,15 @@ function _buildDeckBody(){
         {q:'Some of those first contacts were never really ours to keep.',a:'True — not every visitor is a prospect. That is exactly why we measure the step-to-step conversion, not just the raw top number.'},
         {q:'Should Student Team not be small? Why is the top narrow?',a:'A narrow top is healthy here — leadership should be selective. Our concern is the middle, not the peak.'}
       ]},
-    {kicker:'Situation — by quad',
+    {kicker:'Situation — by group',
       title:'The same ladder, split across all four groups',
-      core:'Each quad tells a different story. Spot which group is strongest at each rung — and which needs the most support.',
+      core:'Each Junior/Senior group tells a different story. Spot which group is strongest at each rung — and which needs the most support.',
       body:quadFunnelViz(),
-      notes:'Let the audience scan across the four panels quietly. Resist narrating every number — the visual does the work. If one quad is clearly weaker, name it now; if a quad is punching above its weight, celebrate it. The actionable question is always: what is different about the strong quad that the weak quad could adopt?',
-      vizSuggest:['Four mini-funnels in a 2×2 grid, one per quad, colour-coded by quad','Highlight the single weakest rung in each panel with a red bar'],
+      notes:'Let the audience scan across the four panels quietly. Resist narrating every number — the visual does the work. If one group is clearly weaker, name it now; if a group is punching above its weight, celebrate it. The actionable question is always: what is different about the strong group that the weak group could adopt?',
+      vizSuggest:['Four mini-funnels in a 2×2 grid, one per group, colour-coded by group','Highlight the single weakest rung in each panel with a red bar'],
       objections:[
         {q:'Are these groups even comparable? They have different sizes.',a:'Exactly right — the bars are scaled within each panel so you are comparing shape (where the drop-off happens) not raw headcount. The absolute numbers are printed on the right.'},
-        {q:'Why split by quad and not by grade?',a:'Quads are the ministry\'s natural pastoral unit — each has a dedicated leader. Grade-level breakdowns exist in the platform for deeper drill-down.'}
+        {q:'Why split by Junior/Senior group and not by grade?',a:'Junior/Senior groups are the ministry\'s natural pastoral unit — each has a dedicated leader. Grade-level breakdowns exist in the platform for deeper drill-down.'}
       ]},
     {kicker:'Complication',
       title:dropPct+'% never cross '+Lfrom+' → '+Lto,
@@ -9561,7 +9566,7 @@ function _buildDeckBody(){
       body:sparkViz(),
       args:[
         'Declining means this term’s attendance rate sits at least 20 points below the same student’s previous-term rate.',
-        'This is a names list, not a statistic — every one is actionable in the People tab tonight, exportable per quad.',
+        'This is a names list, not a statistic — every one is actionable in the People tab tonight, exportable per group.',
         'The cost of a text now is far smaller than the cost of re-reaching a student who has fully disengaged.'
       ],
       notes:'Urgency without alarm. The point is that drift is reversible if we move this week. Tie directly to the follow-up ask later. If the room wants names, that is a win — open the People tab.',
@@ -9600,7 +9605,7 @@ function _buildDeckBody(){
       title:'Three moves this term',
       core:'MECE and sequenced — each maps to one pillar, each has a single number to watch. Focus beats effort.',
       args:[
-        'RETAIN — assign every one of the '+decliningN+' declining students to a leader for a personal follow-up within 14 days (export each quad’s list from the People tab). Watch: the declining count next month.',
+        'RETAIN — assign every one of the '+decliningN+' declining students to a leader for a personal follow-up within 14 days (export each group’s list from the People tab). Watch: the declining count next month.',
         'PLUG THE LEAK — build a deliberate on-ramp at the '+Lfrom+' → '+Lto+' gap (a host or buddy in weeks 2–4). Watch: that transition’s conversion, today '+convPct+'%.',
         'DEEPEN — personally invite the '+regularNoGroup+' regulars not yet in a lifegroup and re-contact the '+decisionNoGroup+' who decided but never joined one. Watch: the in-a-lifegroup count, today '+atLeast(4)+'.'
       ],
@@ -11220,7 +11225,7 @@ function _lkRowHtml(p) {
   const pid = esc(p.personId);
   const ref = !p.queued && LINK.refusals[LINK.svc + ':' + p.personId];
   const act = (!p.checkedIn && ref) || p.action || null;
-  const chip = p.leader ? '<span class="lk-chip lead">Leader</span>' : `<span class="lk-chip">${p.grade != null ? 'Yr ' + esc(p.grade) : '–'}</span>`;
+  const chip = p.leader ? '<span class="lk-chip lead">Leader</span>' : `<span class="lk-chip">${p.grade != null ? esc(_gradeWord() + ' ' + p.grade) : '–'}</span>`;
   // rev 20: only after an Elvanto search found someone for the typed name, its hits are told apart by grade and gender
   const es = LINK.es, sex = es && es.st === 'found' && es.svc === LINK.svc && es.q === String((LINK.q && LINK.q.search) || '').trim()
     && !p.checkedIn && !p.leader ? ({ female: 'Girl', male: 'Boy' })[p.gender] || '' : '';
@@ -11241,7 +11246,7 @@ function _lkRowHtml(p) {
   if (p.checkedIn && !queued) { if (!_lkCapOff('checkOut') && !past) btn += `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkOut')">Check out</button>`; }
   else if (!p.checkedIn && !undo && canIn) btn = `<button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();_lkCheck('${pid}','checkIn')">Check in</button>`;
   const tap = !p.checkedIn && !undo && canIn ? ` role="button" onclick="_lkCheck('${pid}','checkIn')"` : '';
-  return `<div class="li lk-row"${tap}>${chip}<div class="lk-grow"><div class="lk-nm">${esc(p.name || 'Unknown person')}</div>${sex ? `<div class="lk-st prac">${esc((p.grade != null ? 'Year ' + p.grade + ' · ' : '') + sex)}</div>` : ''}${lineHtml}</div>${btn}</div>`;
+  return `<div class="li lk-row"${tap}>${chip}<div class="lk-grow"><div class="lk-nm">${esc(p.name || 'Unknown person')}</div>${sex ? `<div class="lk-st prac">${esc((p.grade != null ? _gradeWord() + ' ' + p.grade + ' · ' : '') + sex)}</div>` : ''}${lineHtml}</div>${btn}</div>`;
 }
 // A tap: instant. Tapping a person who still has an item in the queue removes it (nothing is sent).
 function _lkCheck(pid, type) {
@@ -11609,7 +11614,7 @@ function _lkCat(g) {
   const n = String(g.name || '');
   const sex = /^f/i.test(g.gender || '') || (!g.gender && /\bgirls?\b/i.test(n)) ? 'f' : /^m/i.test(g.gender || '') || /\b(?:boys?|guys?)\b/i.test(n) ? 'g' : '';
   if (!sex) return 'mx';
-  const b = g.grade != null ? (g.grade <= 9 ? 'j' : 's') : /\bjunior\b/i.test(n) ? 'j' : /\bsenior\b/i.test(n) ? 's' : '';
+  const b = g.grade != null ? (g.grade <= gradeBands().junior.slice(-1)[0] ? 'j' : 's') : /\bjunior\b/i.test(n) ? 'j' : /\bsenior\b/i.test(n) ? 's' : '';
   return b ? b + sex : null;
 }
 function _lkCatFilter(v) {
@@ -12115,16 +12120,16 @@ function _lkMyFlowRows(rows, leaderId, today) {
   return (rows || []).filter((r) => r.assignedLeaderId === leaderId).sort((a, b) => late(a) - late(b)
     || (a.due || '9999').localeCompare(b.due || '9999') || String(a.name || '').localeCompare(String(b.name || '')));
 }
-// R4 filters (admin/director): junior = the quad bracket Y7-9 (+Y6 when Include Grade 6, jMin 6), senior Y10-12.
+// R4 filters (admin/director): junior/senior = gradeBands() (passed in as b).
 // null = unknown grade or gender, or a grade outside both brackets: always shown.
 const LK_FF = [['jg', 'Junior Guys', 'boy'], ['jf', 'Junior Girls', 'girl'], ['sg', 'Senior Guys', 'boy'], ['sf', 'Senior Girls', 'girl']];
-function _lkFlowBucket(r, jMin) {
+function _lkFlowBucket(r, b) {
   const g = Number(r && r.grade), sx = r && r.gender === 'male' ? 'g' : r && r.gender === 'female' ? 'f' : '';
-  const age = g >= jMin && g <= 9 ? 'j' : g >= 10 && g <= 12 ? 's' : '';
+  const age = b.junior.includes(g) ? 'j' : b.senior.includes(g) ? 's' : '';
   return age && sx ? age + sx : null;
 }
-function _lkFlowShown(rows, on, jMin) {
-  return (rows || []).filter((r) => { const b = _lkFlowBucket(r, jMin); return !b || on.includes(b); });
+function _lkFlowShown(rows, on, bands) {
+  return (rows || []).filter((r) => { const b = _lkFlowBucket(r, bands); return !b || on.includes(b); });
 }
 // The chips that are on: memory first (a blocked localStorage still toggles), then this device's pick, else all four.
 function _lkFfGet() {
@@ -12148,7 +12153,7 @@ function _lkFfHtml(on) {
 // The rows this login sees on the screen (filters only for admin/director).
 function _lkFlowVisible() {
   const rows = LINK.flows || [];
-  return _lkBoss() ? _lkFlowShown(rows, _lkFfGet(), _juniorMin()) : rows;
+  return _lkBoss() ? _lkFlowShown(rows, _lkFfGet(), gradeBands()) : rows;
 }
 // Flow kinds 'people' / 'parent' (_lkHubOwned finds the Parent Consent flow's first step by kind).
 // Y2b: the two flow names come from this location's settings (Youth Setup, ministryConfig.elvanto); a blank one matches nothing.
@@ -12675,7 +12680,7 @@ function _lkAdmStatusHtml() {
 function _lkAdmMatchHtml() {
   const A = LINK.adm, f = A.mf;
   const tabs = [['none', 'Unmatched'], ['ambiguous', 'Several possible'], ['manual', 'Set by hand']];
-  const yr = (g) => 'Yr ' + (g == null ? '-' : g);
+  const yr = (g) => _gradeWord() + ' ' + (g == null ? '-' : g);
   // L3: the server's per-row reason (rosterForMatching `why`) when a same-name YS student exists but autoMatch left it.
   const WHY1 = { later: 'Same name in YS. It pairs by itself at the next update, or tap Match.',
     gender: 'Same name in YS, but the genders differ. Check the gender, then Match.',
@@ -15060,7 +15065,7 @@ function _busRosterHtml() {
   const filters = `<select class="fs bus-flt" aria-label="Filter by gender" onchange="BUS.fGender=this.value;renderBus()">
       <option value="">All</option><option value="female"${fG === 'female' ? ' selected' : ''}>Girls</option><option value="male"${fG === 'male' ? ' selected' : ''}>Boys</option></select>
     <select class="fs bus-flt" aria-label="Filter by grade" onchange="BUS.fGrade=this.value;renderBus()">
-      <option value="">Yr</option>${grades.map((g) => `<option value="${g}"${String(g) === fY ? ' selected' : ''}>Y${g}</option>`).join('')}</select>`;
+      <option value="">${esc(_gradeWord())}</option>${grades.map((g) => `<option value="${g}"${String(g) === fY ? ' selected' : ''}>${esc(_gradeWord())} ${g}</option>`).join('')}</select>`;
   // Operator 2026-10-23 (replaces N01): by name, any case. The name is "First Last", so this is first name, then last name.
   const rows = shown.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })).map((r) => {
     const car = placed(r);
