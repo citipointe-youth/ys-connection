@@ -27,7 +27,7 @@ export async function setup(opts: { moduleOn?: boolean; routing?: RoutingProvide
   const leaders = new InMemoryLeaderRepository(); const settings = new InMemorySettingsRepository();
   await Promise.all([bus.init(), students.init(), leaders.init(), settings.init()]);
   const cfg = mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, {
-    modules: { busMinistry: opts.moduleOn ?? true },
+    modules: { busMinistry: opts.moduleOn ?? true, busConsentForm: opts.moduleOn ?? true },
   });
   await settings.updateSettings({ ministryConfig: cfg });
   await students.save(student('s1', 'Jess', 'Tran', 9, 'female', '0412345678'));

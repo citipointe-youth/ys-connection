@@ -6,5 +6,7 @@
     "ca-follow",
     "ca-term",
     "ca-quality"
-  ]
+  ],
+  "busMinistry": ["bus"],
+  "busConsentForm": ["forms"]
 }

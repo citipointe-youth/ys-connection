@@ -57,7 +57,7 @@ export async function busFixture(opts: { routing?: RoutingProvider; churchPlaceI
   const connections = new InMemoryConnectionRepository(); // empty unless a test connects someone
   await Promise.all([bus.init(), students.init(), leaders.init(), settings.init(), connections.init()]);
   await settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, {
-    modules: { busMinistry: true },
+    modules: { busMinistry: true, busConsentForm: true },
     busMinistry: { churchAddress: '1 Church St, Testville', churchPlaceId: opts.churchPlaceId ?? 'fake:church' },
   }) });
   await students.save(student('s1', 'Jess', 'Tran', 9, 'female', '0412345678'));

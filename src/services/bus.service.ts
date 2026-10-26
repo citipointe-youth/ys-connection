@@ -274,6 +274,12 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     if (!allowed(ctx, c, action)) throw new ForbiddenError(`Role '${ctx.actor.role}' cannot perform '${action}'`);
     return c;
   }
+  /** Public consent form module (modules.busConsentForm, resolved off when Bus or Live Elvanto link is off): chips, Forms tab, check, prefill, submit. */
+  async function gateConsent(ctx: BusCtx, action: Action): Promise<MinistryConfig> {
+    const c = await gate(ctx, action);
+    if (!c.modules.busConsentForm) throw new ModuleDisabledError('Public consent form');
+    return c;
+  }
   /** Route analysis is read-only for every Bus login except a junior leader on "My car only":
    *  the map pins sit on real home addresses, so that login doesn't get it (2026-10-15). */
   async function gateAnalysisView(ctx: BusCtx): Promise<MinistryConfig> {
@@ -404,6 +410,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   /** One consent loader per request: the forms, the year, who sees details, the DNC mark. `runId` lets a coordinator's
    *  differs hint skip riders on a bus (their address is the bus drop-off, not home: pre-flight F16). */
   async function consentCtx(ctx: BusCtx, c: MinistryConfig, runId?: string): Promise<ConsentFn> {
+    if (!c.modules.busConsentForm) return () => ({ year: 0, current: false }); // module off: no chip, no details, no forms read
     const full = !isRedactedLeader(ctx, c), coord = allowed(ctx, c, 'bus:coordinate');
     const [forms, mark, rvs] = await Promise.all([bus.listConsentForms(), dnc.forActor(ctx.actor),
       coord && runId ? bus.listRunVehicles(runId) : Promise.resolve([] as BusRunVehicle[])]);
@@ -420,6 +427,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   /** R8: the person's own consent form -> an ordinary new address, geocoded through the Places path (never stored as a form link). */
   async function consentWhere<T extends { consentFormId?: string }>(v: T, owner: { studentId?: string | null; guestId?: string | null }) {
     if (!v.consentFormId) return v;
+    if (!(await cfg()).modules.busConsentForm) throw new ModuleDisabledError('Public consent form');
     const f = (await bus.listConsentForms()).find((x) => x.id === v.consentFormId
       && (owner.studentId ? x.studentId === owner.studentId : !!owner.guestId && x.guestId === owner.guestId));
     if (!f) throw new NotFoundError('That consent form is not this person\'s');
@@ -673,7 +681,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     // Operator 2026-10-23: a matched consent form for this consent year (R4) also lists them, address or not.
     const year = Number(ctx.localNow.slice(0, 4));
     const consented = new Map<string, BusConsentForm>(); // owner key → their newest current-year form
-    for (const f of forms) {
+    for (const f of c.modules.busConsentForm ? forms : []) {
       if (f.year !== year || !(f.studentId || f.guestId)) continue;
       const key = riderKey(f), cur = consented.get(key);
       if (!cur || f.submittedAt > cur.submittedAt) consented.set(key, f);
@@ -1325,7 +1333,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       return { ...riderView(fresh, await consentCtx(ctx, c, fresh.runId)), reordered };
     },
     async consentStatus(ctx) {
-      const c = await gate(ctx, 'bus:use');
+      const c = await gateConsent(ctx, 'bus:use');
       const coord = allowed(ctx, c, 'bus:coordinate') || ctx.actor.role === 'admin';
       const open = ext.link ? (await ext.link.listActions({ types: ['busConsentCheck'], statuses: ['pending', 'claimed'] }))
         .filter((r) => Date.now() - Date.parse(r.createdAt) < CHECK_STALE_MS) : [];
@@ -1336,18 +1344,18 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
           .map((f) => ({ name: `${f.first} ${f.last}`, submittedAt: f.submittedAt })) : null };
     },
     async consentCheck(ctx) {
-      const c = await gate(ctx, 'bus:use');
+      const c = await gateConsent(ctx, 'bus:use');
       if (!(allowed(ctx, c, 'bus:coordinate') || ctx.actor.role === 'admin')) throw new ForbiddenError('Only bus coordinators and admins can check for consent forms');
       return queueCheck(ctx);
     },
     async consentForms(ctx) { // consent hub (2026-10-23): Bus > Forms, coordinators and admins (names only, never a parent's details)
-      const c = await gate(ctx, 'bus:use');
+      const c = await gateConsent(ctx, 'bus:use');
       if (!(allowed(ctx, c, 'bus:coordinate') || ctx.actor.role === 'admin')) throw new ForbiddenError('Only bus coordinators and admins can see consent forms');
       return { rows: (await bus.listConsentForms()).sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
         .map((f) => ({ name: `${f.first} ${f.last}`.trim(), submittedAt: f.submittedAt, year: f.year, matched: !!(f.studentId || f.guestId) })) };
     },
     async consentPrefill(ctx, q) {
-      const c = await gate(ctx, 'bus:use');
+      const c = await gateConsent(ctx, 'bus:use');
       let who = { studentId: q.studentId ?? null, guestId: q.studentId ? null : q.guestId ?? null };
       if (q.riderId) { // F6
         const r = await bus.getRunRider(q.riderId);
@@ -1372,7 +1380,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         address: f ? f.data.address : home ? { line1: streetOf(home.address), line2: '', postcode: '', city: suburbOf(home.address), state: '' } : null }, who.studentId);
     },
     async consentSubmit(ctx, input) {
-      await gate(ctx, 'bus:use');
+      await gateConsent(ctx, 'bus:use');
       const i = (input ?? {}) as Record<string, unknown>;
       if (i.readOut !== true) throw new BadRequestError('Tick that you read the declaration to the parent');
       if (!ext.newYouth) throw new AppError('ELVANTO_NOT_SET', "The bus consent form isn't set up here yet. Ask your admin.", 409);

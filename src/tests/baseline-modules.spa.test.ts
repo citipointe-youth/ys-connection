@@ -128,14 +128,14 @@ async function homeFor(role: string) {
 }
 
 // ---------- BL1c: Bus page tabs, consent chips ----------
-const BUS_FNS = ['renderBus', '_busOn', '_busPickTab'];
+const BUS_FNS = ['renderBus', '_busOn', '_busPickTab', '_modOn'];
 async function busFor(role: string, canCoordinate: boolean) {
   const BUS = { view: { run: { undoUntil: null, readOnly: false, serviceDate: '2026-10-23', lastChangeBy: null }, canCoordinate, google: { state: 'on' } }, tab: 'roster' };
   CAPTURE.out = '';
   await runIn(BUS_FNS, baseEnv(role, { BUS, _busStartPoll: () => {}, _busHeadDate: () => '2026-10-23', fmtDay: () => 'd', _busTripDate: () => '2026-10-23' }), 'await renderBus();');
   return keys(CAPTURE.out);
 }
-const CHIP_FNS = ['_busConsentChip', '_busPickupChip', '_busConsentHintHtml', '_busChipRow'];
+const CHIP_FNS = ['_busConsentChip', '_busPickupChip', '_busConsentHintHtml', '_busChipRow', '_modOn'];
 async function chipKeys() {
   const rows: Record<string, any> = {
     current_parent: { id: 'r1', consent: { year: 2026, current: true, pickup: 'parent' } },
@@ -157,7 +157,7 @@ async function chipKeys() {
 // ---------- BL1d: Youth Setup cards, Admin tabs, error-log groups ----------
 // A top-level `const NAME = [...];` array of index.html, evaluated.
 const constOf = (name: string) => { const a = HTML.indexOf('\nconst ' + name + ' = ') + name.length + 10; return new Function('return ' + HTML.slice(a, HTML.indexOf('];', a) + 1))(); };
-const SETUP_FNS = ['_youthSetupBody', '_setupCard', '_setupElvantoModulesHtml', '_setupFlowHiddenHtml', '_setupIntakeHtml', '_setupModuleMode', '_nyModeOf', '_setupElvCardHtml', '_setupLocks'];
+const SETUP_FNS = ['_youthSetupBody', '_setupCard', '_setupElvantoModulesHtml', '_setupFlowHiddenHtml', '_setupIntakeHtml', '_setupModuleMode', '_nyModeOf', '_setupElvCardHtml', '_setupLocks', '_modOn'];
 async function youthSetupKeys() {
   const cfg = MINISTRY_CONFIG();
   const env = baseEnv('admin', {

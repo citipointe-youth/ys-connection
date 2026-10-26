@@ -11,7 +11,7 @@ const fixture = () => JSON.parse(readFileSync(join(__dirname, 'fixtures', 'elvan
 async function deps() {
   const bus = new InMemoryBusRepository(), students = new InMemoryStudentRepository(), settings = new InMemorySettingsRepository();
   await Promise.all([bus.init(), students.init(), settings.init()]);
-  await settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { modules: { busMinistry: true } }) });
+  await settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { modules: { busMinistry: true, busConsentForm: true } }) });
   return { bus, students, settings };
 }
 
