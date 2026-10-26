@@ -71,14 +71,16 @@ describe('OFF-routes (client page dispatcher)', () => {
   };
   it('names both pages', () => {
     expect(html).toMatch(/^const PAGE_MODULE = \{[^}]*'new-youth': 'newYouthForms'[^}]*\};/m);
-    expect(html).toMatch(/^const PAGE_MODULE = \{[^}]*'link-intake': 'intakeAdmin'[^}]*\};/m);
+    expect(html).toMatch(/^const PAGE_MODULE = \{[^}]*'link-intake': 'consentsHub'[^}]*\};/m);
   });
-  it('New person off: both pages go Home (Intakes resolves off with it)', async () => {
+  it('New person off: both pages go Home (Intakes resolves off with it; the hub also needs Bus consent off)', async () => {
     expect(await run('new-youth', 'admin', { newYouthForms: 'off' })).toEqual(['home']);
-    expect(await run('link-intake', 'admin', { newYouthForms: 'off' })).toEqual(['home']);
+    expect(await run('link-intake', 'admin', { newYouthForms: 'off', busConsentForm: false })).toEqual(['home']);
   });
   it('Intakes off: link-intake goes Home, New person stays', async () => {
-    expect(await run('link-intake', 'admin', { intakeAdmin: 'off' })).toEqual(['home']);
+    expect(await run('link-intake', 'admin', { intakeAdmin: 'off', busConsentForm: false })).toEqual(['home']);
+    // Merged with 2.4: the page is the Consents hub, so Bus consent on keeps it (a bus-only hub).
+    expect(await run('link-intake', 'admin', { intakeAdmin: 'off' })).toEqual([]);
     expect(await run('new-youth', 'admin', { intakeAdmin: 'off' })).toEqual([]);
   });
   it('live states: the dispatcher bounces neither page', async () => {
