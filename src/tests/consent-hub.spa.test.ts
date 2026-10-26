@@ -201,7 +201,7 @@ describe('Refresh clears', () => {
       const __I = ${JSON.stringify(I)}; const _ik = () => __I; const _ikSt = () => ({}); const LINK = {};
       const __snap = ${JSON.stringify({ live: true, kinds })};
       const API = { fresh: (u) => Promise.resolve(u.includes('snapshot') ? __snap : { dates: [] }) };
-      const _linkOn = () => false; const _intakeOn = () => true; const _hubSnapApply = () => true; const _ikLkWarm = () => [];
+      const _linkOn = () => false; const _ikModuleOn = () => true; const _intakeOn = () => true; const _hubSnapApply = () => true; const _ikLkWarm = () => [];
       const _usLoad = () => Promise.resolve(); const _ikDraw = () => {}; const _ikSchedule = () => {};
       const toast = (m) => globalThis.__toasts.push(m);`, ['_hubLoad', '_ik']);
     (globalThis as any).__toasts = toasts;

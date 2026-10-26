@@ -10,6 +10,7 @@ import { ConsentPush, INTAKE_TYPES, IntakeNote, IntakePush, Uuid } from '../core
 import { BadRequestError, ForbiddenError, ModuleDisabledError } from '../core/errors/app-error';
 import { IntakeStale } from '../core/errors/link-errors';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
+import { consentsHubOn } from '../core/module-tree';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { ILinkIntakeRepository, IntakeMode, IntakeRowWrite } from '../repositories/interfaces/link-intake.repository';
 import type { ISettingsRepository } from '../repositories/interfaces/entity-repositories';
@@ -35,6 +36,11 @@ const Mode = z.enum(['intake', 'consent']);
 /** The module + RBAC check (Off = 404 for everyone, On = the admin login only, else 403). */
 export function intakeGate(actor: Actor, s: AppSettings): void {
   if (s.ministryConfig.modules.intakeAdmin !== 'on') throw new ModuleDisabledError('Intake');
+  if (!canUseIntakeAdmin(actor, 'on')) throw new ForbiddenError('Only the admin can do this.');
+}
+/** Modular setup: the Consents hub (consent types, lookups, snapshot) is on with the Public consent form or Intakes. Admin only, as intake. */
+export function consentsGate(actor: Actor, s: AppSettings): void {
+  if (!consentsHubOn(s.ministryConfig.modules)) throw new ModuleDisabledError('Consents');
   if (!canUseIntakeAdmin(actor, 'on')) throw new ForbiddenError('Only the admin can do this.');
 }
 

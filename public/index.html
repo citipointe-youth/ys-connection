@@ -1753,7 +1753,7 @@ function _modOn(key) {
   return v === 'admin' || v === 'shadow' ? !!S.user && S.user.role === 'admin' : v !== false && v !== 'off';
 }
 // page id -> module key. The dispatcher (render) sends a page whose module is off to Home. Lanes fill this in.
-const PAGE_MODULE = {};
+const PAGE_MODULE = { 'link-admin': 'liveLink', 'link-intake': 'consentsHub' };
 // A signed-in login hit MODULE_DISABLED on /prayers: pull fresh settings, rebuild the nav if it changed, leave the prayers page.
 let _mdBusy = false;
 async function _moduleDisabledRefresh() {
@@ -3355,7 +3355,7 @@ async function _attnLoad(force) {
   if (!force && mine && Date.now() - mine.at < 60000) return;
   if (_attnBusy) return _attnBusy;
   _attnBusy = (async () => {
-    const admin = role === 'admin', link = admin || _linkOn();
+    const admin = role === 'admin', link = (admin || _linkOn()) && _modOn('liveLink'); // modular setup: link off = no link reads
     const get = (on, p) => (on ? API.fresh(p, true).catch(() => null) : null);
     // Y6c: /link/status is shared with the Home offline line (_lkHomeFlows): one read a minute, kept in LINK.status.
     const lk = typeof LINK !== 'undefined' ? LINK : null, stFresh = !force && lk && lk.status && Date.now() - (lk.statusAt || 0) < 60000;
@@ -6545,7 +6545,7 @@ let _adminScroll = null; // the Problems section an old id asked for; renderAdmi
 function _adminTabsHtml(cur) {
   const b = typeof _attnBadges === 'function' ? _attnBadges(_attnMine()) : {}; // Y6b: the Home "Needs attention" counts
   cur = ADMIN_TAB_HOME[cur] || cur;
-  return `<div class="tbbar admin-tabs">${ADMIN_TABS.map(([id, label]) => `<button class="tbbtn ${cur === id ? 'on' : ''}" onclick="switchAdminTab('${id}')">${esc(label)}${b[id] ? ` <span class="pill warn">${Number(b[id])}</span>` : ''}</button>`).join('')}</div>`;
+  return `<div class="tbbar admin-tabs">${ADMIN_TABS.filter(([id]) => id !== 'link' || _modOn('liveLink')).map(([id, label]) => `<button class="tbbtn ${cur === id ? 'on' : ''}" onclick="switchAdminTab('${id}')">${esc(label)}${b[id] ? ` <span class="pill warn">${Number(b[id])}</span>` : ''}</button>`).join('')}</div>`;
 }
 async function renderAdminView(settings, users, history) {
   history = history || _adminData.history || [];
@@ -10952,8 +10952,9 @@ function _lkTop(types) { return _lkPill() + _lkBanner(types); }
 async function renderLink(p) {
   const role = S.user.role;
   // T4: Intake is the admin login's, module intakeAdmin On; the page itself says when the console is out of date.
+  // Modular setup: the page is also the Consents hub, so it opens while the hub is on (Public consent form or Intakes).
   if (p === 'link-intake') {
-    if (!_ikModuleOn()) { go('home'); return; }
+    if (!_hubModuleOn()) { go('home'); return; }
     _lkTickStart();
     if (!LINK.statusAt || Date.now() - LINK.statusAt > 60000) _lkStatusLoad();
     await renderLinkIntake();
@@ -12889,6 +12890,10 @@ function _ikModuleOn() {
   const m = ((S.settings && S.settings.ministryConfig) || {}).modules || {};
   return !!S.user && S.user.role === 'admin' && m.intakeAdmin === 'on';
 }
+// Modular setup: the Consents hub (this page's lists) for this login: admin, and the Public consent form or Intakes on.
+// Intakes off = the page is the hub only: no intake plan reads, title "Consents".
+function _hubModuleOn() { return !!S.user && S.user.role === 'admin' && _modOn('consentsHub'); }
+function _hubTitle() { return _ikModuleOn() ? 'New youth & consent' : 'Consents'; }
 // Y6b: a console whose claim left out every intake type (C2: this location's intake names or ids are blank) counts as rev 0.
 // An empty or missing capabilities object is not that (an old reply, or no console yet).
 function _ikRev(st) {
@@ -13593,7 +13598,7 @@ async function _ikSheetGo() {
 async function renderLinkIntake() {
   const I = _ik();
   I.lkPre = 0; // ux18: each page entry warms the Tidy up lists once
-  setApp(shell(`<div class="ph ik-ph"><h1>New youth &amp; consent</h1></div><div id="ik-page" onfocusout="_ikFocusOut()">${_ikPageHtml()}</div>`));
+  setApp(shell(`<div class="ph ik-ph"><h1>${esc(_hubTitle())}</h1></div><div id="ik-page" onfocusout="_ikFocusOut()">${_ikPageHtml()}</div>`));
   await (I.key ? _ikLoad(!!I.dates) : _hubLoad(!!I.hub));
 }
 function _ikDraw() {
@@ -13608,7 +13613,7 @@ function _ikPageHtml() {
   const I = _ik(), st = _ikSt();
   if (I.err && !I.dates) return `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div><button type="button" class="btn btn-secondary btn-sm" onclick="_hubLoad(false)">Try again</button>`;
   if (!I.dates) return progBar('Loading');
-  if (!_intakeOn(st)) {
+  if (_ikModuleOn() && !_intakeOn(st)) {
     const w = _ikOldConsole(st);
     return `<div class="lk-alert warn">${icS('info')}<div>${esc(w)}</div></div>`
       + (/select Try again\.$/.test(w) ? '<button type="button" class="btn btn-secondary btn-sm" onclick="_hubLoad(false)">Try again</button>' : '');
@@ -13898,12 +13903,13 @@ function _hubSnapApply(snap) {
 async function _hubLoad(quiet) {
   const I = _ik(), gen = ++I.gen, get = (u) => API.fresh(u, quiet);
   try {
-    const [hi, hc, snap, fl] = await Promise.all([get('/link/intake?mode=intake' + (quiet ? '' : '&view=1')), get('/link/intake?mode=consent'),
+    const ik = _ikModuleOn(); // Intakes off: the hub's consent lists only (the console status comes from /link/status)
+    const [hi, hc, snap, fl] = await Promise.all([get(ik ? '/link/intake?mode=intake' + (quiet ? '' : '&view=1') : '/link/status'), ik ? get('/link/intake?mode=consent') : null,
       get('/link/consents/snapshot').catch(() => null), _linkOn('flows') ? get('/link/flows').catch(() => null) : null]);
     if (I.hubSend) await _hubSendPoll(I);
     if (_ik() !== I || I.gen !== gen) return;
     I.head = { console: hi && hi.console, consoleLinkRev: hi && hi.consoleLinkRev, appLinkRev: hi && hi.appLinkRev };
-    I.dates = (hi && hi.dates) || [];
+    I.dates = (ik && hi && hi.dates) || [];
     const want = [['intake', I.dates], ['consent', (hc && hc.dates) || []]].flatMap(([m, ds]) => ds.map((x) => [m, x.date]));
     const got = _intakeOn(I.head) ? await Promise.all(want.map(([m, d]) => get('/link/intake?mode=' + m + '&date=' + encodeURIComponent(d)).catch(() => null))) : [];
     if (_ik() !== I || I.gen !== gen) return;
@@ -13916,7 +13922,7 @@ async function _hubLoad(quiet) {
     I.err = null;
     _ikFixRestore(); // S-1: once per intake state (the old Tidy up screens ran it)
     if (!_hubSnapApply(snap) && (!quiet || !I.lkPre)) _ikLkWarm(_ikSt()); // ponytail: an older console warms page 1 only (25 forms); rev 19 has them all
-  } catch (e) { if (_ik() === I && I.gen === gen) I.err = e.message || 'Could not load New youth & consent.'; }
+  } catch (e) { if (_ik() === I && I.gen === gen) I.err = e.message || 'Could not load ' + _hubTitle() + '.'; }
   if (_ik() !== I || I.gen !== gen) return;
   if (!quiet) _usLoad().then(() => { if (_ik() === I) _ikDraw(); });
   _ikDraw(); _ikSchedule();
@@ -14083,7 +14089,7 @@ function _hubPage() {
     + `<div class="ik-stl">${at ? `<span class="lk-d">Checked ${esc(_lkSeen(at))} ·</span>` : ''}<button type="button" class="ik-lnk"${I.hubAsk ? ' disabled' : ''} onclick="_hubRefresh()">${I.hubAsk ? 'Checking…' : 'Refresh'}</button></div>`
     + `<div class="tbbar" role="group" aria-label="Show">${[['cur', 'Current week'], ['last', 'Last week'], ['all', 'All']].map(([k, l]) => `<button type="button" class="tbbtn ${_hubWk() === k ? 'on' : ''}" aria-pressed="${_hubWk() === k}" onclick="_hubSetWk('${k}')">${esc(l)}</button>`).join('')}</div>`
     + _ikBanner(st, null) + (I.err ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div>` : '')
-    + `<div id="hub-res">${_hubBodyHtml()}</div>` + _ikConsentHelp();
+    + `<div id="hub-res">${_hubBodyHtml()}</div>` + (_ikModuleOn() ? _ikConsentHelp() : ''); // the help is the intake consent rules
 }
 // A family row opens its child's current row (Form in / In Elvanto: the intake row; later: the consent row; a step-0 person in no plan:
 // the flow card). Several children: chips on the strip switch child without a new back step.
@@ -16587,7 +16593,10 @@ function _busFormsListHtml() {
     + `<div class="lk-d">${esc('Filled in ' + fmtDay(r.submittedAt))}</div></div>`).join('');
 }
 function _busFormsHtml() {
-  const back = `<div style="margin-bottom:10px"><button type="button" class="btn btn-ghost btn-sm" style="color:var(--accent);padding-left:0" onclick="BUS.tab='routes';renderBus()">${icS('chevl')} Back</button></div>`;
+  let back = `<div style="margin-bottom:10px"><button type="button" class="btn btn-ghost btn-sm" style="color:var(--accent);padding-left:0" onclick="BUS.tab='routes';renderBus()">${icS('chevl')} Back</button></div>`;
+  // Modular setup: with Intakes off the Consents hub has no More entry, so the admin reaches it from here.
+  const hub = _hubModuleOn() && !_ikModuleOn() ? `<button type="button" class="btn btn-secondary btn-full" style="justify-content:space-between;margin-bottom:10px" onclick="go('link-intake')"><span>Consents: link forms to students</span><span aria-hidden="true">›</span></button>` : '';
+  back += hub;
   if (BUS.formsErr && !BUS.forms) return `${back}<div class="alert al-warn">${icS('alert')} ${esc(BUS.formsErr)}</div>`;
   if (!BUS.forms) return back + progBar('Loading');
   return back + _busConsentStatusHtml(BUS.consentStatus)

@@ -8,7 +8,7 @@ import { checkCheckins, checkLifegroups, checkMembers, checkUnmatched } from './
 import { parseBody, rematchRoster } from './sync.service';
 import { toView } from './error-log.service';
 import { LINK_CONTRACT_VERSION, PAYLOAD_SCHEMAS, ReconcileLatestRequest, ReconcileLatestResponse } from '../core/link-contract';
-import { BadRequestError } from '../core/errors';
+import { BadRequestError, ModuleDisabledError } from '../core/errors';
 import { LinkUnavailable } from '../core/errors/link-errors';
 import type { ActionType, LinkRosterRow, OutboxRow } from '../core/link-types';
 import { nameKey } from './name-key';
@@ -74,11 +74,17 @@ export function makeReconcileService(d: ReconcileDeps): ReconcileService {
   const finishMs = Math.min(1_000, budgetMs / 5);
   const put = (code: string, n: number, route = '') => d.errorLog.record({ category: 'reconcile', code, route }, n);
 
+  // Modular setup: Live Elvanto link off = no reconcile (post-import run, rematch, Who?, Send again). Unknown (settings unread) = on.
+  const linkOn = () => d.settings.getSettings().then((x) => x.ministryConfig.modules.liveLink !== false, () => true);
+  const needLink = async () => { if (!(await linkOn())) throw new ModuleDisabledError('Elvanto link'); };
+
   async function rematch(): Promise<void> {
+    if (!(await linkOn())) return;
     try { await rematchRoster(d.link, d.students); } catch (e) { log.warn(`reconcile rematch failed: ${(e as Error).name}`); }
   }
 
   async function run(): Promise<void> {
+    if (!(await linkOn())) return;
     let closed = false;  // set when the budget is spent: late work then writes nothing
     const rec = (code: string, n: number, route = '') => (closed ? Promise.resolve() : put(code, n, route));
     let imp: { id: string } | undefined;
@@ -165,6 +171,7 @@ export function makeReconcileService(d: ReconcileDeps): ReconcileService {
 
   async function whoLatest(actor: Actor): Promise<WhoLatest> {
     assertCan(actor, 'admin:manage');
+    await needLink();
     const run = await d.runs.latest();
     const empty: WhoLatest = { ranAt: null, ok: null, checkins: [], unmatched: [], lifegroups: [], members: [], noId: [] };
     if (!run) return empty;
@@ -189,6 +196,7 @@ export function makeReconcileService(d: ReconcileDeps): ReconcileService {
    */
   async function resend(actor: Actor, body: unknown): Promise<{ ok: true; type: ActionType }> {
     assertCan(actor, 'admin:manage');
+    await needLink();
     const parsed = ResendBody.safeParse(body);
     if (!parsed.success) throw new BadRequestError('Pick a row to send again.');
     const b = parsed.data;

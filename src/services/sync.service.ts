@@ -16,6 +16,7 @@ import type { MatchChange } from './link-rules';
 import type { Student } from '../core/entities/student';
 import { computeQuad } from '../core/types/enums';
 import { parseGroupName } from './import.service';
+import { consentsHubOn } from '../core/module-tree';
 import type { ErrorLogService } from './error-log.service';
 // 2026-10-24: the console names a missing consent field only in detail (FIX_SHAPE, 11.1 ys-link.js:72-76); a contract reason would need a LINK_REV.
 const NO_DATE = /has no consent date field/;
@@ -107,16 +108,19 @@ export function makeSyncService(d: SyncDeps) {
       // ponytail: one screen on leases every type; rows of an off screen cannot be queued, only ones from before.
       const m = settings.ministryConfig.modules;
       const screensOff = (['checkin', 'lifegroupReport', 'flows'] as const).every((f) => (m[f] ?? m.newYouthForms) === 'off');
-      const max = screensOff && m.intakeAdmin !== 'on' && !m.busMinistry ? 0 : req.max;
+      // Modular setup: Live Elvanto link off stops every lease too.
+      const max = m.liveLink === false || (screensOff && m.intakeAdmin !== 'on' && !m.busMinistry) ? 0 : req.max;
+      const hub = consentsHubOn(m); // the Consents hub's types: on with the Public consent form or Intakes
       const swept: NonNullable<ClaimArgs['swept']> = [];
       // Intake off: strip the four intake keys, so a queued row (an irreversible intakeText SMS included) is never leased.
       const capabilities = { ...req.capabilities };
-      if (m.intakeAdmin !== 'on') for (const t of [...INTAKE_TYPES, ...CONSENT_TYPES]) delete capabilities[t]; // rev 6: the Consents screen's types too
+      if (m.intakeAdmin !== 'on') for (const t of INTAKE_TYPES) delete capabilities[t];
+      if (!hub) for (const t of CONSENT_TYPES) delete capabilities[t]; // rev 6: the Consents screen's types (modular setup: consentsHubOn)
       if (!m.busMinistry) delete capabilities.busConsentCheck; // rev 18: Bus module off = never leased
       // Fix round 1: Bus on keeps the claim leasing, but the screens' stop button still holds. With every link screen off,
-      // only busConsentCheck (and the intake/consent types while intake is on) stays listed, so an older queued row is never sent.
+      // only busConsentCheck (and the intake types while intake is on, the consent types while the hub is on) stays listed, so an older queued row is never sent.
       if (screensOff) {
-        const keep = new Set<string>(['busConsentCheck', ...(m.intakeAdmin === 'on' ? [...INTAKE_TYPES, ...CONSENT_TYPES] : [])]);
+        const keep = new Set<string>(['busConsentCheck', ...(m.intakeAdmin === 'on' ? INTAKE_TYPES : []), ...(hub ? CONSENT_TYPES : [])]);
         for (const t of Object.keys(capabilities) as (keyof typeof capabilities)[]) if (!keep.has(t)) delete capabilities[t];
       }
       const claimed = await d.link.claim({
@@ -172,7 +176,7 @@ export function makeSyncService(d: SyncDeps) {
         // Rev 17: resolved values only (checkin/lifegroupReport/flows already inherit newYouthForms in the config transform).
         modules: { checkin: m.checkin ?? m.newYouthForms, lifegroupReport: m.lifegroupReport ?? m.newYouthForms, flows: m.flows ?? m.newYouthForms, newYouthForms: m.newYouthForms,
           intakeAdmin: m.intakeAdmin, lifegroups: m.lifegroups, connectionAudit: m.connectionAudit },
-        ...(linkRev >= SNAP_REV && m.intakeAdmin === 'on' ? { consentSnap: { ask: await snapAsk() } } : {}), // rev 19
+        ...(linkRev >= SNAP_REV && hub ? { consentSnap: { ask: await snapAsk() } } : {}), // rev 19
       };
     },
 
@@ -261,7 +265,7 @@ export function makeSyncService(d: SyncDeps) {
       }
       if (pk === 'consentSnapshot') { // rev 19: the console's standing copy of one consent list; module Off stores nothing
         const req = parseBody(PUSH_SCHEMAS.consentSnapshot, body) as z.infer<typeof ConsentSnapshotPush>;
-        if ((await d.settings.getSettings()).ministryConfig.modules.intakeAdmin !== 'on') return { applied: false };
+        if (!consentsHubOn((await d.settings.getSettings()).ministryConfig.modules)) return { applied: false };
         const ok = await d.link.putConsentSnapshot({ kind: req.kind, total: req.total, rows: req.rows, takenAt: req.takenAt, consoleId: req.consoleId });
         return ok ? { applied: true, rows: req.rows.length } : { applied: false };
       }
