@@ -37,9 +37,9 @@ describe('A1 the Save confirm names what will be switched off', () => {
     f.confirmSaveMinistrySetup();
     return f.__h() as string;
   };
-  it('Simple cohort: names the Quad and Director logins and their counts', () => {
+  it('names the Director and Junior/Senior logins and their counts', () => {
     const h = confirm({}, { structure: { cohortModel: 'none' }, roles: { enabled: { director: false, quad: false } } });
-    expect(h).toContain('This switches off 1 Director login and 4 Quad logins. Turning the role back on does not switch them back on.');
+    expect(h).toContain('This switches off 1 Director login and 4 Junior/Senior logins. Turning the role back on does not switch them back on.');
   });
   it('a role with no active logins adds no line', () => {
     const h = confirm({ roles: { enabled: { grade: true } } }, { roles: { enabled: { grade: false } } });
@@ -83,10 +83,9 @@ describe('B8-B12 and B9 Youth Setup layout', () => {
     expect(body).not.toContain("_setupCard('review'");
     expect(body).not.toContain('JSON.stringify(cfg');
   });
-  it('B10: Apply account layout is drawn only when the accounts do not match, as one warn alert', () => {
-    expect(body).not.toContain('already aligned');
-    expect(body).not.toContain('SAVED Cohort');
-    expect(body).toMatch(/aligned \? '' : `<div class="alert al-warn"[^`]*Accounts don't match the saved layout\.[^`]*previewCohortLayout\(/);
+  it('B10 (2026-10-27): Apply account layout is gone from Youth Setup', () => {
+    expect(body).not.toContain('previewCohortLayout(');
+    expect(body).not.toContain("Accounts don't match the saved layout");
   });
   it('B11: preview shows the draft logo; Reset to defaults is gone', () => {
     expect(html).not.toContain('Reset to defaults');
@@ -105,10 +104,11 @@ describe('B8-B12 and B9 Youth Setup layout', () => {
     expect(extractFn(html, '_setupElvantoModulesHtml')).toContain("[['off', 'Off'], ['admin', 'Admin only'], ['on', 'On']]");
     expect(body).toContain('${_setupElvantoModulesHtml(md)}');
   });
-  it('B9: presets are a "Start from" row inside Structure & Roles, with sub-headings', () => {
+  it('B9: Structure & Roles opens with Login style (no Start from row), with sub-headings', () => {
     expect(body).not.toContain('Pre-set Configurations');
-    expect(structure).toContain('Start from');
-    expect(structure).toContain('pickMinistryPreset(');
+    expect(structure).not.toContain('Start from');
+    expect(structure).not.toContain('pickMinistryPreset(');
+    expect(structure.indexOf('fl-login-style')).toBeGreaterThan(0);
     const iRoles = structure.indexOf('>Roles</div>'), iSvc = structure.indexOf('>Service and attendance</div>');
     expect(iRoles).toBeGreaterThan(0);
     expect(iSvc).toBeGreaterThan(iRoles);

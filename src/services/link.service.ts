@@ -28,7 +28,7 @@ import {
 } from '../core/errors/link-errors';
 import { dncFullyOn } from './dnc';
 import { makeStudentService } from './student.service';
-import { gradeRange } from '../core/ministry-config';
+import { gradeRange, hiddenStepsOf } from '../core/ministry-config';
 import { createLogger } from '../utils/logger';
 import { isDbError } from '../utils/transient-db';
 import type { ErrorLogService } from './error-log.service';
@@ -305,13 +305,13 @@ function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope): boolean {
  * 7-day wait: it moves on its own (contact consent confirmed, or 6.5 days), so no non-admin login lists, completes or
  * assigns it on the Flow Steps screen (admin / director still see it; no intake screen is affected). Operator 2026-10-14b T11.
  */
-/** The admin's pick per flow (modules.flowHiddenStep): missing / '' = the first step, 'none' = none, else that step id. */
-export function stepHidden(a: Actor, f: Pick<LinkFlowRow, 'flowId' | 'stepId' | 'stepOrder'>, picks: Record<string, string> | undefined): boolean {
+/** The admin's picks per flow (modules.flowHiddenStep): the flow's list, else the '*' list, else the first step. */
+export function stepHidden(a: Actor, f: Pick<LinkFlowRow, 'flowId' | 'stepId' | 'stepOrder'>, picks: Record<string, unknown> | undefined): boolean {
   if (isAdminRole(a)) return false; // T11: the Flow Steps screen hides it from non-admin logins only
-  const h = picks?.[f.flowId] || '';
-  return h === '' ? f.stepOrder <= 1 : f.stepId === h;
+  const list = hiddenStepsOf(picks?.[f.flowId]) ?? hiddenStepsOf(picks?.['*']);
+  return list ? list.includes(f.stepId) : f.stepOrder <= 1;
 }
-function flowRowVisible(a: Actor, f: LinkFlowRow, roster: Map<string, LinkRosterRow>, s: StructureScope, hidden: Record<string, string> | undefined): boolean {
+function flowRowVisible(a: Actor, f: LinkFlowRow, roster: Map<string, LinkRosterRow>, s: StructureScope, hidden: Record<string, unknown> | undefined): boolean {
   if (stepHidden(a, f, hidden)) return false;
   const r = f.personId ? roster.get(f.personId) : undefined;
   const grade = f.grade ?? r?.grade ?? null;

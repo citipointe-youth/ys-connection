@@ -122,7 +122,7 @@ describe('Y3b SPA site time', () => {
     expect(code).not.toContain('+10:00');
   });
 
-  it('Youth Setup has "Time zone" (with the Australian zones) and "Consent closes at"', () => {
+  it('Youth Setup has "Time zone" (with the Australian zones); "Consent closes at" left Settings 2026-10-27 (stored, default 09:00)', () => {
     const body = extractFn(HTML, '_youthSetupBody');
     expect(body).toContain('Time zone');
     expect(body).toContain("_setupSet('structure.timeZone', this.value.trim())");
@@ -130,7 +130,7 @@ describe('Y3b SPA site time', () => {
     for (const z of ['Australia/Brisbane', 'Australia/Sydney', 'Australia/Melbourne', 'Australia/Adelaide', 'Australia/Darwin', 'Australia/Perth', 'Australia/Hobart']) {
       expect(body).toContain(z);
     }
-    expect(body).toContain('Consent closes at');
-    expect(body).toContain("_setupSet('structure.consentCutoff', this.value)");
+    expect(body).not.toContain('Consent closes at');
+    expect(body).not.toContain('structure.consentCutoff');
   });
 });

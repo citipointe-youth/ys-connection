@@ -48,36 +48,36 @@ describe('JS3: stored rows still parse; one preset', () => {
   });
 });
 
-describe('JS4: Youth Setup hides the Start-from card and the layout button on a configured install', () => {
+describe('JS4 (2026-10-27): Youth Setup draws no Start-from row and no layout button; Login style reads the live state', () => {
   const HTML = loadIndexHtml();
-  const fnsOf = ['_youthSetupBody', '_setupCard', '_setupLocks'];
-  const constOf = (name: string) => { const a = HTML.indexOf('\nconst ' + name + ' = ') + name.length + 10; return new Function('return ' + HTML.slice(a, HTML.indexOf('];', a) + 1))(); };
-  function body(users: unknown[], plan: unknown) {
-    const cfg = MinistryConfigSchema.parse({ modules: LIVE_MODULES, logins: { simple: true } });
+  const fnsOf = ['_youthSetupBody', '_setupCard', '_loginStyleOf', '_setupNoticesHtml'];
+  function body(users: unknown[], over: object = {}) {
+    const cfg = MinistryConfigSchema.parse({ modules: LIVE_MODULES, logins: { simple: true }, ...over });
     const f = loadFns(fnsOf, `
       const S = { user: { role: 'admin' }, settings: { ministryConfig: ${JSON.stringify(cfg)} } };
       let _setupDraft = S.settings.ministryConfig; function _ensureSetupDraft() {} const _setupOpen = {}; const _setupFlowSteps = []; let _logoModeOverride = null; let _setupElv = null;
       let _setupServiceMinAttendance = 100, _setupTermGapDays = 14;
       const MINISTRY_CONFIG_DEFAULTS_CLIENT = ${JSON.stringify(MinistryConfigSchema.parse({}))};
-      ${HTML.match(/^const MINISTRY_PRESETS_INFO = \[[\s\S]*?\n\];/m)![0]}
       const _setupElvantoModulesHtml = () => '', _setupFlowHiddenHtml = () => '', _setupIntakeHtml = () => '', _setupElvCardHtml = () => '';
       const _DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-      const esc = (x) => String(x), L = (k) => k, icN = () => '', icS = () => '', helpTip = () => '', _serviceDayName = () => 'Friday', brandMark = () => '', userGrades = () => [];
-      const planCohortAccountLayoutClient = () => (${JSON.stringify(plan)});`, ['_youthSetupBody']);
-    return f._youthSetupBody(S_SETTINGS(cfg), users) as string;
+      const esc = (x) => String(x), L = (k) => k, icN = () => '', icS = () => '', helpTip = () => '', _serviceDayName = () => 'Friday', brandMark = () => '', userGrades = () => [];`, ['_youthSetupBody']);
+    return f._youthSetupBody({ ministryConfig: cfg }, users) as string;
   }
-  const S_SETTINGS = (cfg: unknown) => ({ ministryConfig: cfg });
-  const missing = { toCreate: [{ username: 'g79' }], toDeactivate: [] };
-  it('fresh install (Admin only): both are drawn', () => {
-    const h = body([{ role: 'admin' }], missing);
-    expect(h).toContain("pickMinistryPreset('large-graded-au')");
-    expect(h).toContain('Apply account layout</button>');
-    expect(h).not.toMatch(/Complex Ministry|Simple Ministry/);
+  it('fresh or configured: neither the presets nor Apply account layout is drawn', () => {
+    for (const users of [[{ role: 'admin' }], [{ role: 'admin' }, { role: 'quad' }]]) {
+      const h = body(users);
+      expect(h).not.toContain('pickMinistryPreset');
+      expect(h).not.toContain('Start from');
+      expect(h).not.toContain('Apply account layout');
+      expect(h).not.toMatch(/Complex|Cohort model/);
+    }
   });
-  it('configured install (any login besides Admin): neither is drawn, even with a layout mismatch', () => {
-    const h = body([{ role: 'admin' }, { role: 'quad' }], missing);
-    expect(h).not.toContain('pickMinistryPreset');
-    expect(h).not.toContain('Start from');
-    expect(h).not.toContain('Apply account layout');
+  it("Brisbane's live state (Junior/Senior on, Quad and Director on, Grade and Leader off) reads as Junior/Senior, Notices offered", () => {
+    const h = body([{ role: 'admin' }], { roles: { enabled: { director: true, grade: false, quad: true, leader: false } } });
+    expect(h).toContain('<option value="junior-senior" selected>Junior/Senior</option>');
+    expect(h).toContain('id="setup-notices"');
+    const d = body([{ role: 'admin' }], { structure: { cohortModel: 'none' }, roles: { enabled: { quad: false, leader: true } } });
+    expect(d).toContain('<option value="director-leaders" selected>Director and leaders</option>');
+    expect(d).not.toContain('setup-notices');
   });
 });

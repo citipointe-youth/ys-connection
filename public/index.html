@@ -7496,7 +7496,7 @@ async function saveMinistrySetup(confirmIntakeOff) {
     S.settings = fresh;
     applyTheme(fresh.ministryConfig);
     if (_shellReady && _navSig() !== navBefore) _initShell(); // Bus / New person / Prayers can turn the Prayers slot into More (or back)
-    toast(renamedQuads != null ? `Youth Setup saved. Renamed ${renamedQuads} quad logins` : 'Youth Setup saved');
+    toast(renamedQuads != null ? `Youth Setup saved. Renamed ${renamedQuads} Junior/Senior logins` : 'Youth Setup saved');
     // Re-fetch rather than reusing the pre-save snapshot so Accounts/other tabs
     // see the new values too (e.g. the orphaned-accounts check below).
     const [settings, users, history] = await Promise.all([
@@ -7509,12 +7509,29 @@ async function saveMinistrySetup(confirmIntakeOff) {
   } catch (e) { if (e.code === 'INTAKE_OFF_CONFIRM') _setupIntakeOffConfirm(); else toast(e.message); } // a module refusal is plain text
 }
 
-// Returns the reason Junior/Senior logins is greyed out, or '' when it is free. Mirrors the server 400.
-// Grade 6 no longer blocks it (T13): grade 6 counts as a junior year.
-function _setupLocks(o) {
-  const simple = o.simpleOn ? ''
-    : (o.cohort !== 'grades-quads' || !o.quadOn) ? 'Junior/Senior logins needs the Complex cohort model and the Quad role. Turn those on first.' : '';
-  return { simple };
+// Login style (2026-10-27): one control for the stored cohort model, Quad/Grade roles and logins.simple. Pure.
+// Quad role on (the default) = Junior/Senior, which is Brisbane's live state; Quad off = Director and leaders.
+function _loginStyleOf(c) {
+  const en = (c && c.roles && c.roles.enabled) || {};
+  return en.quad === false ? 'director-leaders' : 'junior-senior';
+}
+// Writes the stored fields for a style into a draft and returns it. Both keep logins.simple on (no grade logins; the
+// server pairs grades-quads with the Quad role and none with no Quad role). Notices has nobody to send to without the
+// Junior/Senior logins, so Director and leaders turns it off; nothing here turns it on.
+function _applyLoginStyle(d, style) {
+  const at = (o, k) => (o[k] && typeof o[k] === 'object' ? o[k] : (o[k] = {}));
+  const js = style === 'junior-senior';
+  at(d, 'structure').cohortModel = js ? 'grades-quads' : 'none';
+  Object.assign(at(at(d, 'roles'), 'enabled'), js ? { director: true, grade: false, quad: true } : { director: true, grade: false, quad: false, leader: true });
+  at(d, 'logins').simple = true;
+  if (!js) at(d, 'modules').notices = 'off';
+  return d;
+}
+function _setupSetLoginStyle(style) { _setupDraft = _applyLoginStyle(_setupDraft || {}, style); _setupRerender(); }
+// Notices: a checkbox like the other modules (stored 'on' / 'off'), offered only for Junior/Senior.
+function _setupNoticesHtml(md, style) {
+  if (style !== 'junior-senior') return '';
+  return `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="setup-notices" ${md && md.notices === 'on' ? 'checked' : ''} onchange="_setupSet('modules.notices', this.checked ? 'on' : 'off')"> <span>Notices ${helpTip("Admin and director send a message to the four Junior/Senior logins (Junior or Senior, Guys or Girls). Shows under More and on Home for 24 hours. Off by default. Notices already sent are kept.")}</span></label>`;
 }
 function _youthSetupBody(settings, users) {
   _ensureSetupDraft(settings);
@@ -7526,48 +7543,13 @@ function _youthSetupBody(settings, users) {
   const rlEn = rl.enabled || {};
   const drlEn = drl.enabled;
   const roleEnabled = (k) => rlEn[k] != null ? rlEn[k] : drlEn[k];
-  const cohort = st.cohortModel || dst.cohortModel;
-  // The currently-SAVED structure (not the draft) — drives the "Apply account
-  // layout" button (bug 8), which always operates on whatever's actually
-  // saved, never an unsaved draft. Read from `settings` (the server value
-  // passed into this function), not `_setupDraft`.
-  const savedStructure = (settings.ministryConfig && settings.ministryConfig.structure) || {};
-  const savedCohort = savedStructure.cohortModel || dst.cohortModel;
-  const savedGradeMin = savedStructure.gradeMin != null ? savedStructure.gradeMin : dst.gradeMin;
-  const savedGradeMax = savedStructure.gradeMax != null ? savedStructure.gradeMax : dst.gradeMax;
-  const savedGradeLabel = savedStructure.gradeLabel != null ? savedStructure.gradeLabel : dst.gradeLabel;
-  const savedSimple = !!(settings.ministryConfig && settings.ministryConfig.logins && settings.ministryConfig.logins.simple);
-  // Junior/Senior logins in the DRAFT: greys out the controls that would break its rule.
-  const simpleOn = !!(cfg.logins && cfg.logins.simple);
-  const SIMPLE_LOCK_TIP = 'Turn off Junior/Senior logins first';
+  const style = _loginStyleOf(cfg);
   const gLabel = st.gradeLabel != null ? st.gradeLabel : dst.gradeLabel;
   const gMin = st.gradeMin != null ? st.gradeMin : dst.gradeMin;
-  // The highest grade is always 12 — see includeGrade6 below, which is the
-  // only grade-range control exposed in this UI (bug 8 follow-up, 2026-07-11:
-  // replaced separate Lowest/Highest grade number fields).
-  const gMax = 12;
+  // The highest grade is always 12; Include Grade 6 is the only grade-range control (bug 8 follow-up, 2026-07-11).
   const includeGrade6 = gMin <= 6;
-  const locks = _setupLocks({ simpleOn, cohort: st.cohortModel || dst.cohortModel, quadOn: roleEnabled('quad') });
   const gPolicy = st.genderPolicy || dst.genderPolicy;
   const svcDay = st.serviceDayOfWeek != null ? st.serviceDayOfWeek : dst.serviceDayOfWeek;
-
-  // Heads-up (not a hard warning — nothing is ever auto-deleted or auto-
-  // edited by this note) when the draft's structure would leave existing
-  // grade/quad accounts not matching the intended account layout for that
-  // cohort model — e.g. switching to Simple when 12 single-grade accounts +
-  // 4 quads still exist, or toggling Grade 6 on/off after accounts were
-  // already created. Points at "Apply account layout" (bug 8) as the actual
-  // fix, rather than the old "reassign/remove them yourself in Accounts"
-  // wording, which predates that tool and is no longer the right advice.
-  const allUsers = users || [];
-  let orphanNote = '';
-  if (cohort === 'none') {
-    const notBracketed = allUsers.filter(u => u.role === 'quad' || (u.role === 'grade' && userGrades(u).length < 2));
-    if (notBracketed.length) orphanNote = `${notBracketed.length} existing account${notBracketed.length===1?'':'s'} (${notBracketed.map(u=>esc(u.displayName)).join(', ')}) ${notBracketed.length===1?"doesn't":"don't"} match Simple's account layout (broad 2-grade brackets, no quads). Nothing is changed automatically — save this, then use “Apply account layout” below to reconcile Accounts, or adjust them yourself.`;
-  } else {
-    const outOfRange = allUsers.filter(u => u.role === 'grade' && userGrades(u).some(g => g < gMin || g > gMax));
-    if (outOfRange.length) orphanNote = `${outOfRange.length} grade account${outOfRange.length===1?'':'s'} cover grades outside ${gMin}–${gMax} and won't fully match students. Nothing is changed automatically — save this, then use “Apply account layout” below to reconcile Accounts, or adjust them yourself.`;
-  }
 
   const dayOpts = _DAY_NAMES.map((n, i) => `<option value="${i}" ${i===svcDay?'selected':''}>${n}</option>`).join('');
   // Admin is a fixed, always-on row (checked + disabled) — shown so its
@@ -7578,17 +7560,10 @@ function _youthSetupBody(settings, users) {
   const adminRoleRow = `<label class="fg" style="display:flex;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:8px;opacity:.7"><input type="checkbox" checked disabled> <span>Admin</span></span> ${helpTip("Full access to everything, including settings and accounts. You can create more Admin logins, but the one named “Admin” can't be renamed, deactivated, or deleted.")}</label>`;
   const roleToggleRows = [
     ['director', 'Director', 'Sees and manages every student and leader across the whole ministry, and can upload attendance files.'],
-    ['grade', 'Grade', 'A login responsible for one or more grades, e.g. '+gLabel+' 9. One login can cover several grades at once.'],
-    ['quad', 'Quad', 'A login for one age group and gender, e.g. Junior Girls. Oversees several grades and leaders at once, and can see trends broken down by grade, not just combined.'],
     ['leader', 'Leader', 'A login that only sees the students connected to it.'],
-  ].map(([k, label, hint]) => ((k === 'grade' || k === 'quad') && simpleOn)
-    ? `<label class="fg" style="display:flex;align-items:center;gap:8px" title="${SIMPLE_LOCK_TIP}"><span style="display:flex;align-items:center;gap:8px;opacity:.55"><input type="checkbox" ${k === 'quad' ? 'checked' : ''} disabled> <span>${esc(label)}</span></span> ${helpTip(hint + (k === 'grade' ? ' Off while Junior/Senior logins is on.' : ' On while Junior/Senior logins is on.'))}</label>`
-    : `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${roleEnabled(k)?'checked':''} onchange="_setupSet('roles.enabled.${k}', this.checked)"> <span>${esc(label)} ${helpTip(hint)}</span></label>`
+  ].map(([k, label, hint]) => `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${roleEnabled(k)?'checked':''} onchange="_setupSet('roles.enabled.${k}', this.checked)"> <span>${esc(label)} ${helpTip(hint)}</span></label>`
   ).join('');
-  const simpleTip = "Turns off the single-grade logins and renames the four quad logins to Junior Girls, Junior Guys, Senior Girls and Senior Guys. Each Junior/Senior login gets a Grades filter, saved for the name chosen in “I am…”. Bus is then run by admin, director and named Bus coordinators. Needs the Complex cohort model and the Quad role. Grade 6, if included, joins the Junior logins. Turning it off brings the grade logins back.";
-  const simpleToggleRow = locks.simple
-    ? `<label class="fg" style="display:flex;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:8px;opacity:.55"><input type="checkbox" disabled> <span>Junior/Senior logins</span></span> ${helpTip(locks.simple)}</label>`
-    : `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${simpleOn?'checked':''} onchange="_setupSet('logins.simple', this.checked)"> <span>Junior/Senior logins ${helpTip(simpleTip)}</span></label>`;
+  const loginStyleTip = "Junior/Senior: four shared logins, Junior Girls, Junior Guys, Senior Girls and Senior Guys. Each gets a Grades filter, saved for the name chosen in “I am…”. Bus is run by admin, director and named Bus coordinators. Director and leaders: a director login plus a login for each leader, who sees only the students connected to them.";
 
   // Branding / Terminology / Modules editors. bv/lv/mv read the draft with a
   // fallback to the mirrored defaults.
@@ -7605,23 +7580,14 @@ function _youthSetupBody(settings, users) {
   // since both look like null.
   const logoMode = bv('logoImage') ? 'image' : (_logoModeOverride || 'default');
 
-  // 2026-10-27 (B1): a location that already has logins besides Admin is configured, so it gets no "Start from" row
-  // and no "Apply account layout" button. A fresh install (Admin only) sees both.
-  const configured = allUsers.some(u => u.role !== 'admin');
-  // 2026-10-22 (B9): the presets are a "Start from" row at the top of Structure & Roles (ruling D3 keeps them).
+  // 2026-10-27: Login style replaces the cohort model, the Grade/Quad toggles, Junior/Senior logins, the presets row and
+  // the account-layout button. The stored fields stay; _applyLoginStyle writes them.
   let b = _setupCard('structure', 'Structure & Roles', `
-    ${configured ? '' : `<div class="fg"><label class="fl">Start from</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-      ${MINISTRY_PRESETS_INFO.map(p => `<button class="btn btn-secondary" style="flex:1;min-width:150px" onclick="pickMinistryPreset('${p.id}')">${esc(p.title)}</button>`).join('')}
-      </div>
-      ${MINISTRY_PRESETS_INFO.map(p => `<div class="help-text" style="margin-top:4px">${esc(p.desc)}</div>`).join('')}</div>`}
-    <div class="fg"><label class="fl" for="fl-cohort-model">Cohort model ${helpTip('Complex: a login for every single grade, plus 4 extra combined logins for wider age groups. Simple: 6 broader logins that each cover 2-3 grades, no combined logins. Either way, a login only sees its own students. Changing this also turns Director and Quad on or off below.')}</label>
-      <select id="fl-cohort-model" class="fs" onchange="_setupSetCohortModel(this.value)" ${simpleOn ? `disabled title="${SIMPLE_LOCK_TIP}"` : ''}>
-        <option value="grades-quads" ${cohort==='grades-quads'?'selected':''}>Complex</option>
-        <option value="none" ${cohort==='none'?'selected':''}>Simple</option>
+    <div class="fg"><label class="fl" for="fl-login-style">Login style ${helpTip(loginStyleTip)}</label>
+      <select id="fl-login-style" class="fs" onchange="_setupSetLoginStyle(this.value)">
+        ${[['junior-senior', 'Junior/Senior'], ['director-leaders', 'Director and leaders']].map(([v, l]) => `<option value="${v}" ${style === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select></div>
-    ${orphanNote ? `<div class="alert al-warn" style="margin-bottom:10px">${orphanNote}</div>` : ''}
-    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${includeGrade6?'checked':''} onchange="_setupSetGrade6(this.checked)"> <span>Include ${esc(gLabel)} 6 (kids-church intake) ${helpTip('The oldest grade is always '+esc(gLabel)+' 12. Turn this on if your ministry also takes in '+esc(gLabel).toLowerCase()+' 6 students straight from kids\' church. Complex adds 2 new logins ('+esc(gLabel)+' 6 Girls/Boys). Simple instead widens its lowest login to cover '+esc(gLabel)+'s 6-8, rather than adding a new one.')}</span></label>
+    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${includeGrade6?'checked':''} onchange="_setupSetGrade6(this.checked)"> <span>Include ${esc(gLabel)} 6 (kids-church intake) ${helpTip('The oldest grade is always '+esc(gLabel)+' 12. Turn this on if your ministry also takes in '+esc(gLabel).toLowerCase()+' 6 students straight from kids\' church. '+esc(gLabel)+' 6 counts as a junior year.')}</span></label>
     <div class="fg"><label class="fl" for="fl-gender-policy">Gender policy ${helpTip('Strict: logins and leader-student connections are limited to matching genders. Soft: gender is still shown but never limits who can see or connect with whom. Off: gender is hidden everywhere in the app.')}</label>
       <select id="fl-gender-policy" class="fs" onchange="_setupSet('structure.genderPolicy', this.value)">
         ${[['strict','Strict'],['soft','Soft'],['off','Off']].map(([v,l])=>`<option value="${v}" ${gPolicy===v?'selected':''}>${l}</option>`).join('')}
@@ -7630,15 +7596,12 @@ function _youthSetupBody(settings, users) {
     <div class="help-text" style="margin-bottom:8px">Admin is always on. Turning a role off switches off its logins when you save.</div>
     ${adminRoleRow}
     ${roleToggleRows}
-    ${simpleToggleRow}
     <div class="sh" style="margin:16px 0 8px">Service and attendance</div>
     <div class="fg"><label class="fl" for="fl-service-day">Service day ${helpTip('The night your main service runs, e.g. Friday. The app uses it to work out terms and the Home screen\'s "Not Seen Last…" reminders.')}</label>
       <select id="fl-service-day" class="fs" onchange="_setupSetNum('structure.serviceDayOfWeek', this.value)">${dayOpts}</select></div>
     <div class="fg"><label class="fl" for="fl-time-zone">Time zone ${helpTip('Where this location is, e.g. Australia/Brisbane. Every date and time in the app uses it.')}</label>
       <input id="fl-time-zone" class="fi" list="setup-tz" value="${esc(st.timeZone != null ? st.timeZone : dst.timeZone)}" onchange="_setupSet('structure.timeZone', this.value.trim())">
       <datalist id="setup-tz">${['Australia/Adelaide', 'Australia/Brisbane', 'Australia/Darwin', 'Australia/Hobart', 'Australia/Melbourne', 'Australia/Perth', 'Australia/Sydney'].map((z) => `<option value="${z}">`).join('')}</datalist></div>
-    <div class="fg"><label class="fl" for="fl-consent-closes-at">Consent closes at ${helpTip('The time on the service day when parents can no longer reply to the consent text, e.g. 09:00.')}</label>
-      <input id="fl-consent-closes-at" class="fi" type="time" value="${esc(st.consentCutoff != null ? st.consentCutoff : dst.consentCutoff)}" onchange="_setupSet('structure.consentCutoff', this.value)"></div>
     <div class="form-row">
       <div class="fg"><label class="fl" for="fl-min-attendance-for-a-valid-service">Min attendance for a valid service ${helpTip('A ' + esc(_serviceDayName()) + ' with fewer people than this is treated as a holiday or break, and left out of averages and attendance rates.')}</label>
         <input id="fl-min-attendance-for-a-valid-service" class="fi" type="number" min="0" max="2000" value="${_setupServiceMinAttendance}" onchange="_setupSetMinAtt(this.value)">
@@ -7701,8 +7664,7 @@ function _youthSetupBody(settings, users) {
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('lifegroups')?'checked':''} onchange="_setupSet('modules.lifegroups', this.checked)"> <span>${esc(lv('smallGroupPlural'))} ${helpTip('Small-group attendance tracking and stats. Turn off for ministries with no small groups.')}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('prayers')!==false?'checked':''} onchange="_setupPrayersToggle(this)"> <span>Prayers ${helpTip("Prayer requests for students, or general ones. Turn off to hide Prayers from every login. Prayers already saved are kept.")}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('busMinistry')?'checked':''} onchange="_setupSet('modules.busMinistry', this.checked)"> <span>${esc(lv('busMinistry'))} ${helpTip("Plan drop-home car runs after your service. Off by default.")}</span></label>
-    <div class="fg"><label class="fl" for="setup-notices">Notices ${helpTip("Admin and director send a message to any of the four quad logins (Junior or Senior, Guys or Girls). Shows under More and on Home for 24 hours. Off by default. Notices already sent are kept.")}</label>
-      <select class="fs" id="setup-notices" onchange="_setupSet('modules.notices', this.value)">${[['off', 'Off'], ['on', 'On']].map(([k, l]) => `<option value="${k}" ${(md && md.notices === 'on' ? 'on' : 'off') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    ${_setupNoticesHtml(md, style)}
     ${_setupElvantoModulesHtml(md)}
     ${_setupFlowHiddenHtml(md)}
     ${_setupIntakeHtml(md)}`);
@@ -7717,17 +7679,6 @@ function _youthSetupBody(settings, users) {
     </div>`);
 
   b += `<button class="btn btn-primary btn-full" style="margin-top:4px" onclick="confirmSaveMinistrySetup()">Save Youth Setup</button>`;
-
-  // "Apply account layout" (bug 8) — a separate, explicit, typed-confirm
-  // action that reconciles Accounts with whatever cohort model/grade range is
-  // actually SAVED (never an unsaved draft — matching savedCohort/savedGrade*
-  // above), independent of the Save button. 2026-10-22 (B10): drawn only when
-  // the client-side plan mirror below says Accounts don't match; nothing otherwise.
-  const alignPlan = planCohortAccountLayoutClient(savedCohort, savedGradeMin, savedGradeMax, savedGradeLabel, allUsers, savedSimple);
-  const aligned = configured || (!alignPlan.toCreate.length && !alignPlan.toDeactivate.length);
-  b += aligned ? '' : `<div class="alert al-warn" style="margin-top:8px">Accounts don't match the saved layout. Creates or switches off grade and quad logins to match the saved setup. Save first.
-    <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="previewCohortLayout('${savedCohort}')">Apply account layout</button></div>`;
-
   return b;
 }
 
@@ -7877,7 +7828,7 @@ function confirmSaveMinistrySetup() {
       const n = (_adminData.users || []).filter(u => u.role === 'grade' && u.status === 'active').length;
       const coords = (saved.busMinistry && saved.busMinistry.coordinatorLeaderIds) || [];
       const busOn = !!(draft.modules && draft.modules.busMinistry);
-      risky += `<div class="alert al-warn" style="margin-bottom:10px">This ${n ? `switches off the ${n} grade logins (they come back if you turn this off) and ` : ''}renames the 4 quad logins to Junior Girls, Junior Guys, Senior Girls and Senior Guys.${busOn ? ' Quad logins stop coordinating Bus.' : ''}</div>`;
+      risky += `<div class="alert al-warn" style="margin-bottom:10px">This ${n ? `switches off the ${n} grade logins (they come back if you turn this off) and ` : ''}renames the 4 Junior/Senior logins to Junior Girls, Junior Guys, Senior Girls and Senior Guys.${busOn ? ' Junior/Senior logins stop coordinating Bus.' : ''}</div>`;
       if (busOn && !coords.length) risky += `<div class="alert" style="margin-bottom:10px;background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626">No Bus coordinators are set. Only admin and director can run Bus.</div>`;
     } else {
       risky += `<div class="alert al-warn" style="margin-bottom:10px">This turns Junior/Senior logins off. The grade logins it switched off come back, and the quad logins get their old names.</div>`;
@@ -7890,7 +7841,7 @@ function confirmSaveMinistrySetup() {
   const red = (t) => `<div class="alert" style="margin-bottom:10px;background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626">${t}</div>`;
   const offs = diff.filter((k) => k.startsWith('roles.')).map((k) => {
     const r = k.slice(6), n = (_adminData.users || []).filter((u) => u.role === r && u.status === 'active').length;
-    return n ? `${n} ${r[0].toUpperCase() + r.slice(1)} login${n === 1 ? '' : 's'}` : '';
+    return n ? `${n} ${r === 'quad' ? 'Junior/Senior' : r[0].toUpperCase() + r.slice(1)} login${n === 1 ? '' : 's'}` : '';
   }).filter(Boolean);
   if (offs.length) risky += red(`This switches off ${offs.length > 1 ? offs.slice(0, -1).join(', ') + ' and ' + offs[offs.length - 1] : offs[0]}. Turning the role back on does not switch them back on.`);
   if (diff.includes('modules.intakeAdmin')) risky += red('Turning Intakes off deletes waiting intake rows.');
@@ -7959,8 +7910,23 @@ function _setupElvantoModulesHtml(md) {
     + _SETUP_ELVANTO.map(([k, label, tip]) => `<div class="fg"><label class="fl" for="setup-${k}">${esc(label)} ${helpTip(tip + ' Admin only shows it to the admin login only.')}</label>
       <select class="fs" id="setup-${k}" onchange="_setupSetModule('${k}', this.value)">${[['off', 'Off'], ['admin', 'Admin only'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_setupModuleMode(md, k) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('');
 }
-// 2026-10-14: per flow the console pushes, the step Flow steps hides from every login and refuses to complete or assign.
-// '' = the first step (default), 'none' = none, else a step id. The steps come from GET /link/flows (admin gets `steps`).
+// 2026-10-14: per flow the console pushes, the steps Flow steps hides from leader logins and refuses to complete or assign.
+// 2026-10-27 (Option A): a list of step ids per flow. Mirrors stepHidden (link.service.ts): the flow's list, else the
+// '*' list (a new install saves '*': [], nothing hidden), else the first step. Old strings: 'none' = [], an id = [id].
+function _flowHiddenList(picks, flowId, steps) {
+  const of = (v) => Array.isArray(v) ? v : v === 'none' ? [] : typeof v === 'string' && v ? [v] : null;
+  const p = picks || {};
+  return of(p[flowId]) || of(p['*']) || steps.filter((x) => x.stepOrder <= 1).map((x) => x.stepId);
+}
+// A tick writes that flow's whole list, so it no longer falls back to '*' or the first step.
+function _setupFlowStepToggle(flowId, stepId, on) {
+  const md = (_setupDraft = _setupDraft || {}).modules || (_setupDraft.modules = {});
+  const steps = (_setupFlowSteps || []).filter((x) => x.flowId === flowId);
+  const cur = _flowHiddenList(md.flowHiddenStep, flowId, steps).filter((id) => id !== stepId);
+  md.flowHiddenStep = { ...(md.flowHiddenStep || {}), [flowId]: on ? cur.concat(stepId) : cur };
+  _setupRerender();
+}
+// The steps come from GET /link/flows (admin gets `steps`).
 let _setupFlowSteps; // undefined = not asked, null = loading or unavailable, else the list
 function _setupFlowHiddenHtml(md) {
   if (_setupModuleMode(md, 'flows') === 'off') return '';
@@ -7971,10 +7937,9 @@ function _setupFlowHiddenHtml(md) {
   if (!_setupFlowSteps || !_setupFlowSteps.length) return '';
   const picks = md.flowHiddenStep || {}, flows = {};
   _setupFlowSteps.forEach((x) => (flows[x.flowId] = flows[x.flowId] || { name: x.flowName, steps: [] }).steps.push(x));
-  return Object.keys(flows).map((id) => { const f = flows[id], v = picks[id] || '';
-    const opts = [['', 'First step (default)'], ['none', 'None']].concat(f.steps.map((x) => [x.stepId, x.stepName]));
-    return `<div class="fg"><label class="fl" for="setup-fh-${esc(id)}">Hidden step: ${esc(f.name)} ${helpTip('This step is not listed on Flow steps for leader (non-admin) logins, and they cannot complete or assign it there. Admin and director logins still see it. The New youth & consent screen is not changed.')}</label>
-      <select class="fs" id="setup-fh-${esc(id)}" onchange="_setupSet('modules.flowHiddenStep.${esc(id)}', this.value)">${opts.map(([k, l]) => `<option value="${esc(k)}" ${v === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`; }).join('');
+  return Object.keys(flows).map((id) => { const f = flows[id], hid = _flowHiddenList(picks, id, f.steps);
+    return `<div class="fg"><div class="fl">Flow steps: ${esc(f.name)} ${helpTip('A ticked step is not listed on Flow steps for leader logins, and they cannot complete or assign it there. Admin and director logins still see it. The New youth & consent screen is not changed.')}</div>
+      ${f.steps.map((x) => `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:4px 0"><input type="checkbox" ${hid.includes(x.stepId) ? 'checked' : ''} onchange="_setupFlowStepToggle('${esc(id)}', '${esc(x.stepId)}', this.checked)"> <span>${esc(x.stepName)} <span class="help-text" style="margin:0">Leaders can't see or tick this</span></span></label>`).join('')}</div>`; }).join('');
 }
 // T4: Intake (Elvanto) is a plain Off / On switch (R3), the admin login only; it does not follow New person.
 function _setupIntakeHtml(md) {
@@ -8116,21 +8081,6 @@ function _setupSetGrade6(checked) {
   if (!_setupDraft.structure) _setupDraft.structure = {};
   _setupDraft.structure.gradeMin = checked ? 6 : 7;
   _setupDraft.structure.gradeMax = 12;
-  _setupRerender();
-}
-// Changing the Cohort model dropdown directly (not via the preset buttons
-// above) auto-selects Director/Quad the same way the Complex/Simple presets
-// do — Complex turns both on, Simple turns both off. Only touches those two
-// role toggles (a preset, _applyMinistryPreset, also sets the other preset fields).
-function _setupSetCohortModel(value) {
-  if (!_setupDraft) _setupDraft = {};
-  if (!_setupDraft.structure) _setupDraft.structure = {};
-  _setupDraft.structure.cohortModel = value;
-  if (!_setupDraft.roles) _setupDraft.roles = {};
-  if (!_setupDraft.roles.enabled) _setupDraft.roles.enabled = {};
-  const on = value !== 'none';
-  _setupDraft.roles.enabled.director = on;
-  _setupDraft.roles.enabled.quad = on;
   _setupRerender();
 }
 // Store a newline-separated textarea as a trimmed, non-empty string array

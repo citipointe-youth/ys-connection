@@ -257,8 +257,7 @@ describe('SettingsService', () => {
 describe('SettingsService — Simple (Junior/Senior) logins', () => {
   const ON = { ministryConfig: { logins: { simple: true } } };
   const OFF = { ministryConfig: { logins: { simple: false } } };
-  const MSG = 'Turn off Junior/Senior logins first';
-  const NEEDS = 'Junior/Senior logins needs the Complex cohort model and the Quad role. Turn those on first.';
+  const MSG = 'Pick a Login style in Youth Setup: Junior/Senior, or Director and leaders.';
 
   async function fixture() {
     const f = await makeService();
@@ -356,12 +355,12 @@ describe('SettingsService — Simple (Junior/Senior) logins', () => {
     expect((await repo.getSettings()).ministryConfig.roles.enabled.grade).toBe(false);
   });
 
-  it('rule: cohortModel none or quad off, while on or when turning on, is 400 with the right next step', async () => {
+  it('rule (Login style): a cohort model and Quad role that do not pair, while on or when turning on, is 400', async () => {
     const { service } = await fixture();
     await expect(service.update(ADMIN, { ministryConfig: { logins: { simple: true }, structure: { cohortModel: 'none' } } }))
-      .rejects.toMatchObject({ statusCode: 400, message: NEEDS });
+      .rejects.toMatchObject({ statusCode: 400, message: MSG });
     await expect(service.update(ADMIN, { ministryConfig: { logins: { simple: true }, roles: { enabled: { quad: false } } } }))
-      .rejects.toMatchObject({ statusCode: 400, message: NEEDS });
+      .rejects.toMatchObject({ statusCode: 400, message: MSG });
     await service.update(ADMIN, ON);
     await expect(service.update(ADMIN, { ministryConfig: { structure: { cohortModel: 'none' } } }))
       .rejects.toMatchObject({ statusCode: 400, message: MSG });

@@ -35,8 +35,7 @@ const SettingsPatchSchema = z.object({
   confirmIntakeOff: z.boolean().optional(),
 });
 
-const SIMPLE_ON_MSG = 'Turn off Junior/Senior logins first';
-const SIMPLE_NEEDS_MSG = 'Junior/Senior logins needs the Complex cohort model and the Quad role. Turn those on first.';
+const LOGIN_STYLE_MSG = 'Pick a Login style in Youth Setup: Junior/Senior, or Director and leaders.';
 const CHANGED_MSG = 'Someone else changed this. Reload Youth Setup.';
 export const INTAKE_OFF_MSG = 'Turning Intakes off deletes waiting intake rows.';
 
@@ -205,11 +204,10 @@ export function makeSettingsService(
         simpleOnNow = isOn;
         simpleFlip = wasOn !== isOn;
         if (isOn) {
-          // The rule: Simple logins needs the Complex cohort model and the Quad role (grade 6 is
-          // junior since T13, so Include Grade 6 is fine). The message names the step that fixes it:
-          // undo the change that broke a valid stored state, else fix the missing piece.
-          const valid = (m: typeof cur) => m.structure.cohortModel === 'grades-quads' && m.roles.enabled.quad;
-          if (!valid(merged)) throw new BadRequestError(wasOn && valid(cur) ? SIMPLE_ON_MSG : SIMPLE_NEEDS_MSG);
+          // The rule (Login style, 2026-10-27): with no grade logins, the ministry is either Junior/Senior (the
+          // grades-quads cohort model and the Quad role) or Director and leaders (cohort model none, no Quad role).
+          // A half-and-half state is refused. Grade 6 is junior since T13, so Include Grade 6 is fine.
+          if ((merged.structure.cohortModel === 'grades-quads') !== merged.roles.enabled.quad) throw new BadRequestError(LOGIN_STYLE_MSG);
           merged.roles.enabled.grade = false;
           // Every active grade login is retired and listed (normally none while on).
           retire = (await users.findByRole('grade')).filter((u) => u.status === 'active');
