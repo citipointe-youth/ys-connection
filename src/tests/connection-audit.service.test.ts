@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeConnectionAuditService, maskDnc, siteYear, type AuditView } from '../services/connection-audit.service';
 import { makeErrorLogService } from '../services/error-log.service';
+import { MinistryConfigSchema } from '../core/ministry-config';
 import { InMemoryConnectionAuditRepository, InMemorySettingsRepository, InMemoryLinkRepository, InMemoryErrorLogRepository } from '../repositories/in-memory';
 import { BadRequestError, ForbiddenError, ModuleDisabledError } from '../core/errors/app-error';
 import type { AuditPushBody } from '../core/link-contract';
@@ -47,7 +48,8 @@ const withRow = (b: OkBody, cells: Record<string, string>): OkBody => {
 async function harness(o: { errorLog?: { record: (...a: any[]) => Promise<void> }; consentRows?: () => Promise<{ key: string; status: string }[]> } = {}) {
   const repo = new InMemoryConnectionAuditRepository(); await repo.init();
   const settings = new InMemorySettingsRepository(); await settings.init();
-  await settings.updateSettings({ serviceMinAttendance: 1 });
+  // Connection Audit needs Flows, Lifegroups and New person form (module tree), which all follow newYouthForms here.
+  await settings.updateSettings({ serviceMinAttendance: 1, ministryConfig: MinistryConfigSchema.parse({ modules: { newYouthForms: 'on' } }) });
   const link = new InMemoryLinkRepository();
   const errRepo = new InMemoryErrorLogRepository();
   let t = NOW;

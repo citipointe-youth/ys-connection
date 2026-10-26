@@ -34,6 +34,14 @@ describe('Y4 settings file', () => {
     expect(f.draft().elvanto).toBeDefined(); // the draft itself is untouched
   });
 
+  it('modular setup: Live Elvanto link stays per location; Digest email, Camp and Public consent form are carried', () => {
+    f.setDraft({ modules: { liveLink: false, digest: false, camp: false, busConsentForm: false } });
+    f.exportSettingsFile();
+    expect(f.__o().ministryConfig.modules).toEqual({ digest: false, camp: false, busConsentForm: false });
+    const r = f._parseSettingsFile(JSON.stringify({ kind: 'ys-connection-settings', version: 1, ministryConfig: { modules: { liveLink: true, camp: false } } }));
+    expect(r.ministryConfig.modules).toEqual({ camp: false });
+  });
+
   it('branding, groupNameStrip, timeZone and consentCutoff survive export and parse', () => {
     f.setDraft(BRIS());
     f.exportSettingsFile();

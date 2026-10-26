@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BadRequestError } from './errors/app-error';
+import { resolveModules } from './module-tree';
 
 // Per-deployment configuration: branding, terminology, structure, roles, modules,
 // and import dialect. An empty/absent value at any level always means "YS
@@ -39,6 +40,41 @@ export const DEFAULT_LOCATION_QUESTION = 'Citipointe Location';
 
 // Drafted from the form's consent text (spec §5.5 step 4). G1: the operator or Citipointe approves it before go-live.
 export const DEFAULT_CONSENT_DECLARATION = 'Do you give permission for [child] to travel on the Youth Society bus to, from and during Friday nights at Citipointe Brisbane? Do you consent to the leaders arranging emergency medical, hospital or ambulance care if needed, at your cost? Do you release Citipointe from liability as set out in the full form? Do you agree to us contacting you with updates? The full terms and privacy policy are at citipointechurch.com.';
+
+const ModulesSchema = z.object({
+  connectionAudit: z.boolean().default(true),
+  lifegroups: z.boolean().default(true),
+  exportGuides: z.enum(['elvanto', 'hidden']).default('elvanto'),
+  busMinistry: z.boolean().default(false),
+  // New person (internal name: new youth forms): the screen submits Citipointe's two public Elvanto connect forms.
+  // 'off' = nobody, 'admin' = the admin login only, 'on' = every role. Off by default.
+  // The old boolean is still read (true = on, false = off) so a config stored before this change parses.
+  newYouthForms: z.preprocess((v) => (v === true ? 'on' : v === false ? 'off' : unShadow(v)), MODE).default('off'),
+  // Prayers module (October rework). On by default; when off every prayer route answers 404 and the data is kept.
+  prayers: z.boolean().default(true),
+  // Notices (2026-10-15): admin/director messages to the four quad logins. Off by default; off = every /notices route answers 404.
+  notices: z.enum(['off', 'on']).default('off'),
+  // T10 (2026-10-12): the Elvanto link screens, each off / admin (admin only) / on. Missing = the newYouthForms
+  // value, so a config stored before the split keeps behaving exactly as it did.
+  checkin: moduleMode.optional(),
+  lifegroupReport: moduleMode.optional(),
+  flows: moduleMode.optional(),
+  // T4 (2026-10-13, ruling R3): youth intake + consents through the Elvanto link. A plain Off / On switch, admin only.
+  intakeAdmin: z.enum(['off', 'on']).default('off'),
+  // 2026-10-14: per flow (Elvanto flow id), the step no login lists, completes or assigns on Flow steps.
+  // Flow Steps screen, non-admin logins only (T11). Missing or '' = the first step (stepOrder <= 1), 'none' = no hidden step, else that step's id.
+  flowHiddenStep: z.record(z.string().max(64), z.string().max(64)).default({}),
+  // Modular setup (2026-10-27): the switchboard keys. Defaults keep today's behaviour (nothing hidden); the setup wizard
+  // writes explicit values for a new location. module-tree.ts holds the tree and its rules.
+  liveLink: z.boolean().default(true),
+  digest: z.boolean().default(true),
+  camp: z.boolean().default(true),
+  busConsentForm: z.boolean().default(true),
+});
+/** modules as stored or patched, before resolveModules. */
+export type ModulesIn = z.infer<typeof ModulesSchema>;
+/** modules after resolveModules: the three link screens always carry a value. */
+export type Modules = Omit<ModulesIn, 'checkin' | 'lifegroupReport' | 'flows'> & { checkin: NewYouthMode; lifegroupReport: NewYouthMode; flows: NewYouthMode };
 
 export const MinistryConfigSchema = z.object({
   version: z.literal(1).default(1),
@@ -123,34 +159,8 @@ export const MinistryConfigSchema = z.object({
     })
     .default({}),
 
-  modules: z
-    .object({
-      connectionAudit: z.boolean().default(true),
-      lifegroups: z.boolean().default(true),
-      exportGuides: z.enum(['elvanto', 'hidden']).default('elvanto'),
-      busMinistry: z.boolean().default(false),
-      // New person (internal name: new youth forms): the screen submits Citipointe's two public Elvanto connect forms.
-      // 'off' = nobody, 'admin' = the admin login only, 'on' = every role. Off by default.
-      // The old boolean is still read (true = on, false = off) so a config stored before this change parses.
-      newYouthForms: z.preprocess((v) => (v === true ? 'on' : v === false ? 'off' : unShadow(v)), MODE).default('off'),
-      // Prayers module (October rework). On by default; when off every prayer route answers 404 and the data is kept.
-      prayers: z.boolean().default(true),
-      // Notices (2026-10-15): admin/director messages to the four quad logins. Off by default; off = every /notices route answers 404.
-      notices: z.enum(['off', 'on']).default('off'),
-      // T10 (2026-10-12): the Elvanto link screens, each off / admin (admin only) / on. Missing = the newYouthForms
-      // value, so a config stored before the split keeps behaving exactly as it did.
-      checkin: moduleMode.optional(),
-      lifegroupReport: moduleMode.optional(),
-      flows: moduleMode.optional(),
-      // T4 (2026-10-13, ruling R3): youth intake + consents through the Elvanto link. A plain Off / On switch, admin only.
-      intakeAdmin: z.enum(['off', 'on']).default('off'),
-      // 2026-10-14: per flow (Elvanto flow id), the step no login lists, completes or assigns on Flow steps.
-      // Flow Steps screen, non-admin logins only (T11). Missing or '' = the first step (stepOrder <= 1), 'none' = no hidden step, else that step's id.
-      flowHiddenStep: z.record(z.string().max(64), z.string().max(64)).default({}),
-    })
-    .transform((m) => ({ ...m, checkin: m.checkin ?? m.newYouthForms, lifegroupReport: m.lifegroupReport ?? m.newYouthForms,
-      flows: m.flows ?? m.newYouthForms }))
-    .default({}),
+  // resolveModules (module-tree.ts) fills the link screens from newYouthForms and turns off what a parent turned off.
+  modules: ModulesSchema.transform((m): Modules => resolveModules(m)).default({}),
 
   // Simple logins (October rework, spec A): Junior/Senior quad logins replace the grade logins.
   logins: z
@@ -297,4 +307,9 @@ export function mergeMinistryConfig(base: MinistryConfig, patch: unknown): Minis
   const plain = r.error.issues.find((i) => i.message === TZ_MSG || i.message === CUTOFF_MSG);
   if (plain) throw new BadRequestError(plain.message); // the refusal in plain words
   throw r.error;
+}
+
+/** The merged modules BEFORE resolveModules, for moduleProblems (what a patch asks for, not what the resolver makes of it). */
+export function mergeModulesUnresolved(base: MinistryConfig, patch: unknown): ModulesIn {
+  return ModulesSchema.parse((deepMerge(base, patch) as { modules?: unknown }).modules ?? {});
 }

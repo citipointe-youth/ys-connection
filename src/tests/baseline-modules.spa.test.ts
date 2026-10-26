@@ -162,7 +162,7 @@ async function youthSetupKeys() {
   const cfg = MINISTRY_CONFIG();
   const env = baseEnv('admin', {
     _setupDraft: cfg, _ensureSetupDraft: () => {}, _setupOpen: {}, _setupFlowSteps: [{ flowId: 'f1', flowName: 'F', stepId: 's1', stepName: 'S' }], MINISTRY_CONFIG_DEFAULTS_CLIENT: MinistryConfigSchema.parse({}),
-    MINISTRY_PRESETS_INFO: [{ id: 'large-graded-au', title: 'a' }, { id: 'simple', title: 'b' }], _SETUP_ELVANTO: constOf('_SETUP_ELVANTO'), _DAY_NAMES: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    MINISTRY_PRESETS_INFO: [{ id: 'large-graded-au', title: 'a' }, { id: 'simple', title: 'b' }], _SETUP_ELVANTO: constOf('_SETUP_ELVANTO'), _SETUP_SWITCHES: constOf('_SETUP_SWITCHES'), _DAY_NAMES: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     _logoModeOverride: null, _setupElv: null, planCohortAccountLayoutClient: () => ({ toCreate: [], toDeactivate: [] }), helpTip: () => '', userGrades: () => [],
   });
   return keys(await runIn(SETUP_FNS, env, 'return _youthSetupBody(S.settings, []);'));

@@ -244,6 +244,14 @@
      "_setupSet('modules.busMinistry', this.checked)",
      "#setup-notices",
      "_setupSet('modules.notices', this.value)",
+     "#setup-liveLink",
+     "_setupSet('modules.liveLink', this.checked)",
+     "#setup-busConsentForm",
+     "_setupSet('modules.busConsentForm', this.checked)",
+     "#setup-digest",
+     "_setupSet('modules.digest', this.checked)",
+     "#setup-camp",
+     "_setupSet('modules.camp', this.checked)",
      "#setup-newYouthForms",
      "_setupSetModule('newYouthForms', this.value)",
      "#setup-checkin",
@@ -1005,6 +1013,10 @@
   "lifegroupReport": "admin",
   "flows": "admin",
   "intakeAdmin": "on",
-  "flowHiddenStep": {}
+  "flowHiddenStep": {},
+  "liveLink": true,
+  "digest": true,
+  "camp": true,
+  "busConsentForm": true
  }
 }

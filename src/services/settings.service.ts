@@ -5,7 +5,8 @@ import type { AppSettings } from '../core/entities/settings';
 import type { Actor, User } from '../core/entities/user';
 import { QUAD_LABELS, quadLabelFor, type UserRole } from '../core/types/enums';
 import { generateId } from '../utils/id';
-import { mergeMinistryConfig, MinistryConfigSchema, gradeRange, DEFAULT_LOCATION_QUESTION } from '../core/ministry-config';
+import { mergeMinistryConfig, mergeModulesUnresolved, MinistryConfigSchema, gradeRange, DEFAULT_LOCATION_QUESTION } from '../core/ministry-config';
+import { moduleProblems, resolveModules } from '../core/module-tree';
 import { invalidateOverviewCache } from './overview.service';
 import { invalidateTrendsCache } from './trends.service';
 import { invalidateLgStatsCache } from './lifegroup-stats.service';
@@ -29,11 +30,15 @@ const SettingsPatchSchema = z.object({
   // T1: the value of each risky switch the client's draft was based on. A flip whose base no
   // longer matches the stored value is refused with 409, so a stale tab can't undo a change.
   expect: z.object({ simple: z.boolean().optional(), prayers: z.boolean().optional() }).optional(),
+  // Modular setup: a save that turns Intakes off (itself, or through New person form / Live Elvanto link) runs onIntakeOff,
+  // which deletes the waiting intake rows, so it needs this flag (the SPA sends it once the admin confirms).
+  confirmIntakeOff: z.boolean().optional(),
 });
 
 const SIMPLE_ON_MSG = 'Turn off Junior/Senior logins first';
 const SIMPLE_NEEDS_MSG = 'Junior/Senior logins needs the Complex cohort model and the Quad role. Turn those on first.';
 const CHANGED_MSG = 'Someone else changed this. Reload Youth Setup.';
+export const INTAKE_OFF_MSG = 'Turning Intakes off deletes waiting intake rows.';
 
 // P11: Check forms runs on the Youth Setup draft (not yet saved), validated by the same allow-list fields before any fetch.
 const ELV = MinistryConfigSchema.shape.elvanto.removeDefault();
@@ -143,7 +148,7 @@ export function makeSettingsService(
         }
       }
 
-      const { ministryConfig: _omit, expect: base, ...scalarPatch } = patch;
+      const { ministryConfig: _omit, expect: base, confirmIntakeOff, ...scalarPatch } = patch;
       const update: Partial<AppSettings> = { ...scalarPatch };
 
       // Roles newly turned OFF by this save (compared against the pre-save config) —
@@ -181,6 +186,14 @@ export function makeSettingsService(
           cleanPatch = { ...cleanPatch, busMinistry: rest };
         }
         const merged = mergeMinistryConfig(cur, cleanPatch);
+        // Module tree rules (module-tree.ts): refuse a save that leaves a module on without what it needs, rather than let
+        // the resolver hide it silently. The one cascade allowed is Intakes following its parents off, behind the confirm.
+        const asked = mergeModulesUnresolved(cur, cleanPatch);
+        const intakeDrop = cur.modules.intakeAdmin === 'on' && resolveModules(asked).intakeAdmin === 'off';
+        if (intakeDrop) asked.intakeAdmin = 'off';
+        const problems = moduleProblems(asked);
+        if (problems.length) throw new AppError('VALIDATION_ERROR', problems.join(' '), 400, { problems });
+        if (intakeDrop && confirmIntakeOff !== true) throw new AppError('INTAKE_OFF_CONFIRM', INTAKE_OFF_MSG, 400);
         // Only turning New person on is refused: a save that leaves the mode alone (e.g. an incomplete block after a
         // rollback) must not block unrelated Youth Setup saves; the send-time 409 ELVANTO_NOT_SET is the guard there.
         if (cur.modules.newYouthForms === 'off' && merged.modules.newYouthForms !== 'off' && !elvantoReady(merged)) {

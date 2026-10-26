@@ -15,7 +15,7 @@ import {
   InMemoryAuditRepository, InMemorySettingsRepository, InMemoryStudentRepository, InMemoryLeaderRepository, InMemoryUserRepository,
   InMemoryServiceSessionRepository, InMemoryServiceAttendanceRepository,
 } from '../repositories/in-memory';
-import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
+import { MINISTRY_CONFIG_DEFAULTS, MinistryConfigSchema } from '../core/ministry-config';
 import { ClaimResponse, INTAKE_TYPES, PUSH_SCHEMAS } from '../core/link-contract';
 import { dedupeKey } from '../services/link-rules';
 import { decryptField, maybeEncrypt } from '../utils/field-crypto';
@@ -385,7 +385,7 @@ describe('sync: intake hint, pushes, results', () => {
     const h = await setup();
     const users = new InMemoryUserRepository(); const audit = new InMemoryAuditRepository();
     for (const r of [users, audit]) await r.init();
-    await makeSettingsService(h.settings, audit, users, () => h.intake.off()).update(ADMIN, { ministryConfig: { modules: { intakeAdmin: 'off' } } });
+    await makeSettingsService(h.settings, audit, users, () => h.intake.off()).update(ADMIN, { ministryConfig: { modules: { intakeAdmin: 'off' } }, confirmIntakeOff: true });
     await h.settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
       modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, intakeAdmin: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off' } } } as never);
     expect((await h.sync.claim({ ...fx('claim-request.json'), linkRev: 12 })).intake).toEqual({ mode: 'off', hurry: false, refresh: [] });
@@ -406,7 +406,7 @@ describe('sync: intake hint, pushes, results', () => {
     const r = await one(h, act('intakeAnswer', answerP(), NOTE));
     const users = new InMemoryUserRepository(); const audit = new InMemoryAuditRepository();
     for (const x of [users, audit]) await x.init();
-    await makeSettingsService(h.settings, audit, users, () => h.intake.off()).update(ADMIN, { ministryConfig: { modules: { intakeAdmin: 'off' } } });
+    await makeSettingsService(h.settings, audit, users, () => h.intake.off()).update(ADMIN, { ministryConfig: { modules: { intakeAdmin: 'off' } }, confirmIntakeOff: true });
     expect((await h.link.getAction(r.id))!.status).toBe('cancelled');
   });
   it('review fix: the claim hint clears nothing while Off and purges at most hourly while On', async () => {
@@ -457,9 +457,13 @@ describe('settings: turning Intake Off deletes every intake row at once', () => 
     for (const r of [repo, audit, users]) await r.init();
     const hook = vi.fn(async () => {});
     const s = makeSettingsService(repo, audit, users, hook);
+    // Intakes needs New person form (module tree); seeded straight into the repo, as turning New person on needs Elvanto.
+    await repo.updateSettings({ ministryConfig: MinistryConfigSchema.parse({ modules: { newYouthForms: 'on' } }) });
     await s.update(ADMIN, { ministryConfig: { modules: { intakeAdmin: 'on' } } });
     expect(hook).not.toHaveBeenCalled();
-    await s.update(ADMIN, { ministryConfig: { modules: { intakeAdmin: 'off' } } });
+    await expect(s.update(ADMIN, { ministryConfig: { modules: { intakeAdmin: 'off' } } })).rejects.toMatchObject({ code: 'INTAKE_OFF_CONFIRM', statusCode: 400 });
+    expect(hook).not.toHaveBeenCalled();
+    await s.update(ADMIN, { ministryConfig: { modules: { intakeAdmin: 'off' } }, confirmIntakeOff: true });
     expect(hook).toHaveBeenCalledTimes(1);
     await s.update(ADMIN, { ministryConfig: { modules: { intakeAdmin: 'off' } } });
     expect(hook).toHaveBeenCalledTimes(1);

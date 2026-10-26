@@ -137,6 +137,7 @@ describe('T10 Youth Setup modules: the draft keeps all four switches', () => {
   const load = (modules: any) => {
     const f = loadFns(['_setupModuleMode', '_setupSetModule', '_setupElvantoModulesHtml', '_nyModeOf'],
       `const _SETUP_ELVANTO = ${html.match(/const _SETUP_ELVANTO = (\[[\s\S]*?\n\]);/)![1]};
+       const _SETUP_SWITCHES = ${html.match(/const _SETUP_SWITCHES = (\[[\s\S]*?\n\]);/)![1]};
        let _setupDraft = { modules: ${JSON.stringify(modules)} };
        function _setupRerender() {}
        function helpTip(t) { return '<tip>' + t + '</tip>'; }
@@ -156,6 +157,10 @@ describe('T10 Youth Setup modules: the draft keeps all four switches', () => {
     expect(out.match(/<select/g)).toHaveLength(4);
     expect(out.match(/selected/g)).toHaveLength(4); // each shows the inherited admin
     expect(out).toContain('Admin only');
+    // Modular setup: the four switchboard keys are checkboxes, on unless stored false.
+    for (const label of ['Live Elvanto link', 'Public consent form', 'Digest email', 'Camp']) expect(out).toContain(label);
+    expect(out.match(/type="checkbox" id="setup-\w+" checked/g)).toHaveLength(4);
+    expect(f._setupElvantoModulesHtml({ camp: false })).not.toMatch(/id="setup-camp" checked/);
   });
   it('changing one writes all four, so the others do not move by inheritance', () => {
     const body = `${extractFn(html, '_setupSetModule')}\n${extractFn(html, '_setupModuleMode')}\n${extractFn(html, '_nyModeOf')}`;

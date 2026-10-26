@@ -7387,7 +7387,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', brackets: [{ id: '79', label: 'Yr 7–9', gradeMin: 7, gradeMax: 9 }, { id: '1012', label: 'Yr 10–12', gradeMin: 10, gradeMax: 12 }], genderPolicy: 'strict', serviceDayOfWeek: 5,
     timeZone: 'Australia/Brisbane', consentCutoff: '09:00' }, // Y3a: the location's time zone and consent cut-off
   roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
-  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', intakeAdmin: 'off', flowHiddenStep: {}, prayers: true },
+  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', intakeAdmin: 'off', flowHiddenStep: {}, prayers: true, liveLink: true, digest: true, camp: true, busConsentForm: true },
   logins: { simple: false },
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
   /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
@@ -7464,12 +7464,13 @@ function pickMinistryPreset(id) {
     </div>`);
 }
 
-async function saveMinistrySetup() {
+async function saveMinistrySetup(confirmIntakeOff) {
   try {
     const res = await API.patch('/settings', {
       ..._setupPatch(_setupDraft, _setupBase),
       serviceMinAttendance: _setupServiceMinAttendance,
       termGapDays: _setupTermGapDays,
+      ...(confirmIntakeOff ? { confirmIntakeOff: true } : {}),
     });
     const { renamedQuads, ...fresh } = res || {};
     // Re-seed the draft and base from the saved config straight away (not null: the old
@@ -7492,7 +7493,7 @@ async function saveMinistrySetup() {
     ]);
     _adminData = { settings, users, history };
     await renderAdminView(settings, users, history);
-  } catch (e) { toast(e.message); }
+  } catch (e) { if (e.code === 'INTAKE_OFF_CONFIRM') _setupIntakeOffConfirm(); else toast(e.message); } // a module refusal is plain text
 }
 
 // Returns the reason Junior/Senior logins is greyed out, or '' when it is free. Mirrors the server 400.
@@ -7845,7 +7846,8 @@ function _setupRiskyDiff(saved, draft) {
   const prayers = (c) => !(c.modules && c.modules.prayers === false);
   // 2026-10-22 (A1): a role going on -> off deactivates its logins on Save; a missing value is the default (Leader off).
   const role = (c, k) => { const v = c.roles && c.roles.enabled && c.roles.enabled[k]; return v != null ? !!v : k !== 'leader'; };
-  const intake = (c) => !!(c.modules && c.modules.intakeAdmin === 'on');
+  // Modular setup: Intakes also goes off when New person form or Live Elvanto link does (the server resolves it the same way).
+  const intake = (c) => { const m = c.modules || {}; return m.intakeAdmin === 'on' && m.newYouthForms !== 'off' && m.newYouthForms !== false && m.liveLink !== false; };
   const out = [];
   if (simple(s) !== simple(d)) out.push('logins.simple');
   if (prayers(s) !== prayers(d)) out.push('modules.prayers');
@@ -7880,12 +7882,21 @@ function confirmSaveMinistrySetup() {
     return n ? `${n} ${r[0].toUpperCase() + r.slice(1)} login${n === 1 ? '' : 's'}` : '';
   }).filter(Boolean);
   if (offs.length) risky += red(`This switches off ${offs.length > 1 ? offs.slice(0, -1).join(', ') + ' and ' + offs[offs.length - 1] : offs[0]}. Turning the role back on does not switch them back on.`);
-  if (diff.includes('modules.intakeAdmin')) risky += red('This turns New youth &amp; consent off. Its stored plans are deleted and its pending jobs are cancelled.');
+  if (diff.includes('modules.intakeAdmin')) risky += red('Turning Intakes off deletes waiting intake rows.');
   modal(`<div class="mo-title">Save Youth Setup?</div>
     ${risky}
     <div style="font-size:13px;color:var(--ink-mid);line-height:1.6">This updates live configuration (branding, terminology, structure, roles, modules) for everyone who uses the app. Some changes only fully appear for other users after they log out and back in.</div>
     <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-primary" style="flex:1" onclick="closeModal();saveMinistrySetup()">Save</button>
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();saveMinistrySetup(${diff.includes('modules.intakeAdmin')})">Save</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    </div>`);
+}
+// Modular setup: the server refuses a save that turns Intakes off (it deletes the waiting intake rows) without confirmIntakeOff.
+function _setupIntakeOffConfirm() {
+  modal(`<div class="mo-title">Turn Intakes off?</div>
+    <div class="alert" style="margin-bottom:10px;background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626">Turning Intakes off deletes waiting intake rows.</div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();saveMinistrySetup(true)">Turn off and save</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
 }
@@ -7925,8 +7936,16 @@ const _SETUP_ELVANTO = [
   ['flows', 'Flow steps', 'See and complete the Elvanto flow steps for students.'],
 ];
 function _setupModuleMode(md, k) { return _nyModeOf(md[k] != null ? md[k] : md.newYouthForms); }
+// Modular setup: the switchboard keys (default on). The server refuses a save that leaves a module on without what it needs.
+const _SETUP_SWITCHES = [
+  ['liveLink', 'Live Elvanto link', 'The console reads and writes Elvanto for the app. Flows, Lifegroups, Check-in, New person and the Public consent form need it.'],
+  ['busConsentForm', 'Public consent form', 'Parents fill in the bus consent form on Elvanto. Needs Bus and Live Elvanto link.'],
+  ['digest', 'Digest email', 'The weekly summary email the console sends.'],
+  ['camp', 'Camp', 'The camp import and camp Messenger jobs in the console.'],
+];
 function _setupElvantoModulesHtml(md) {
-  return _SETUP_ELVANTO.map(([k, label, tip]) => `<div class="fg"><label class="fl" for="setup-${k}">${esc(label)} ${helpTip(tip + ' Admin only shows it to the admin login only.')}</label>
+  return _SETUP_SWITCHES.map(([k, label, tip]) => `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="setup-${k}" ${md[k] !== false ? 'checked' : ''} onchange="_setupSet('modules.${k}', this.checked)"> <span>${esc(label)} ${helpTip(tip)}</span></label>`).join('')
+    + _SETUP_ELVANTO.map(([k, label, tip]) => `<div class="fg"><label class="fl" for="setup-${k}">${esc(label)} ${helpTip(tip + ' Admin only shows it to the admin login only.')}</label>
       <select class="fs" id="setup-${k}" onchange="_setupSetModule('${k}', this.value)">${[['off', 'Off'], ['admin', 'Admin only'], ['on', 'On']].map(([v, l]) => `<option value="${v}" ${_setupModuleMode(md, k) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('');
 }
 // 2026-10-14: per flow the console pushes, the step Flow steps hides from every login and refuses to complete or assign.
@@ -8131,6 +8150,7 @@ function _dropLocationKeys(cfg) {
     const md = cfg.modules = { ...cfg.modules };
     for (const [k] of _SETUP_ELVANTO) delete md[k];
     delete md.newYouthForms; delete md.flowHiddenStep; delete md.intakeAdmin; // R4a#1: New youth & consent too
+    delete md.liveLink; // modular setup: per location like Intakes (Digest email, Camp and Public consent form are carried)
   }
   return cfg;
 }

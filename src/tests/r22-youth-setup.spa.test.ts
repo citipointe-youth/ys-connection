@@ -45,9 +45,29 @@ describe('A1 the Save confirm names what will be switched off', () => {
     const h = confirm({ roles: { enabled: { grade: true } } }, { roles: { enabled: { grade: false } } });
     expect(h).not.toContain('This switches off');
   });
-  it('New youth & consent off warns that the plans are deleted', () => {
+  it('New youth & consent off warns that the plans are deleted (modular setup wording), and Save sends the confirm', () => {
     const h = confirm({ modules: { intakeAdmin: 'on' } }, { modules: { intakeAdmin: 'off' } });
-    expect(h).toContain('This turns New youth &amp; consent off. Its stored plans are deleted and its pending jobs are cancelled.');
+    expect(h).toContain('Turning Intakes off deletes waiting intake rows.');
+    expect(h).toContain('saveMinistrySetup(true)');
+    expect(confirm({}, {})).toContain('saveMinistrySetup(false)');
+  });
+  it('MC8: a save the server refuses with INTAKE_OFF_CONFIRM asks, then resends with the flag', () => {
+    const html = loadIndexHtml();
+    const save = extractFn(html, 'saveMinistrySetup');
+    expect(save).toContain("...(confirmIntakeOff ? { confirmIntakeOff: true } : {})");
+    expect(save).toContain("if (e.code === 'INTAKE_OFF_CONFIRM') _setupIntakeOffConfirm(); else toast(e.message);");
+    const ask = extractFn(html, '_setupIntakeOffConfirm');
+    expect(ask).toContain('Turning Intakes off deletes waiting intake rows.');
+    expect(ask).toContain('saveMinistrySetup(true)');
+  });
+  it('MC8: turning New person form or Live Elvanto link off with Intakes on shows the warning too', () => {
+    const saved = { modules: { newYouthForms: 'on', intakeAdmin: 'on', liveLink: true } };
+    expect(_setupRiskyDiff(saved, { modules: { newYouthForms: 'off', intakeAdmin: 'on' } })).toEqual(['modules.intakeAdmin']);
+    expect(_setupRiskyDiff(saved, { modules: { newYouthForms: 'on', intakeAdmin: 'on', liveLink: false } })).toEqual(['modules.intakeAdmin']);
+    expect(_setupRiskyDiff(saved, saved)).toEqual([]);
+    const h = confirm(saved, { modules: { newYouthForms: 'off', intakeAdmin: 'on' } });
+    expect(h).toContain('Turning Intakes off deletes waiting intake rows.');
+    expect(h).toContain('saveMinistrySetup(true)');
   });
 });
 

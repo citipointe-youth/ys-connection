@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { makeSyncService, rematchRoster } from '../services/sync.service';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import { InMemoryLeaderRepository, InMemorySettingsRepository, InMemoryStudentRepository, InMemoryUserRepository } from '../repositories/in-memory';
-import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
+import { MINISTRY_CONFIG_DEFAULTS, MinistryConfigSchema } from '../core/ministry-config';
+import LIVE_MODULES from './fixtures/live-modules.json';
 import { ClaimResponse, INTAKE_TYPES, PAYLOAD_SCHEMAS, PushResponse, ResultResponse } from '../core/link-contract';
 import { dedupeKey } from '../services/link-rules';
 import type { ActionType, NewOutboxRow } from '../core/link-types';
@@ -367,6 +368,24 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     await settings.updateSettings({ ministryConfig: { ...cfg, modules: { ...legacy, newYouthForms: 'admin', intakeAdmin: 'on', lifegroups: false, connectionAudit: false } } } as any);
     expect(ClaimResponse.parse(await svc.claim(claimReq)).modules).toEqual({ checkin: 'admin', lifegroupReport: 'admin', flows: 'admin', newYouthForms: 'admin',
       intakeAdmin: 'on', lifegroups: false, connectionAudit: false });
+  });
+  it('MC7 (modular setup): an older console still accepts the claim reply modules; the switchboard keys are not in it (no LINK_REV bump)', async () => {
+    // Byte copy of the console's ys-link.js:576-583 validModules (Project 11.1, LINK_REV 20).
+    const MODE3 = ['off', 'admin', 'on'];
+    function validModules(m: any) {
+      if (!m || typeof m !== 'object' || Array.isArray(m)) return null;
+      const ok = ['checkin', 'lifegroupReport', 'flows', 'newYouthForms'].every((k) => MODE3.includes(m[k]))
+        && (m.intakeAdmin === 'off' || m.intakeAdmin === 'on') && typeof m.lifegroups === 'boolean' && typeof m.connectionAudit === 'boolean';
+      return ok ? { checkin: m.checkin, lifegroupReport: m.lifegroupReport, flows: m.flows, newYouthForms: m.newYouthForms,
+        intakeAdmin: m.intakeAdmin, lifegroups: m.lifegroups, connectionAudit: m.connectionAudit } : null;
+    }
+    const { svc, settings } = await setup();
+    const cfg = (await settings.getSettings()).ministryConfig;
+    await settings.updateSettings({ ministryConfig: { ...cfg, modules: MinistryConfigSchema.parse({ modules: LIVE_MODULES }).modules } } as any);
+    const reply = await svc.claim(claimReq);
+    expect(reply.linkRev).toBe(20);
+    expect(reply.modules).toEqual({ checkin: 'admin', lifegroupReport: 'admin', flows: 'admin', newYouthForms: 'on', intakeAdmin: 'on', lifegroups: true, connectionAudit: true });
+    expect(validModules(ClaimResponse.parse(reply).modules)).toEqual(reply.modules);
   });
   it('T2: a roster push with a grade-6 student is applied', async () => {
     const { svc, link } = await setup();
