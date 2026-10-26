@@ -173,19 +173,19 @@ You can stop here. Your app works.
 ## 5. Set up your ministry (10 min)
 
 1. Open **Admin** > **Youth Setup**.
-2. Open the card **Structure & Roles**. At **Start from**, select **Complex Ministry** or **Simple Ministry**.
+2. Open the card **Structure & Roles**. At **Start from**, select **Junior/Senior Ministry**.
 3. If you have a settings file from another location, find the card **Use this setup at another location**. Select **Load settings file**. Select the file.
 4. You must change these. A settings file from another location brings that location's names.
    - In the card **Branding**, set **Ministry name**, **App name** and **Logo**.
    - In the card **Terminology**, set **Group-name prefixes to strip** to the prefixes of your group names.
    - In the card **Structure & Roles**, check **Time zone** and **Consent closes at**. **Time zone** must be the time zone of your Elvanto account.
 5. Select **Save Youth Setup** at the bottom of the page. Select **Save** in the box.
-6. Select **Apply account layout for Complex** or **Apply account layout for Simple**. The button name ends with your preset.
+6. Select **Apply account layout**.
 7. Read the list of accounts. Type `APPLY`. Select **Apply**.
 
 WARNING: The box "Account layout applied" shows each new password once. Copy each one to your password manager before you select **Done**.
 
-Complex Ministry makes a girls login and a boys login for each grade, and four quad logins. Simple Ministry makes six grade logins. Add or remove logins in **Admin** > **Accounts**.
+Junior/Senior Ministry makes four logins: Junior Girls, Junior Guys, Senior Girls and Senior Guys. Add or remove logins in **Admin** > **Accounts**.
 
 Expected result: the accounts list shows the new logins.
 
@@ -285,7 +285,7 @@ Technical: make a pair with `npx web-push generate-vapid-keys`.
 
 Expected result: when **Notices** is **On** in **Modules & Import**, **More** > **Notices** shows the button **Turn on alerts**.
 
-NOTE: Notices go only to admin, director and quad logins. Simple Ministry has no quad logins.
+NOTE: Notices go only to admin, director and the four Junior/Senior logins.
 
 ## 12. Troubleshooting (as needed)
 

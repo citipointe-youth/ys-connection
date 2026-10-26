@@ -7122,14 +7122,11 @@ function wizHandleAllocationImportFile(input) {
 // (`.drop`, same pattern as the Home/Trends dropdowns) so the screen doesn't
 // dump everything on you at once. Every input writes into _setupDraft via
 // _setupSet and is saved by saveMinistrySetup() through PATCH /settings.
-// 'Two-bracket ministry' was retired 2026-07-10 — a medium/junior-senior
-// ministry now just starts from "Complex Ministry" and creates broader
-// grade-equivalent accounts (Admin -> Accounts), optionally skipping quad
-// accounts entirely. See design doc §5.1a / CLAUDE.md.
-// 'small-flat'/'micro' were merged into one 'simple' preset 2026-07-11.
+// 2026-10-27 (B1): new locations are Junior/Senior only, so there is one preset. The old
+// 'simple' (Simple Ministry) preset is gone from the screen; a stored row that says
+// preset:'simple' still parses on the server.
 const MINISTRY_PRESETS_INFO = [
-  { id: 'large-graded-au', title: 'Complex Ministry', desc: 'A login per grade, plus 4 quad logins.' },
-  { id: 'simple', title: 'Simple Ministry', desc: '6 logins, 2-3 grades each. No quads or Director.' },
+  { id: 'large-graded-au', title: 'Junior/Senior Ministry', desc: 'Four logins: Junior and Senior, Girls and Guys.' },
 ];
 let _setupDraft = null;
 let _setupServiceMinAttendance = null;
@@ -7388,14 +7385,8 @@ function _deepMergeClient(base, patch) {
 // threshold shared between the backend and this file.
 const PRESET_CONFIGS_CLIENT = {
   'large-graded-au': {},
-  simple: {
-    preset: 'simple',
-    structure: { cohortModel: 'none', genderPolicy: 'strict' },
-    roles: { enabled: { director: false, quad: false } },
-    modules: { connectionAudit: false, lifegroups: true, exportGuides: 'elvanto' },
-  },
 };
-const PRESET_SERVICE_MIN_ATTENDANCE_CLIENT = { 'large-graded-au': 100, simple: 10 };
+const PRESET_SERVICE_MIN_ATTENDANCE_CLIENT = { 'large-graded-au': 100 };
 
 // Mirrors src/core/ministry-config.ts's MINISTRY_CONFIG_DEFAULTS. Needed so
 // switching presets always computes "defaults + this preset's overrides" from
@@ -7479,7 +7470,7 @@ function _applyMinistryPreset(id) {
 function pickMinistryPreset(id) {
   const p = MINISTRY_PRESETS_INFO.find((x) => x.id === id) || { title: id };
   modal(`<div class="mo-title">Use ${esc(p.title)}?</div>
-    <p style="color:var(--ink-mid);margin-bottom:20px">This sets the cohort model, gender rule, Director and Quad logins, Connection Audit, Lifegroups and Export guides. Everything else stays as it is. Nothing changes until you tap Save.</p>
+    <p style="color:var(--ink-mid);margin-bottom:20px">This is the standard setup for a new location. Everything else stays as it is. Nothing changes until you tap Save.</p>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary" style="flex:1" onclick="closeModal();_applyMinistryPreset('${id}')">Use ${esc(p.title)}</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -7614,16 +7605,16 @@ function _youthSetupBody(settings, users) {
   // since both look like null.
   const logoMode = bv('logoImage') ? 'image' : (_logoModeOverride || 'default');
 
+  // 2026-10-27 (B1): a location that already has logins besides Admin is configured, so it gets no "Start from" row
+  // and no "Apply account layout" button. A fresh install (Admin only) sees both.
+  const configured = allUsers.some(u => u.role !== 'admin');
   // 2026-10-22 (B9): the presets are a "Start from" row at the top of Structure & Roles (ruling D3 keeps them).
   let b = _setupCard('structure', 'Structure & Roles', `
-    <div class="fg"><label class="fl">Start from</label>
+    ${configured ? '' : `<div class="fg"><label class="fl">Start from</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-      ${MINISTRY_PRESETS_INFO.map(p => (p.id === 'simple' && simpleOn)
-        ? `<button class="btn btn-secondary" style="flex:1;min-width:150px" disabled title="${SIMPLE_LOCK_TIP}">${esc(p.title)}</button>`
-        : `<button class="btn btn-secondary" style="flex:1;min-width:150px" onclick="pickMinistryPreset('${p.id}')">${esc(p.title)}</button>`).join('')}
+      ${MINISTRY_PRESETS_INFO.map(p => `<button class="btn btn-secondary" style="flex:1;min-width:150px" onclick="pickMinistryPreset('${p.id}')">${esc(p.title)}</button>`).join('')}
       </div>
-      ${MINISTRY_PRESETS_INFO.map(p => `<div class="help-text" style="margin-top:4px"><strong>${esc(p.title.split(' ')[0])}:</strong> ${esc(p.desc)}</div>`).join('')}
-      ${simpleOn ? `<div class="help-text" style="margin-top:4px">Turn off Junior/Senior logins to pick Simple or change the cohort model.</div>` : ''}</div>
+      ${MINISTRY_PRESETS_INFO.map(p => `<div class="help-text" style="margin-top:4px">${esc(p.desc)}</div>`).join('')}</div>`}
     <div class="fg"><label class="fl" for="fl-cohort-model">Cohort model ${helpTip('Complex: a login for every single grade, plus 4 extra combined logins for wider age groups. Simple: 6 broader logins that each cover 2-3 grades, no combined logins. Either way, a login only sees its own students. Changing this also turns Director and Quad on or off below.')}</label>
       <select id="fl-cohort-model" class="fs" onchange="_setupSetCohortModel(this.value)" ${simpleOn ? `disabled title="${SIMPLE_LOCK_TIP}"` : ''}>
         <option value="grades-quads" ${cohort==='grades-quads'?'selected':''}>Complex</option>
@@ -7733,10 +7724,9 @@ function _youthSetupBody(settings, users) {
   // above), independent of the Save button. 2026-10-22 (B10): drawn only when
   // the client-side plan mirror below says Accounts don't match; nothing otherwise.
   const alignPlan = planCohortAccountLayoutClient(savedCohort, savedGradeMin, savedGradeMax, savedGradeLabel, allUsers, savedSimple);
-  const aligned = !alignPlan.toCreate.length && !alignPlan.toDeactivate.length;
-  const targetLabel = savedCohort === 'none' ? 'Simple' : 'Complex';
+  const aligned = configured || (!alignPlan.toCreate.length && !alignPlan.toDeactivate.length);
   b += aligned ? '' : `<div class="alert al-warn" style="margin-top:8px">Accounts don't match the saved layout. Creates or switches off grade and quad logins to match the saved setup. Save first.
-    <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="previewCohortLayout('${savedCohort}')">Apply account layout for ${targetLabel}</button></div>`;
+    <button class="btn btn-secondary btn-full" style="margin-top:8px" onclick="previewCohortLayout('${savedCohort}')">Apply account layout</button></div>`;
 
   return b;
 }
@@ -7800,9 +7790,8 @@ async function previewCohortLayout(targetCohort) {
 }
 
 function _showCohortLayoutPreview(targetCohort, plan) {
-  const label = targetCohort === 'none' ? 'Simple' : 'Complex';
   const rows = (items) => items.map(x => `<div class="li-sub">${esc(x.displayName)} <span style="color:var(--ink-faint)">(${esc(x.username)})</span></div>`).join('');
-  let h = `<div class="mo-title">Apply ${label} account layout?</div>
+  let h = `<div class="mo-title">Apply account layout?</div>
     <div style="font-size:13px;color:var(--ink-mid);margin-bottom:12px">This only creates/deactivates grade &amp; quad Accounts — it never touches students, leaders or connections, and never deletes an account.</div>`;
   if (plan.toCreate.length) h += `<div class="sh">Accounts to create (${plan.toCreate.length})</div>${rows(plan.toCreate.map(t => ({ displayName: t.displayName, username: t.username })))}`;
   if (plan.toDeactivate.length) h += `<div class="sh" style="margin-top:8px">Accounts to deactivate (${plan.toDeactivate.length})</div>${rows(plan.toDeactivate)}`;

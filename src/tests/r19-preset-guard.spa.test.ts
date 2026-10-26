@@ -35,34 +35,32 @@ describe('CY-D1 preset guard', () => {
   it('a preset tap + Save keeps intake, link modules, Bus and branding', async () => {
     const { svc, onIntakeOff } = await stored();
     const before = (await svc.get()).ministryConfig;
-    for (const id of ['simple', 'large-graded-au']) {
+    for (const id of ['large-graded-au']) { // B1: the one preset
       const f = loadFns(['_deepMergeClient', '_presetPaths', '_applyMinistryPreset', '_setupBaseOf', '_setupPatch'],
         `${PRELUDE} let _setupDraft = ${JSON.stringify(before)}; let _setupServiceMinAttendance = 100; function _setupRerender() {} function __d() { return _setupDraft; }`,
         ['_applyMinistryPreset', '_setupPatch', '_setupBaseOf', '__d']);
       f._applyMinistryPreset(id);
       const d = f.__d();
-      expect(d.structure.cohortModel).toBe(id === 'simple' ? 'none' : 'grades-quads');
-      expect(d.roles.enabled.quad).toBe(id !== 'simple');
+      expect(d.structure.cohortModel).toBe('grades-quads');
+      expect(d.roles.enabled.quad).toBe(true);
       await svc.update(ADMIN, { ...f._setupPatch(d, f._setupBaseOf(before)) } as any);
       const mc = (await svc.get()).ministryConfig;
       expect(mc.modules).toMatchObject({ intakeAdmin: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'on', newYouthForms: 'on', busMinistry: true, flowHiddenStep: { f1: 's2' } });
       expect(mc.busMinistry).toMatchObject({ churchAddress: '1 Church St', churchPlaceId: 'pl1', coordinatorLeaderIds: ['L1'], leaveTime: '20:30' });
       expect(mc.branding).toMatchObject({ ministryName: 'YS Gold Coast', appName: 'GC App', accent: '#ff0000' });
       expect(mc.labels.groupNameStrip).toEqual(['Gold Coast - YS - ']);
-      expect(mc.modules.connectionAudit).toBe(id !== 'simple');
+      expect(mc.modules.connectionAudit).toBe(before.modules.connectionAudit); // the one preset no longer touches it
     }
     expect(onIntakeOff).not.toHaveBeenCalled();
   });
 
-  it('switching presets does not pile up (simple then Complex reverts the simple fields)', () => {
+  it('the one preset sets only the preset fields and the 100 attendance floor', () => {
     const f = loadFns(['_deepMergeClient', '_presetPaths', '_applyMinistryPreset'],
       `${PRELUDE} let _setupDraft = {}; let _setupServiceMinAttendance = 100; function _setupRerender() {} function __d() { return _setupDraft; } function __m() { return _setupServiceMinAttendance; }`,
       ['_applyMinistryPreset', '__d', '__m']);
-    f._applyMinistryPreset('simple');
-    expect(f.__m()).toBe(10);
     f._applyMinistryPreset('large-graded-au');
     const d = f.__d();
-    expect(d).toMatchObject({ preset: 'large-graded-au', structure: { cohortModel: 'grades-quads' }, roles: { enabled: { director: true, quad: true } }, modules: { connectionAudit: true } });
+    expect(d).toEqual({ preset: 'large-graded-au' });
     expect(d.branding).toBeUndefined();
     expect(f.__m()).toBe(100);
   });
@@ -70,12 +68,12 @@ describe('CY-D1 preset guard', () => {
   it('a preset tap asks first; only the confirm applies it', () => {
     let html = '';
     const f = loadFns(['pickMinistryPreset'],
-      `const MINISTRY_PRESETS_INFO = [{ id: 'simple', title: 'Simple Ministry' }]; function esc(s) { return String(s); } function modal(h) { html = h; } let html = ''; let applied = null; function _applyMinistryPreset(id) { applied = id; } function __s() { return { html, applied }; }`,
+      `const MINISTRY_PRESETS_INFO = [{ id: 'large-graded-au', title: 'Junior/Senior Ministry' }]; function esc(s) { return String(s); } function modal(h) { html = h; } let html = ''; let applied = null; function _applyMinistryPreset(id) { applied = id; } function __s() { return { html, applied }; }`,
       ['pickMinistryPreset', '__s']);
-    f.pickMinistryPreset('simple');
+    f.pickMinistryPreset('large-graded-au');
     html = f.__s().html;
     expect(f.__s().applied).toBeNull();
-    expect(html).toContain("_applyMinistryPreset('simple')");
+    expect(html).toContain("_applyMinistryPreset('large-graded-au')");
     expect(html).toMatch(/stays as it is/);
   });
 });

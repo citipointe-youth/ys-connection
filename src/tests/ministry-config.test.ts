@@ -40,17 +40,9 @@ describe('mergeMinistryConfig', () => {
     expect(merged.structure).toEqual(MINISTRY_CONFIG_DEFAULTS.structure);
   });
 
-  it('applies the simple preset overrides on top of defaults', () => {
-    const merged = mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, PRESET_CONFIGS['simple']);
-    expect(merged.structure.cohortModel).toBe('none');
-    expect(merged.roles.enabled.director).toBe(false); // simple ministry (bug 8, 2026-07-11): Admin + Grade only
-    expect(merged.roles.enabled.quad).toBe(false);
-    expect(merged.roles.enabled.leader).toBe(false);
-    expect(merged.roles.enabled.grade).toBe(true); // untouched by the preset — a simple ministry still uses Grade accounts
-    expect(merged.modules.connectionAudit).toBe(false);
-    expect(merged.modules.lifegroups).toBe(true);
-    // Untouched by the preset — still default
-    expect(merged.branding.accent).toBe(MINISTRY_CONFIG_DEFAULTS.branding.accent);
+  it("a stored preset:'simple' row still parses (B1: the preset itself is gone, the key stays)", () => {
+    expect(MinistryConfigSchema.parse({ preset: 'simple' }).preset).toBe('simple');
+    expect(PRESET_CONFIGS['simple']).toBeUndefined();
   });
 
   it('throws when the merged result is invalid', () => {

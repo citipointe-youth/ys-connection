@@ -24,6 +24,7 @@ const hexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be a 6-digit hex c
 // having 3 presets with a subtle micro-vs-small-flat distinction (lifegroups/
 // export guides only) wasn't earning its complexity; a ministry that wants those
 // off individually can still flip them in the (now un-layered) fine-tuning cards.
+// 2026-10-27: 'simple' has no config any more (see PRESET_CONFIGS) and stays here only so stored rows parse.
 export const MINISTRY_PRESETS = ['large-graded-au', 'simple'] as const;
 export type MinistryPreset = (typeof MINISTRY_PRESETS)[number];
 
@@ -251,23 +252,13 @@ export function assertGradesInRange(structure: { gradeMin: number; gradeMax: num
 export const MINISTRY_CONFIG_DEFAULTS: MinistryConfig = MinistryConfigSchema.parse({});
 
 // Per-preset overrides applied on top of the defaults when an admin picks a
-// preset in the Youth Ministry Setup wizard. `large-graded-au` is intentionally
-// `{}` — it IS the default, so picking it is always a no-op (acceptance
-// criterion #1). serviceMinAttendance is scaled here too even though it lives
-// on AppSettings, not inside ministryConfig — see PRESET_SERVICE_MIN_ATTENDANCE.
-export const PRESET_CONFIGS: Record<MinistryPreset, Record<string, unknown>> = {
+// preset in the Youth Ministry Setup wizard. New locations are Junior/Senior only
+// (2026-10-27, B1), so there is one preset: `large-graded-au` is intentionally `{}` —
+// it IS the default, so picking it is always a no-op (acceptance criterion #1).
+// 'simple' stays in MINISTRY_PRESETS only so a stored `preset: 'simple'` still parses;
+// it has no entry here. serviceMinAttendance is scaled in PRESET_SERVICE_MIN_ATTENDANCE.
+export const PRESET_CONFIGS: Partial<Record<MinistryPreset, Record<string, unknown>>> = {
   'large-graded-au': {},
-  simple: {
-    preset: 'simple',
-    structure: { cohortModel: 'none', genderPolicy: 'strict' },
-    // Director was on here until 2026-07-11 — bug 8 (admin bug list): a Simple
-    // ministry's intended account layout is Admin + the 6 grade-bracket
-    // accounts only, so Director is switched off too (an existing active
-    // Director account is auto-deactivated by the generic role-disable
-    // cascade in settings.service.ts, same as quad already was).
-    roles: { enabled: { director: false, quad: false } },
-    modules: { connectionAudit: false, lifegroups: true, exportGuides: 'elvanto', busMinistry: false },
-  },
 };
 
 // serviceMinAttendance defaults to 100 (a whole-ministry Friday-attendance floor)
@@ -275,9 +266,8 @@ export const PRESET_CONFIGS: Record<MinistryPreset, Record<string, unknown>> = {
 // see design doc 03 §6.2 point 7 / doc 01's "one default breaks small ministries"
 // finding. Applied by the Setup wizard's preset step alongside PRESET_CONFIGS,
 // as a second field in the same PATCH /settings call.
-export const PRESET_SERVICE_MIN_ATTENDANCE: Record<MinistryPreset, number> = {
+export const PRESET_SERVICE_MIN_ATTENDANCE: Partial<Record<MinistryPreset, number>> = {
   'large-graded-au': 100,
-  simple: 10,
 };
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {

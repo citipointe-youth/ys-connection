@@ -180,8 +180,6 @@
      "#su-structure",
      "_setupToggle('structure')",
      "h:Structure & Roles",
-     "pickMinistryPreset('large-graded-au')",
-     "pickMinistryPreset('simple')",
      "#fl-cohort-model",
      "_setupSetCohortModel(this.value)",
      "_setupSetGrade()",
