@@ -35,6 +35,8 @@ _The rel19/svc notes below predate auto-promote (2026-10-20): read "before the o
 - old `ensureRun` takes the newest earlier run as `prev`, so a bare midweek trip run can wipe the carry-over (running cars, leaders, pool) for the next bus night. Re-check Car setup before that night, or roll forward again before it.
 Roll forward = promote the rel19 build again. The new build reads `kind`/`vehicle_id` again, but a night created by the old build has its bus copied as a car: open Car setup and save the bus (Charter bus ticked) to re-kind tonight's copy.
 
+**Dashboard birthdays reader (0051, ys/dashboard-birthdays):** the migration creates `dashboard.upcoming_birthdays` and the role `dashboard_reader` with NOLOGIN. To let the Personal Dashboard log in, the owner runs once in the Supabase SQL editor (never commit the password; keep it in the dashboard's secrets): `alter role dashboard_reader login password '<STRONG-PASSWORD>';`. The dashboard connects through the Session pooler as user `dashboard_reader.<ref>` (same host and port as `DATABASE_URL`) and runs `select * from dashboard.upcoming_birthdays order by days_away, first_name`. Revoke: `alter role dashboard_reader nologin;`.
+
 Link contract changes (`src/core/link-*`, link/sync services+controllers, `src/tests/fixtures/elvanto-link/`): ship YS before the 11.1 console; console e2e = `spike/e2e-ys-link.js` in 11.1.
 
 **mod17/ys (`LINK_REV` 17, claim reply `modules`, no migration, no `public/` change)** ships before the console's module-alignment branch. `/health` `schema.current` is unchanged (0043).
