@@ -2027,6 +2027,143 @@ function renderIdCheckEdit() { setApp(shell('<div class="sh">ID Checks</div>'));
 function renderIdCheckGrid() { setApp(shell('<div class="sh">ID Checks</div>')); }
 /*IC-LIST*/
 /*IC-EDIT*/
+// ── Assign leaders grid + archived leaders' history (admin only, Task 15; spec 7.7, 7.7a, 7.8) ──
+// State of the grid page. (IC is the icon registry, so this is _ICG.) arch = the last archived list: its rows are named by index in onclicks, never by name.
+const _ICG = { data: null, arch: [], pend: null, busy: false };
+
+// "Girls · Gr 8, 9" (Yr when the location says Year).
+function _icRowMeta(r) {
+  const w = _gradeWord() === 'Year' ? 'Yr' : 'Gr';
+  const g = r.gender === 'female' ? 'Girls' : r.gender === 'male' ? 'Guys' : '';
+  const gr = (r.grades || []).length ? w + ' ' + [...r.grades].sort((a, b) => a - b).join(', ') : '';
+  return [g, gr].filter(Boolean).join(' · ');
+}
+function _icTickKeys(d) { return new Set((d.ticks || []).map(t => t.userId + '|' + t.leaderId)); }
+// The grid: sticky first column of leaders, one tick column per account (display name + role), Tick all / Clear under each name.
+function _icGridHtml(d) {
+  const cols = d.columns || [], rows = d.rows || [], on = _icTickKeys(d);
+  if (!rows.length) return `<div class="lk-hint">No active leaders yet.</div>`;
+  const stick = 'position:sticky;left:0;z-index:1;background:var(--paper-card);width:150px;min-width:150px;max-width:150px;box-sizing:border-box;border-right:1px solid var(--line)';
+  let h = `<table style="border-collapse:separate;border-spacing:0;min-width:100%"><thead><tr><th style="${stick};text-align:left;padding:8px;font-size:12px">Leader</th>`;
+  for (const c of cols) {
+    h += `<th class="ic-col" data-u="${esc(c.id)}" style="min-width:128px;padding:8px 4px;vertical-align:top;font-size:13px;border-bottom:1px solid var(--line)">${esc(c.name)}<span class="lk-d">${esc(_roleLabel(c.role))}</span>`
+      + `<div style="display:flex;gap:2px;justify-content:center;margin-top:4px"><button type="button" class="btn btn-ghost btn-sm" onclick="_icTickCol('${esc(c.id)}',true)">Tick all</button>`
+      + `<button type="button" class="btn btn-ghost btn-sm" onclick="_icTickCol('${esc(c.id)}',false)">Clear</button></div></th>`;
+  }
+  h += `</tr></thead><tbody>`;
+  for (const r of rows) {
+    h += `<tr><td style="${stick};padding:6px 8px;border-bottom:1px solid var(--line)"><div class="lk-nm" style="font-size:14px">${esc(r.name)}</div><span class="lk-d">${esc(_icRowMeta(r))}</span></td>`;
+    for (const c of cols) {
+      h += `<td style="text-align:center;border-bottom:1px solid var(--line)"><label style="display:flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;cursor:pointer">`
+        + `<input type="checkbox" class="ic-tk" data-u="${esc(c.id)}" data-l="${esc(r.id)}" aria-label="${esc(c.name)} for ${esc(r.name)}" ${on.has(c.id + '|' + r.id) ? 'checked' : ''} onchange="_icTick('${esc(c.id)}','${esc(r.id)}',this.checked)"></label></td>`;
+    }
+    h += `</tr>`;
+  }
+  return h + `</tbody></table>`;
+}
+// Put the boxes back in line with the state (after a failed save, or a Tick all / Clear).
+function _icGridSync() {
+  const d = _ICG.data; if (!d) return;
+  const on = _icTickKeys(d);
+  document.querySelectorAll('.ic-tk').forEach(el => { el.checked = on.has(el.dataset.u + '|' + el.dataset.l); });
+}
+function _icSetTicks(d, userId, ids, on) {
+  const s = new Set(ids);
+  d.ticks = (d.ticks || []).filter(t => !(t.userId === userId && s.has(t.leaderId)));
+  if (on) for (const id of s) d.ticks.push({ leaderId: id, userId });
+}
+// A tick saves at once. leaderIds: one id or a list (a whole column). On failure only this change is undone.
+// ponytail: one request per call; the server takes 1-500 ids and a church has far fewer leaders. Chunk it if that changes.
+async function _icTick(userId, leaderIds, on) {
+  const d = _ICG.data; if (!d) return;
+  const ids = [...new Set([].concat(leaderIds))], had = _icTickKeys(d);
+  const changed = ids.filter(id => had.has(userId + '|' + id) !== on);
+  if (!changed.length) return;
+  _icSetTicks(d, userId, changed, on); _icGridSync();
+  try { await API.put('/id-checks/access', { userId, leaderIds: changed, on }); }
+  catch (e) { _icSetTicks(d, userId, changed, !on); _icGridSync(); toast('Could not save. Try again.'); }
+}
+function _icTickCol(userId, on) { return _icTick(userId, ((_ICG.data && _ICG.data.rows) || []).map(r => r.id), on); }
+
+// Archived leaders' history: name, entry count, last date and two actions. Never a note. Hidden when empty.
+function _icArchHtml(rows) {
+  if (!rows || !rows.length) return '';
+  let h = `<div class="sh">Archived leaders' history</div><div class="lk-hint" style="text-align:left;margin:0 0 8px">Leaders who were deleted. Their notes stay hidden until you re-attach them to an active leader.</div>`;
+  rows.forEach((r, i) => {
+    h += `<div class="li rc"><div class="rc-top"><div class="lk-nm">${esc(r.name)}</div></div>`
+      + `<div class="lk-d">${esc(r.count === 1 ? '1 entry' : r.count + ' entries')} · Last ${esc(fmtDay(r.lastOn))}</div>`
+      + `<div class="rc-foot"><button type="button" class="btn btn-secondary btn-sm" onclick="_icArchAttach(${i})">Re-attach</button>`
+      + `<button type="button" class="btn btn-danger btn-sm" onclick="_icArchDel(${i})">Delete forever</button></div></div>`;
+  });
+  return h;
+}
+function _icArchPaint() { const el = document.getElementById('ic-arch'); if (el) el.innerHTML = _icArchHtml(_ICG.arch); }
+async function _icArchReload() {
+  try { _ICG.arch = await _icGet('/id-checks/archived'); } catch (e) { return; }
+  _icArchPaint();
+}
+function _icArchDel(i) {
+  const r = _ICG.arch[i]; if (!r) return;
+  _ICG.pend = { name: r.name, count: r.count };
+  modal(`<div class="mo-title">Delete forever?</div>
+    <p style="color:var(--ink-mid);margin-bottom:14px">Delete all ${Number(r.count)} entries for ${esc(r.name)} for good? This cannot be undone.</p>
+    <div style="display:flex;gap:8px"><button type="button" class="btn btn-danger" style="flex:1" onclick="_icArchDelGo()">Delete forever</button><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button></div>`);
+}
+async function _icArchDelGo() {
+  const p = _ICG.pend; if (!p || _ICG.busy) return;
+  _ICG.busy = true;
+  try {
+    const r = await API.post('/id-checks/archived/delete', { name: p.name });
+    closeModal(); toast('Deleted ' + (r && r.deleted != null ? r.deleted : p.count) + ' entries');
+    await _icArchReload();
+  } catch (e) { toast('Could not delete. Try again.'); }
+  finally { _ICG.busy = false; }
+}
+function _icArchAttach(i) {
+  const r = _ICG.arch[i]; if (!r) return;
+  _ICG.pend = { name: r.name, count: r.count };
+  const opts = (((_ICG.data || {}).rows) || []).map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('');
+  modal(`<div class="mo-title">Re-attach ${esc(r.name)}</div>
+    <div class="fg"><label class="fl" for="ic-att">Active leader</label><select class="fi" id="ic-att" onchange="_icArchPick(this)"><option value="">Pick a leader</option>${opts}</select></div>
+    <p id="ic-att-msg" style="color:var(--ink-mid);margin:10px 0 14px;min-height:20px"></p>
+    <div style="display:flex;gap:8px"><button type="button" class="btn btn-primary" id="ic-att-go" style="flex:1" disabled onclick="_icArchAttachGo()">Re-attach</button><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button></div>`);
+}
+function _icArchPick(sel) {
+  const o = sel.options[sel.selectedIndex], msg = document.getElementById('ic-att-msg'), go = document.getElementById('ic-att-go');
+  if (msg) msg.textContent = sel.value ? 'Everyone ticked for ' + o.textContent + ' will be able to read these notes.' : '';
+  if (go) go.disabled = !sel.value;
+}
+async function _icArchAttachGo() {
+  const p = _ICG.pend, sel = document.getElementById('ic-att');
+  if (!p || !sel || !sel.value || _ICG.busy) return;
+  _ICG.busy = true;
+  try {
+    const r = await API.post('/id-checks/archived/attach', { name: p.name, leaderId: sel.value });
+    closeModal(); toast('Re-attached ' + (r && r.moved != null ? r.moved : p.count) + ' entries');
+    await _icArchReload();
+  } catch (e) { toast('Could not re-attach. Try again.'); }
+  finally { _ICG.busy = false; }
+}
+
+function _icGridPage() {
+  return `<div class="ph"><div class="ph-title">Assign leaders</div><div class="ph-sub">Tick who may read each leader's ID checks. You see who is ticked, never the notes.</div></div>`
+    + `<div class="card" style="padding:0;overflow:hidden"><div id="ic-grid" style="overflow-x:auto;-webkit-overflow-scrolling:touch">${_icGridHtml(_ICG.data)}</div></div>`
+    + `<div id="ic-arch">${_icArchHtml(_ICG.arch)}</div>`;
+}
+// Replaces the T12 stub above (a later declaration wins).
+async function renderIdCheckGrid() {
+  if (!S.user || S.user.role !== 'admin') { go('idchecks'); return; }
+  const h = _here();
+  setApp(shell(`<div class="ph"><div class="ph-title">Assign leaders</div></div>` + progBar('Loading')));
+  try {
+    const [d, arch] = await Promise.all([_icGet('/id-checks/access'), _icGet('/id-checks/archived')]);
+    if (!_still(h)) return;
+    _ICG.data = d; _ICG.arch = arch || [];
+    setApp(shell(_icGridPage()));
+  } catch (e) {
+    if (_still(h)) setApp(shell(`<div class="ph"><div class="ph-title">Assign leaders</div></div><div class="alert al-warn">${icS('alert')} Could not load. Try again.</div><button type="button" class="btn btn-secondary" onclick="renderIdCheckGrid()">Try again</button>`));
+  }
+}
 /*IC-GRID*/
 /*IC-EXPORT*/
 /* ── END ID CHECKS ── */
@@ -7053,7 +7190,7 @@ function renderNewYearWizard() {
 
   // r22 L3 (A4): say plainly what the cascade takes too (no apostrophes: the text sits in a JS string in onclick).
   const resetText = 'Permanently deletes all students, leaders, connections, attendance, lifegroups, import history, prayers and the Connection Audit. It also deletes saved bus addresses for students, My car settings for leaders and flow assignments. Bus guests keep their addresses. Bus consent forms and the record of who filed them are deleted too (Elvanto keeps the original forms). Accounts are kept. This cannot be undone.';
-  b += _wizStepCard(4, 'Full Reset', resetText,
+  b += _wizStepCard(4, 'Full Reset', resetText + (_modOn('idChecks') ? " ID-check history is kept. Leaders are deleted, so it moves to Archived leaders' history in More, ID Checks." : ''),
     `<button class="btn btn-danger btn-full" onclick="confirmType({title:'Full Reset?',word:'RESET',danger:true,body:'${resetText}${_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''}',onConfirm:wizStep3Confirmed})">Full Reset</button>`,
     _wiz.step3Done, !_wiz.step1Done || !step2Satisfied || !prayersSatisfied);
 
