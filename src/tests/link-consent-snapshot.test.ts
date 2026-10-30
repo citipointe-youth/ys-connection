@@ -47,7 +47,7 @@ const claim = (h: Awaited<ReturnType<typeof setup>>, rev: number) => h.sync.clai
 
 describe('consentSnapshot contract (rev 19)', () => {
   it('LINK_REV is 19 and the fixture parses; a row of the wrong kind is refused', () => {
-    expect(LINK_REV).toBe(20);
+    expect(LINK_REV).toBe(21);
     expect(() => PUSH_SCHEMAS.consentSnapshot.parse(SNAP())).not.toThrow();
     expect(() => PUSH_SCHEMAS.consentSnapshot.parse({ ...SNAP(), kind: 'mismatches' })).toThrow();
   });
@@ -92,5 +92,14 @@ describe('Refresh asks a rev 19 console through the claim reply', () => {
       await h.sync.push('consentSnapshot', { ...SNAP(), kind, takenAt: h.clock.now.toISOString(), total: 0, rows: [] });
     }
     expect((await claim(h, 19)).consentSnap).toEqual({ ask: false });
+  });
+  it('rev 21: an open ask carries askedAt (the stored value) only to a rev 21 console; no ask = no askedAt', async () => {
+    const h = await setup({ rev: 21 });
+    expect((await claim(h, 21)).consentSnap).toEqual({ ask: false });
+    await h.svc.consentSnapshotRefresh(ADMIN);
+    const { askedAt } = await h.link.consentSnapshotMeta();
+    expect(askedAt).toBeTruthy();
+    expect((await claim(h, 21)).consentSnap).toEqual({ ask: true, askedAt });
+    expect((await claim(h, 20)).consentSnap).toEqual({ ask: true });
   });
 });

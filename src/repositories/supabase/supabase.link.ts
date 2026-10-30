@@ -196,6 +196,10 @@ export class SupabaseLinkRepository implements ILinkRepository {
           and status not in ('pending','claimed')`;
       // lease
       const types = (Object.keys(c.capabilities) as ActionType[]).filter((t) => c.capabilities[t] !== 'off');
+      // Y7 (round 2026-10-30): a heartbeat (max 0) renews this console's own LIVE leases, so rows queued behind slow ones in its
+      // batch never lapse and come back with attempts + 1. greatest: never shortens a longer lease; a lapsed one stays sweepable.
+      if (a.max <= 0) await tx`update link_outbox set lease_until = greatest(lease_until, now() + make_interval(secs => ${a.leaseSeconds})), updated_at = now()
+        where status = 'claimed' and lease_owner = ${c.consoleId} and lease_until >= now()`;
       if (a.max <= 0 || !types.length) return [];
       // H1: pending rows first, so re-handed own leases (C01) a console keeps refusing can't fill every slot.
       // A checkOut waits while an older checkIn for the same person and service is pending or claimed (B4 / APP-3).

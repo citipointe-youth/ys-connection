@@ -29,7 +29,10 @@ export const LINK_CONTRACT_VERSION = 1;
 // Rev 20 (door search, 2026-10-25): type doorSearch (any check-in login; the typed name rides in the encrypted note) and push kind
 // doorSearch (the youth the console found, added to the roster as active students). MIN_CONSOLE_REV stays 12: an older console never
 // lists the type, so the door never offers the button.
-export const LINK_REV = 20;
+// Rev 21 (round 2026-10-30): a flows push step may carry offered (the Elvanto person ids its Complete modal offers; missing or
+// empty = unknown), and the claim reply's consentSnap carries askedAt (sent only to a rev 21 console, which dedupes the Refresh
+// by that value). MIN_CONSOLE_REV stays 12: an older app strips offered, an older console strips askedAt.
+export const LINK_REV = 21;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
@@ -188,7 +191,7 @@ export const ClaimResponse = z.object({ contractVersion: Version, serverTime: Is
   // Rev 17: this app's resolved module switches (values only), so the console can mute settings the app does not use.
   modules: z.object({ checkin: z.enum(['off', 'admin', 'on']), lifegroupReport: z.enum(['off', 'admin', 'on']), flows: z.enum(['off', 'admin', 'on']),
     newYouthForms: z.enum(['off', 'admin', 'on']), intakeAdmin: z.enum(['off', 'on']), lifegroups: z.boolean(), connectionAudit: z.boolean() }).optional(),
-  consentSnap: z.object({ ask: z.boolean() }).strict().optional() }); // rev 19: re-read the consent lists now
+  consentSnap: z.object({ ask: z.boolean(), askedAt: Iso.optional() }).strict().optional() }); // rev 19: re-read the consent lists now; rev 21: askedAt
 
 // ---- POST /sync/result (spec 3.3)
 const Detail = z.string().max(300).optional(); // the console's PII-free sentence
@@ -240,7 +243,8 @@ const FlowRow = z.object({ rowId: Uuid, flowId: Uuid, flowName: Text(120), stepI
   textedOn: Ymd.nullable().optional(), // rev 10 (R8): New People step 0 only
   serviceVisits: z.number().int().min(0).max(999).nullable().optional() }); // rev 13: distinct service days this term since the student form (form day counts), null = unknown
 // T12 (rev 5): one step of a pushed flow, empty or not.
-export const FlowStep = z.object({ flowId: Uuid, flowName: Text(120), stepId: Uuid, stepName: Text(120), stepOrder: z.number().int().min(0) });
+export const FlowStep = z.object({ flowId: Uuid, flowName: Text(120), stepId: Uuid, stepName: Text(120), stepOrder: z.number().int().min(0),
+  offered: z.array(Uuid).max(500).optional() }); // rev 21: the next-assignee ids Elvanto offers (missing/empty = unknown)
 const push = <T extends z.ZodTypeAny>(row: T) =>
   z.object({ contractVersion: Version, consoleId: Uuid, takenAt: Iso, rows: z.array(row).max(5000) });
 // ---- X19 (T4): intakePlan / consentPlan, one (mode, date) per push, a full replace of that date. The console builds the
