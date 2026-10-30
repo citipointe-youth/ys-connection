@@ -4,6 +4,17 @@ Ship with `bash scripts/ship.sh <branch>` (or `/ship`). It gates (SPA inline-scr
 Pushing `master` builds on Vercel and the build applies migrations (`vercel-build` = `scripts/migrate.ts`). **Vercel auto-promotes every `master` build to production** (since 2026-10-20), so a push to `master` is a release: there is no manual promote step and no chance to read `/health` first. Check the clock before you push (no ships Fri 17:30-20:00 or Sun 10:00-12:00). After the build, read `Database up to date — …` in the build log and `/health` `schema.current`.
 Rollback = Vercel dashboard > Deployments > the previous good build > Instant Rollback (migrations are additive, nothing to undo). While rolled back, Vercel stops auto-promoting; promote the fixed build by hand to turn it back on.
 
+**Rollback below 0052 (the `director` -> `oversight` rename): run before Instant Rollback**, else oversight logins get 403 on an older build. In the Supabase SQL editor:
+
+```sql
+update users set role = 'director' where role = 'oversight';
+update prayer_requests set created_by_role = 'director' where created_by_role = 'oversight';
+update connections set assigned_by_role = 'director' where assigned_by_role = 'oversight';
+update error_log set last_role = 'director' where last_role = 'oversight';
+update app_settings set ministry_config = jsonb_set(ministry_config #- '{roles,enabled,oversight}', '{roles,enabled,director}', ministry_config->'roles'->'enabled'->'oversight')
+ where id = 'global' and jsonb_typeof(ministry_config) = 'object' and jsonb_typeof(ministry_config->'roles'->'enabled') = 'object' and ministry_config->'roles'->'enabled' ? 'oversight';
+```
+
 **Rollback below bc18 (0044 dropped `bus_consents`)**: an older build reads that table. Before an Instant Rollback, the owner runs in the Supabase SQL editor: `create table if not exists bus_consents (id uuid primary key, student_id uuid unique references students(id) on delete cascade, guest_id uuid unique references bus_guests(id) on delete cascade, given boolean not null default false, note text, recorded_by text not null default '', recorded_at timestamptz not null default now(), check (student_id is not null or guest_id is not null)); alter table bus_consents enable row level security;` (empty: every rider reads Consent: not yet).
 
 **Rollback below bus/remove-fixed-leaders (43e253b; 0026 is also not additive, it dropped `bus_leader_prefs.fixed_vehicle_id`)**: before an Instant Rollback to a build older than 0026, the owner also runs in the Supabase SQL editor: `alter table bus_leader_prefs add column if not exists fixed_vehicle_id uuid;` (any such target is also below 0044, so run the bc18 SQL above too).

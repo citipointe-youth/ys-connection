@@ -285,7 +285,7 @@ Technical: make a pair with `npx web-push generate-vapid-keys`.
 
 Expected result: when **Notices** is **On** in **Modules & Import**, **More** > **Notices** shows the button **Turn on alerts**.
 
-NOTE: Notices go only to admin, director and the four Junior/Senior logins.
+NOTE: Notices go only to admin, oversight and the four Junior/Senior logins.
 
 ## 12. Troubleshooting (as needed)
 

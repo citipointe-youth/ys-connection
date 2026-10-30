@@ -29,7 +29,7 @@ database needed for local development. Seed accounts (local demo only,
 | Username | Role |
 |-------|------|
 | `admin` | admin |
-| `director` | director |
+| `oversight` | oversight |
 | `g79` / `b79` / `g1012` / `b1012` | quad |
 | `grade7` … `grade12` | grade |
 
@@ -66,7 +66,7 @@ Admin → Settings → **Youth Ministry Setup** walks through:
 2. **Branding** — ministry name, app name, colours, logo.
 3. **Terminology** — what to call a small group, the main service, etc.
 4. **Structure** — grade range, cohort model, gender policy.
-5. **Roles** — which optional roles this ministry uses (Director, Quad, Leader). Names are fixed; Admin and Grade are always available.
+5. **Roles** — which optional roles this ministry uses (Oversight, Quad, Leader). Names are fixed; Admin and Grade are always available.
 6. **Modules** — Connection Audit, lifegroups, push notifications, export guides.
 
 Nothing here deletes data and it's revisitable at any time.
