@@ -73,11 +73,11 @@ describe('leader page', () => {
     expect(other).toContain('Start ID check');
     expect(other).toContain('In progress (Codeman)');
   });
-  it('Add note, Export and the safeguarding line', () => {
+  it('Add note and Export, no safeguarding line', () => {
     const h = F._icLeaderHtml(leaderData([]), 'u1');
     expect(h).toContain(`onclick="_icNew('note')">Add note<`);
     expect(h).toContain(`onclick="_icExportOpen(&quot;l1&quot;)">Export<`);
-    expect(h).toContain("Worried about someone's safety? Follow the safeguarding policy, not this app.");
+    expect(h).not.toContain('safeguarding policy');
   });
   it('Edit only on own entries; Delete on every entry', () => {
     const h = F._icLeaderHtml(leaderData([chk({ id: 'mine1' }), chk({ id: 'theirs1', mine: false, authorId: 'u2', authorName: 'Codeman' })]), 'u1');

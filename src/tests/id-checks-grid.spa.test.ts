@@ -23,9 +23,7 @@ describe('grid HTML', () => {
     expect((h.match(/class="ic-tk"/g) || []).length).toBe(4);
     expect((h.match(/ checked /g) || []).length).toBe(1);
     expect(h).toMatch(/data-u="u1" data-l="l1"[^>]*checked/);
-    expect(h).toContain('Oversight One');
-    expect(h).toContain('Oversight</span>');
-    expect(h).toContain('Admin</span>');
+    expect(h).toContain('title="Oversight One"');
   });
   it('shows grades as "Gr 8, 9", Tick all and Clear per column, a sticky first column and scrolls inside its card', () => {
     const h = _icGridHtml(DATA);
@@ -45,12 +43,20 @@ describe('grid HTML', () => {
     expect(h).toContain('onchange="_icTick(&quot;u1&quot;,&quot;l1&quot;,this.checked)"');
     expect(h).toContain('onclick="_icTickCol(&quot;u1&quot;,true)"');
   });
-  it('a column whose name is its role shows the word once; columns are narrow and wrap', () => {
+  it('column heads are the first name only, flat, thin, with no role line', () => {
     const h = _icGridHtml({ ...DATA, columns: [{ id: 'u2', name: 'Admin', role: 'admin' }, { id: 'u1', name: 'Oversight Two', role: 'oversight' }] });
-    expect(h).not.toContain('Admin<span');
-    expect(h).toContain('Oversight Two<span class="lk-d" style="display:block">Oversight</span>');
-    expect(h).toContain('width:96px;min-width:96px');
-    expect(h).toContain('overflow-wrap:anywhere');
+    expect(h).toMatch(/title="Oversight Two"[^>]*>Oversight</);
+    expect(h).not.toContain('Two<');
+    expect(h).not.toContain('<span class="lk-d" style="display:block">');
+    expect(h).not.toContain('writing-mode');
+    expect(h).toContain('width:60px;min-width:60px');
+    expect(h).toContain('min-height:44px;min-width:36px');
+  });
+  it('two logins with the same first name get a last initial, others stay plain', () => {
+    const h = _icGridHtml({ ...DATA, columns: [{ id: 'a', name: 'Sam Kelly', role: 'oversight' }, { id: 'b', name: 'sam Brown Lee', role: 'oversight' }, { id: 'c', name: 'Tom Ree', role: 'admin' }] });
+    expect(h).toMatch(/title="Sam Kelly"[^>]*>Sam K</);
+    expect(h).toMatch(/title="sam Brown Lee"[^>]*>sam L</);
+    expect(h).toMatch(/title="Tom Ree"[^>]*>Tom</);
   });
   it('the page shows a swipe hint and an edge shadow only when more than two columns', () => {
     const page = (cols: number) => loadFns(['_icGridPage', '_icGridHtml', '_icTickKeys', '_icRowMeta', '_icJs', '_icArchHtml'], `${BASE}

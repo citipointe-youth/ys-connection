@@ -2101,8 +2101,7 @@ function _icLeaderHtml(data, userId) {
       <button type="button" class="btn btn-primary" style="${_IC_BTN}" onclick="${mine ? `_icEdit(${_icJs(mine.id)})` : "_icNew('check')"}">${mine ? 'Resume ID check' : 'Start ID check'}</button>
       <button type="button" class="btn btn-secondary" style="${_IC_BTN}" onclick="_icNew('note')">Add note</button>
       <button type="button" class="btn btn-secondary" style="${_IC_BTN}" onclick="_icExportOpen(${_icJs(data.leader.id)})">Export</button>
-    </div>
-    <p class="lk-d" style="margin:var(--s2) 0 var(--s3)">Worried about someone's safety? Follow the safeguarding policy, not this app.</p>`;
+    </div>`;
   // The newest finished check shows once, open, under its own heading; History lists everything else.
   if (prev) h += `<div class="sh">Last finished check</div>${_icHistCard(prev, qs, userId, true)}`;
   const rest = ents.filter((e) => e !== prev);
@@ -2356,17 +2355,21 @@ function _icGridHtml(d) {
   if (!rows.length) return `<div class="lk-hint">No active leaders yet.</div>`;
   const stick = 'position:sticky;left:0;z-index:1;background:var(--paper-card);width:120px;min-width:120px;max-width:120px;box-sizing:border-box;border-right:1px solid var(--line)';
   let h = `<table style="border-collapse:separate;border-spacing:0;min-width:100%"><thead><tr><th style="${stick};text-align:left;padding:8px;font-size:12px;vertical-align:bottom;border-bottom:1px solid var(--line)">Leader</th>`;
+  // Column head = first name, flat; two with the same first name get the last initial ("Sam K").
+  const first = (c) => String(c.name || '').trim().split(/\s+/)[0].toLowerCase(), same = {};
+  for (const c of cols) same[first(c)] = (same[first(c)] || 0) + 1;
+  const bs = 'padding:6px 2px;font-size:11px;min-width:0';
   for (const c of cols) {
-    const role = _roleLabel(c.role), sub = String(role).toLowerCase() === String(c.name || '').toLowerCase() ? '' : `<span class="lk-d" style="display:block">${esc(role)}</span>`;
-    h += `<th class="ic-col" data-u="${esc(c.id)}" style="width:96px;min-width:96px;max-width:96px;padding:8px 4px;vertical-align:top;font-size:13px;white-space:normal;overflow-wrap:anywhere;border-bottom:1px solid var(--line)">${esc(c.name)}${sub}`
-      + `<div style="display:flex;flex-direction:column;align-items:center;margin-top:4px"><button type="button" class="btn btn-ghost btn-sm" onclick="_icTickCol(${_icJs(c.id)},true)">Tick all</button>`
-      + `<button type="button" class="btn btn-ghost btn-sm" onclick="_icTickCol(${_icJs(c.id)},false)">Clear</button></div></th>`;
+    const w = String(c.name || '').trim().split(/\s+/), label = same[first(c)] > 1 && w[1] ? `${w[0]} ${w[w.length - 1][0]}` : w[0];
+    h += `<th class="ic-col" data-u="${esc(c.id)}" title="${esc(c.name)}" style="width:60px;min-width:60px;max-width:60px;padding:8px 2px;vertical-align:top;text-align:center;font-size:12px;white-space:normal;overflow-wrap:anywhere;border-bottom:1px solid var(--line)">${esc(label)}`
+      + `<div style="display:flex;flex-direction:column;align-items:center;margin-top:4px"><button type="button" class="btn btn-ghost btn-sm" style="${bs}" onclick="_icTickCol(${_icJs(c.id)},true)">Tick all</button>`
+      + `<button type="button" class="btn btn-ghost btn-sm" style="${bs}" onclick="_icTickCol(${_icJs(c.id)},false)">Clear</button></div></th>`;
   }
   h += `</tr></thead><tbody>`;
   for (const r of rows) {
     h += `<tr><td style="${stick};padding:6px 8px;border-bottom:1px solid var(--line)"><div class="lk-nm" style="font-size:14px;overflow-wrap:anywhere">${esc(r.name)}</div><span class="lk-d">${esc(_icRowMeta(r))}</span></td>`;
     for (const c of cols) {
-      h += `<td style="text-align:center;border-bottom:1px solid var(--line)"><label style="display:flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;cursor:pointer">`
+      h += `<td style="text-align:center;border-bottom:1px solid var(--line)"><label style="display:flex;align-items:center;justify-content:center;min-height:44px;min-width:36px;cursor:pointer">`
         + `<input type="checkbox" class="ic-tk" data-u="${esc(c.id)}" data-l="${esc(r.id)}" aria-label="${esc(c.name)} for ${esc(r.name)}" ${on.has(c.id + '|' + r.id) ? 'checked' : ''} onchange="_icTick(${_icJs(c.id)},${_icJs(r.id)},this.checked)"></label></td>`;
     }
     h += `</tr>`;
