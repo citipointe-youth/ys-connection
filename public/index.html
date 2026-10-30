@@ -12203,8 +12203,7 @@ function _lkStepBtns() {
 }
 // The admin/director pick, as a leader from _lkPickList(r) (null = Nobody).
 function _lkPickList(r) {
-  // r30 (rev 21): with the step's offered known, only leaders Elvanto offers; the current one stays (Complete then sends no assignTo)
-  const ls = (LINK.fLeaders || []).filter((l) => (_lkFits(l, r.grade, r.gender) && _lkOffers(r, l.personId)) || l.id === r.currentLeaderId);
+  const ls = (LINK.fLeaders || []).filter((l) => _lkFits(l, r.grade, r.gender) || l.id === r.currentLeaderId);
   // a current leader missing from a stale LINK.fLeaders: keep them listed so the sheet never unassigns by itself
   if (r.currentLeaderId && !ls.some((l) => l.id === r.currentLeaderId)) ls.push({ id: r.currentLeaderId, name: r.assignedLeaderName || r.assignedTo || 'A leader', personId: null });
   return ls;

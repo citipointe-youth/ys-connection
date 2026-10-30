@@ -1,5 +1,5 @@
-// Round 2026-10-30 (LINK_REV 21, ruling Q4): the step sheet's Assigned to picker lists only leaders Elvanto offers for the
-// next step, when the console sent the step's offered. Missing or empty offered = unknown = today's list.
+// Round 2026-10-30 (LINK_REV 21, ruling Q4 = never send an unoffered pick to Elvanto, and say so): the picker lists every fitting
+// leader (Reassign is app-only); Complete sends assignTo only for an offered pick. Missing or empty offered = unknown = allowed.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { loadFns } from './helpers/extract-fn';
 
@@ -24,15 +24,26 @@ const ids = () => f._lkPickList(L.flows[0]).map((l: any) => l.id);
 
 describe('r30: the Assigned to picker follows the step\'s offered (rev 21)', () => {
   beforeEach(() => { L.fLeaders = LDRS; L.flows = [{ ...ROW }]; L.fs = null; f.PUSHED.length = 0; f.ASSIGNED.length = 0; });
-  it('known offered: only offered leaders (case-blind); unknown or empty: every fitting leader', () => {
+  it('fix 1: offered never hides a leader (Reassign is app-only); every fitting leader stays, known, unknown or empty', () => {
+    for (const o of [[P(71).toUpperCase()], undefined, []]) { L.fSteps = steps(o); expect(ids()).toEqual(['L1', 'L2', 'L3']); }
+  });
+  it('_lkOffers: case-blind; unknown or empty = yes; known and no Elvanto person = no', () => {
     L.fSteps = steps([P(71).toUpperCase()]);
-    expect(ids()).toEqual(['L2']);
-    for (const o of [undefined, []]) { L.fSteps = steps(o); expect(ids()).toEqual(['L1', 'L2', 'L3']); }
+    expect([f._lkOffers(ROW, P(71)), f._lkOffers(ROW, P(70)), f._lkOffers(ROW, null)]).toEqual([true, false, false]);
+    L.fSteps = steps([]);
+    expect(f._lkOffers(ROW, P(70))).toBe(true);
+  });
+  it('fix 1: an unoffered pick (not the current one) is still saved by Complete as the app assignment, but sent with no assignTo', () => {
+    L.fSteps = steps([P(71)]);
+    L.fs = { rowId: 'r1', note: '', priv: false, pick: 'L1' };
+    f._lkStepSend();
+    expect('assignTo' in f.PUSHED[0].payload).toBe(false);
+    expect(f.ASSIGNED.map((l: any) => l.id)).toEqual(['L1']);
   });
   it('the current leader stays listed when not offered, and Complete then sends no assignTo (Elvanto picks)', () => {
     L.flows = [{ ...ROW, currentLeaderId: 'L1' }];
     L.fSteps = steps([P(71)]);
-    expect(ids()).toEqual(['L1', 'L2']);
+    expect(ids()).toEqual(['L1', 'L2', 'L3']);
     L.fs = { rowId: 'r1', note: '', priv: false, pick: 'L1' };
     f._lkStepSend();
     expect('assignTo' in f.PUSHED[0].payload).toBe(false);

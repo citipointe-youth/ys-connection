@@ -1574,6 +1574,12 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     expect((await enq(g.svc, GRADE, b, DEV)).outcome).toBe('saved');
     expect((await g.link.getAction(b.id))!.payload).toMatchObject({ assignTo: P_CODY });
   });
+  it('r30 fix 1: offered gates only the Elvanto-bound Complete assignTo, never the app-only Reassign', async () => {
+    const h = await setup();
+    await offer(h, [u(999)]);
+    expect(await h.svc.assignFlow(ADMIN, { flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA })).toEqual({ ok: true }); // Dana: not offered, no Elvanto person
+    expect(await h.svc.assignFlow(ADMIN, { flowId: FLOW_A, personId: P_TOM, leaderId: L_CODY })).toEqual({ ok: true }); // Cody: linked, not offered
+  });
   it('r30: GET /link/flows steps carry a known offered for admin/director only', async () => {
     const h = await setup();
     await offer(h, [P_CODY]);
