@@ -86,7 +86,7 @@ describe('2.5 OFF-routes: the client page guard', () => {
 const u = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const T0 = '2026-10-01T00:00:00.000Z';
 const ADMIN: Actor = { id: u(1), role: 'admin', displayName: 'admin', grade: null, quad: null, gender: null, leaderId: null } as Actor;
-const DIRECTOR: Actor = { ...ADMIN, id: u(2), role: 'oversight' } as Actor;
+const OVERSIGHT: Actor = { ...ADMIN, id: u(2), role: 'oversight' } as Actor;
 const NOW = new Date('2026-10-16T09:00:00.000Z');
 const FLOW_ROW = { rowId: u(501), flowId: u(511), flowName: 'Bravo', stepId: u(521), stepName: 'Welcome call', stepOrder: 2, personId: u(101), name: 'Amy Adams', due: null, assignedTo: 'Admin' };
 
@@ -108,7 +108,7 @@ describe('2.5 OFF-api', () => {
   const off = { flows: 'off', checkin: 'off', lifegroupReport: 'off' };
   it('every owned entry point throws ModuleDisabledError for the admin, oversight and a junior login', async () => {
     const h = await harness(off);
-    for (const a of [ADMIN, DIRECTOR, { ...ADMIN, id: u(5), role: 'leader' } as Actor]) {
+    for (const a of [ADMIN, OVERSIGHT, { ...ADMIN, id: u(5), role: 'leader' } as Actor]) {
       await expect(h.svc.checkin(a)).rejects.toThrow(ModuleDisabledError);
       await expect(h.svc.lifegroups(a)).rejects.toThrow(ModuleDisabledError);
       await expect(h.svc.groupMembers(a, u(401), {})).rejects.toThrow(ModuleDisabledError);
