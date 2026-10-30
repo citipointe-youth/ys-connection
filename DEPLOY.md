@@ -27,6 +27,14 @@ update app_settings set ministry_config = jsonb_set(ministry_config #- '{roles,e
 
 **round/2026-10-30: LINK_REV 21, no migration (`schema.current` stays 0051), SW ysc-v160; ship before the console; rollback = Instant Rollback to f800e08, nothing to undo.**
 
+**Part 2: ID Checks (0053, additive, SW `ysc-v162`).** Ship after Part 1 (0052) has been live. Checklist:
+1. Snapshot the prod DB first (0053 adds two tables); `FIELD_ENCRYPTION_KEY` is already set (required).
+2. Ship outside Fri 17:30-20:00 and Sun 10:00-12:00. After the build: log shows `0053` applied and `Database up to date`; `/health` `schema.current` = `0053`.
+3. `curl -s https://ys-connection.vercel.app/id-checks` must return a JSON 401 (not 500, not HTML).
+4. The module stays Off until the admin turns it on (Youth Setup > Modules), sets the cycle start and ticks leaders in the Assign leaders grid.
+5. Merge the console docs branch `feature/oversight-wording` (`wt24-console`) with Part 2. No console code, no `LINK_REV` change.
+6. Rollback below Part 2 needs nothing: 0053 is additive and the tables stay unused. Rollback below Part 1 uses the SQL above, run before the Instant Rollback.
+
 <!-- live -->
 - master sha: 7b2817f (fix/form-in-stuck)
 - last ship: 2026-10-30 23:39 EAST

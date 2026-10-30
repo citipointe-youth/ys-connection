@@ -43,7 +43,7 @@
 
 ```
 Read CLAUDE.md and debug.md. Don't read other files yet.
-Account: <email> (role: grade | quad | director | admin)
+Account: <email> (role: grade | quad | oversight | admin)
 Screen: <where you saw it>
 Bug(s):
 1. <symptom — what you saw vs expected>
@@ -133,7 +133,7 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
 - **Add Students picker shows the wrong grade at the top of a bucket**: `_pickByOwnGradeFirst`
   sorts each of the three buckets so the logged-in login's own grade(s) — not the leader's —
   come first; it reads `window._pickerOwnGrades`, set in `openStudentPicker()` from
-  `S.user.grade` (grade role) or `quadGrades(S.user.quad)` (quad role). Admin/director have no
+  `S.user.grade` (grade role) or `quadGrades(S.user.quad)` (quad role). Admin/oversight have no
   "home grade" so this is a no-op for them (falls back to plain first-name order).
 - **Total/Connected/Pending or "Students not Connected" includes students from the wrong
   quad/grade** (e.g. a Girls Yr 7–9 quad login's counts are inflated by Girls Yr 10–12 students):
@@ -145,7 +145,7 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   list — those two must stay wrapped in that filter even if the surrounding code changes;
   `students`/`_aS.students` itself must NOT be filtered (that would break cross-grade
   connecting via the picker).
-- **"Students not Connected" list is in a weird order for a quad/director/admin login**: sorted
+- **"Students not Connected" list is in a weird order for a quad/oversight/admin login**: sorted
   grade-ascending first, then alphabetically within the grade (`unallocated.sort(...)` in
   `renderConnectView()`, grep the comment above it) — a no-op for grade logins since
   `connectable` there is already one grade.
@@ -174,7 +174,7 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
 - **A grade/quad account sees a general prayer it shouldn't (or can't see one it should)**:
   `access-control.ts`'s `canAccessGeneralPrayer()` (grep it) — checks the viewer's grade+gender
   against `createdByGrades`/`createdByGender`, captured at creation time by
-  `generalPrayerCreatorScope()`. admin/director/leader viewers always pass; a grade/quad viewer
+  `generalPrayerCreatorScope()`. admin/oversight/leader viewers always pass; a grade/quad viewer
   needs a grade overlap + gender match. If a general prayer is wrongly wide-open, check whether
   it predates migration `0007` (existing rows have `created_by_grades`/`created_by_gender` both
   `NULL`, which reads as "no boundary" on purpose — not a bug, a deliberate backward-compat
@@ -440,7 +440,7 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   as the CSV/xlsx exports).
 - **A branding/terminology change didn't appear everywhere**: expected — the header/nav are built
   once at login (`_initShell`) and only rebuild on re-login; stats cache ~60s. Not a bug.
-- **A quad/grade/director/leader login can't sign in / its account looks deactivated after a Setup
+- **A quad/grade/oversight/leader login can't sign in / its account looks deactivated after a Setup
   save, and nobody manually touched Accounts** (2026-07-11): expected if that role's toggle in
   Structure & Roles was just switched OFF and saved — `settings.service.ts`'s `update()` diffs
   `roles.enabled` before/after the merge and bulk-deactivates every currently-active account of a
