@@ -10718,7 +10718,9 @@ function _lkRefreshView() {
     if (ast && S.page === 'link-admin') ast.innerHTML = _lkAdmStatusHtml();
     const fl = document.getElementById('lk-flist');
     if (fl && S.page === 'link-flows') fl.innerHTML = _lkFlowsHtml();
-    const lq = document.getElementById('lk-lq'), foot = document.getElementById('lk-lq-foot');
+    const fr = document.getElementById('lk-fref');
+    if (fr && S.page === 'link-flows') fr.outerHTML = _lkFlowsStl();
+    const lq =document.getElementById('lk-lq'), foot = document.getElementById('lk-lq-foot');
     if (lq && foot) { lq.innerHTML = _lkLeadersHtml(); foot.innerHTML = _lkLeadersFoot(); }
     if (S.page === 'link-checkin') _lkCiPoll(); // Plan F: every door repaint (re)arms the result poll
   } catch (e) {}
@@ -12284,8 +12286,21 @@ function _lkStepCancel(id) {
   if (!a || !a.id) return;
   _lkPush({ kind: 'cancel', id: a.id, leaderId: getMyLeaderId() || null, _f: id }, true);
 }
+// Admin only: when the app last had a flows push from the console, and a Reload that re-reads the app's own copy.
+function _lkFlowsStl() {
+  if (!S.user || S.user.role !== 'admin') return '';
+  const m = LINK.status && LINK.status.mirrors && LINK.status.mirrors.flows, at = m && m.takenAt;
+  return `<div class="ik-stl" id="lk-fref">${at ? `<span class="lk-d">Updated ${esc(_laRelTime(at))} ·</span>` : ''}<button type="button" class="ik-lnk"${LINK.fRel ? ' disabled' : ''} onclick="_lkFlowsReload()">${LINK.fRel ? 'Reloading…' : 'Reload'}</button></div>`;
+}
+async function _lkFlowsReload() {
+  if (LINK.fRel) return;
+  const L = LINK;
+  L.fRel = 1; _lkRefreshView();
+  await Promise.all([_lkStatusLoad(), _lkLoadFlows(false)]);
+  L.fRel = 0; _lkFlowsDraw(); _lkRefreshView();
+}
 function _lkPaintFlows() {
-  setApp(shell(`<div class="ph"><h1>Flow steps</h1></div><div id="lk-top">${_lkTop(_lkFlowTypes())}</div><div id="lk-flist">${_lkFlowsHtml()}</div>`));
+  setApp(shell(`<div class="ph"><h1>Flow steps</h1></div>${_lkFlowsStl()}<div id="lk-top">${_lkTop(_lkFlowTypes())}</div><div id="lk-flist">${_lkFlowsHtml()}</div>`));
 }
 function _lkFlowTypes() { return _lkBoss() ? LK_FLOW_TYPES : ['completeStep']; }
 async function _lkLoadFlows(quiet) {
