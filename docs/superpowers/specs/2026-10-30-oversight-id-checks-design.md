@@ -1,7 +1,7 @@
 # Oversight role + ID Checks: design
 
 Date: 2026-10-30. Branch `feature/oversight-id-checks`, based on live `eb41ada` (ysc-v160, `LINK_REV` 21, latest migration `0051`).
-Status: design approved by the operator (decisions A-H below). Next step: an implementation plan (superpowers:writing-plans).
+Status: design approved by the operator (decisions A-L below; I-L are rulings of 2026-10-30). Next step: an implementation plan (superpowers:writing-plans).
 
 Labels used below: **Operator's decision** (fixed, do not re-open), **Orchestrator's call** and **Builder's call**
 (defaults chosen so the builder can plan without asking; change one only with a stated reason in the plan).
@@ -37,7 +37,8 @@ per-leader record of catch-ups, shared only with the accounts the admin ticks fo
 
 - No editing of the question bank in the app (code change only).
 - No reminders, emails, push alerts, digest lines or Home cards for due/overdue checks (the list is the reminder).
-- No reports, exports, CSV, charts or counts of ID checks anywhere, including the admin data export/backup.
+- No reports, exports, CSV, charts or counts of ID checks anywhere, including the admin data export/backup. (One listed
+  exception, decision I: the admin's "Archived leaders' history" list shows name, entry count and last date, never notes.)
 - No read audit trail (same posture as prayers).
 - No per-leader custom rhythm; no per-quad rhythm.
 - No change to the Elvanto link contract (`LINK_REV` stays 21) and no console code change (docs + one fixture copy only, §8).
@@ -129,12 +130,32 @@ whole previous check can be read.
 
 **H. Random note:** an oversight login can add a dated free note to a leader between checks.
 
+### Operator rulings, 2026-10-30 (fixed)
+
+**I. ID-check history survives leader deletion.** Leaders are hard-deleted today (`DELETE /leaders/:id`, reachable by
+quad/grade logins in scope; New Year Full Reset `leaders.deleteAll()`), and the allocations import with
+`autoCreateLeaders` can rebuild the same person as a new leader id. None of these may destroy ID-check history. A deleted
+leader's entries stay stored under the leader's name (archived). An admin can permanently clear them, or re-attach them to
+an active leader, from an "Archived leaders' history" list on the admin's ID Checks grid page (§7.1, §7.7a). Admin still
+cannot read the notes. Full Reset warns that ID-check history is kept.
+
+**J. "Finish check".** A check has a Finish action. Only finished checks reset the due timer; an unfinished check shows
+"In progress", can be resumed, does not affect the timer, and its per-question notes still feed "Last time" (§7.1, §7.6, §7.8).
+
+**K. Only the author edits a check; every account ticked for the leader reads it** (was a builder's call, now accepted by
+the operator). Delete stays author or any ticked account (orchestrator's call 3).
+
+**L. Placement.** The module lives in the **More** tab as one entry named "ID Checks", visible to oversight **and admin**
+logins only, and admins always see it (not only when ticked). There is no separate admin tab: admins see the assignment
+grid and the archived-history list from More → ID Checks, and every account (oversight or admin) sees its own ticked
+leaders there (§7.8).
+
 ### Orchestrator's calls
 
 1. **Autosave as you type** (no data loss on a flat battery).
 2. A check can be **reopened and edited later**.
 3. **Delete** allowed for the entry's author or any account ticked for that leader.
-4. **"Last time" for a question** = the most recent other check for this leader where that question had a note or a tick.
+4. **"Last time" for a question** = the most recent other check for this leader (finished or in progress, decision J) where that question had a note or a tick.
 5. Notes are sensitive: **never** in exports, digests, emails, logs, or Error log payloads.
 
 ## 7. Design (builder's calls marked)
@@ -168,9 +189,11 @@ create table if not exists id_check_access (           -- the grid: one row per 
 );
 create table if not exists id_check_entries (          -- checks AND random notes
   id uuid primary key,                                 -- client-made, so autosave is an idempotent upsert
-  leader_id uuid not null references leaders(id) on delete cascade,
+  leader_id uuid references leaders(id) on delete set null,  -- null = leader deleted: archived (decision I)
+  leader_name text not null default '',                -- snapshot of the leader's name, refreshed on every save
   kind text not null check (kind in ('check', 'note')),
   held_on date not null,                               -- the catch-up / note date (Brisbane day)
+  finished boolean not null default false,             -- decision J; checks only, notes ignore it
   author_id uuid not null,                             -- no FK: entries outlive a deleted account
   author_name text not null default '',
   content text not null,                               -- encrypted JSON envelope (7.2)
@@ -179,6 +202,21 @@ create table if not exists id_check_entries (          -- checks AND random note
 );
 create index if not exists id_check_entries_leader_idx on id_check_entries(leader_id, held_on desc);
 ```
+
+**Decision I, how (builder's call, the simplest that works):** `leader_id` is nullable with `ON DELETE SET NULL`, plus a
+`leader_name` snapshot, so no code path that deletes a leader (single delete, Full Reset, any future one) can touch the
+history, and nothing in the leader repos changes. An entry with `leader_id is null` is **archived**: no list, leader page
+or tick reaches it, so nobody reads it (not even its author). The service writes `leader_name` on every upsert from the
+current leader record, so the snapshot is as fresh as the last save. `id_check_access` ticks for a deleted leader simply
+cascade away. The archive list groups by `leader_name` (two deleted leaders with the same name show as one group; the
+admin cannot tell them apart and does not need to). The memory repo has no FK, so it treats an entry whose `leader_id`
+is not found in the leaders repo as archived (same result).
+
+**Decision J, why a column:** `finished` is a plain column, not a field in the encrypted `content`, because the due-date
+query (latest finished check per leader) must run in SQL without decrypting every row, and `finished` is not sensitive.
+Rule (server-enforced): `finished` only moves false to true. An upsert that sends `false` for an already finished row
+keeps it `true`, so a late autosave after Finish cannot reopen the check. Notes (`kind='note'`) are stored `false` and
+ignore it. A finished check can still be edited by its author (orchestrator's call 2); it stays finished.
 
 **Builder's call:** one entries table with `kind` instead of separate checks/notes tables. A note is
 `{ text }`; a check is `{ answers: { [questionKey]: { asked: boolean, note: string } }, nextTime: string }`.
@@ -213,8 +251,10 @@ information" under the Privacy Act 1988), and the pattern already exists. Missin
   or is deactivated, its ticks stay in the table but are inert (role check fails). **Builder's call.**
 - A leader that is not ticked for the caller answers **404** (same as missing), so the API never confirms who has records.
   **Builder's call.**
-- Entry edit: **author only** (builder's call, avoids two people overwriting one check; others ticked read it). Entry
-  delete: author or any ticked account (orchestrator's call 3).
+- Entry edit: **author only** (decision K; avoids two people overwriting one check; others ticked read it). Entry
+  delete: author or any ticked account (orchestrator's call 3). Resuming an in-progress check is an edit, so only its
+  author resumes it; other ticked accounts see "In progress (name)" and can read it.
+- The archive routes (7.5) are `idcheck:assign` (admin only) and never return note text.
 
 ### 7.5 Service + routes
 
@@ -225,20 +265,23 @@ information" under the Privacy Act 1988), and the pattern already exists. Missin
 
 | Route (all `auth: true`) | Who | Does |
 |---|---|---|
-| `GET /id-checks` | idcheck:use | My ticked active leaders: `{id, name, gender, grades, lastCheckOn, dueOn, status}` sorted (7.6), plus `questions` (the bank) and `rhythm` |
+| `GET /id-checks` | idcheck:use | My ticked active leaders: `{id, name, gender, grades, lastCheckOn, dueOn, status, inProgress}` sorted (7.6), plus `questions` (the bank) and `rhythm`. `lastCheckOn` = latest **finished** check; `inProgress` = `{entryId, authorName, mine}` of the newest unfinished check, else null. An admin who is ticked for nobody gets an empty list |
 | `GET /id-checks/leaders/:id` | ticked | All entries for the leader, newest first, decrypted, with author names and `mine` |
-| `PUT /id-checks/entries/:id` | ticked (author for an existing row) | Upsert one entry `{leaderId, kind, heldOn, content}`; returns `updatedAt` |
+| `PUT /id-checks/entries/:id` | ticked (author for an existing row) | Upsert one entry `{leaderId, kind, heldOn, finished, content}` (`finished` only false to true, 7.1); returns `updatedAt` |
 | `DELETE /id-checks/entries/:id` | author or ticked | Delete |
 | `GET /id-checks/access` | idcheck:assign | Grid: rows (7.7), columns (active oversight + admin accounts), ticks |
 | `PUT /id-checks/access` | idcheck:assign | `{userId, leaderIds: string[], on: boolean}`: one tick or a whole column |
+| `GET /id-checks/archived` | idcheck:assign | Archived leaders' history: `[{name, count, lastOn}]` only, no notes |
+| `POST /id-checks/archived/delete` | idcheck:assign | `{name}`: delete that group's entries for good |
+| `POST /id-checks/archived/attach` | idcheck:assign | `{name, leaderId}`: re-attach that group's entries to an active leader (sets `leader_id`) |
 
 Register `/id-checks` in `router.ts`, the `vercel.json` regex, and `sw.js` `API_RE` (network only: never cached by the SW).
 The question bank is served by `GET /id-checks` from one core file, so the SPA has **no** mirror to keep in sync.
 
 ### 7.6 Due dates and status (pure function, `src/services/id-check-rhythm.ts`)
 
-Inputs: today (Brisbane day via `structure.timeZone`), `cycleStart`, `intervalMonths`, the leader's latest `kind='check'`
-`held_on` (`last`). Month adding clamps to month end (31 Aug + 6 = 28/29 Feb).
+Inputs: today (Brisbane day via `structure.timeZone`), `cycleStart`, `intervalMonths`, the leader's latest **finished**
+`kind='check'` `held_on` (`last`; decision J). An unfinished check is ignored here. Month adding clamps to month end (31 Aug + 6 = 28/29 Feb).
 
 - No `cycleStart` set: `due = last ? last + interval : today`.
 - `last` missing or before `cycleStart`: `due = cycleStart + 2 months` (the catch-up window).
@@ -247,8 +290,8 @@ Inputs: today (Brisbane day via `structure.timeZone`), `cycleStart`, `intervalMo
   (**builder's call**: 30 days); else `on track`.
 - Sort: `due` ascending, then `never` before others on the same day, then name.
 
-Random notes never move the due date. One small test file pins the table above (start in future, catch-up window,
-month-end clamp, unset start).
+Random notes and unfinished checks never move the due date. One small test file pins the table above (start in future,
+catch-up window, month-end clamp, unset start, an unfinished check ignored).
 
 ### 7.7 Grid rows (builder's calls on detail)
 
@@ -256,32 +299,57 @@ Active leaders; group by gender (Girls, then Guys, then gender not set), then by
 not-graduated students (`connRepo.findByLeader` + students), then full name; leaders with no connected students last in
 their group. Row meta shows the grades ("Gr 8, 9"). Columns show each account's display name and role label.
 
+### 7.7a Archived leaders' history (decision I)
+
+Admin only, on the grid page (7.8), under the grid: a list **Archived leaders' history** (hidden when empty), one `.rc`
+row per `leader_name` group with name, entry count and last date (`fmtDay`), and two actions. Notes are never shown.
+
+- **Delete forever** (two taps, "Delete all N entries for <name> for good? This cannot be undone.") calls
+  `POST /id-checks/archived/delete`. This is also how a deletion request is met.
+- **Re-attach** opens a picker of active leaders and calls `POST /id-checks/archived/attach`. The confirm names the target
+  and says who is ticked for them ("Everyone ticked for <leader> will be able to read these notes."). Archived entries
+  never move on their own, so a leader re-created under a new id (allocations import, delete and re-add) starts empty until
+  an admin re-attaches; ticks must be set again for the new id. **Builder's call:** manual re-attach only, no automatic
+  name matching (a wrong guess would show one person's private notes to another leader's overseers).
+
 ### 7.8 SPA (`public/index.html`)
 
-- **Nav:** More menu item "ID Checks" (icon from the existing icon set) for oversight logins, next to the Notices item
-  (~line 2656), only when `modules.idChecks === 'on'`. Admin gets it only when ticked for at least one leader (the
-  `GET /id-checks` list is non-empty). **Builder's call.** `PAGE_MODULE` gains `idchecks`, `idcheck-leader`,
-  `idcheck-edit` → `'idChecks'`; `render()` sends Home when off (like `notices`).
+- **Nav (decision L):** one More menu item "ID Checks" (icon from the existing icon set), next to the Notices item
+  (~line 2656), shown to oversight **and admin** logins only, only when `modules.idChecks === 'on'`. Admins always see it,
+  ticked or not; no other role sees it. There is no ID Checks entry in `ADMIN_TABS`. `PAGE_MODULE` gains `idchecks`,
+  `idcheck-leader`, `idcheck-edit`, `idcheck-grid` → `'idChecks'`; `render()` sends Home when off (like `notices`).
 - **List page (`idchecks`):** `.rc` rows: leader name + status pill (`.pill.bad` overdue, `.pill.warn` due soon,
-  `.pill.neutral` never, `.pill.ok` on track), meta "Last check Fri 16 Oct · Due Mon 15 Feb" via `fmtDay`. Empty state:
-  "No leaders are ticked for you yet. Ask the admin." If `cycleStart` is unset, one line says the admin has not set the start.
-- **Leader page (`idcheck-leader`):** buttons **Start ID check** and **Add note**; the previous check shown in full
-  (its "notes for next time" first); then history, newest first, each entry with date, author, kind; Edit (author) and
+  `.pill.neutral` never, `.pill.ok` on track), meta "Last check Fri 16 Oct · Due Mon 15 Feb" via `fmtDay` (last = latest finished check). A leader with an unfinished
+  check also gets a second `.pill.info` "In progress" beside the status pill; it never replaces or changes the status. Empty state:
+  "No leaders are ticked for you yet. Ask the admin." (an admin sees "No leaders are ticked for you yet. Tick some below.") If `cycleStart` is unset, one line says the admin has not set the start.
+- **Leader page (`idcheck-leader`):** buttons **Start ID check** (reads **Resume ID check** and opens the caller's own
+  newest unfinished check when there is one) and **Add note**; the previous finished check shown in full
+  (its "notes for next time" first); then history, newest first, each entry with date, author, kind and an "In progress"
+  pill on an unfinished check ("In progress (name)" if it is someone else's); Edit (author) and
   Delete (two taps) on each. One line: "Worried about someone's safety? Follow the safeguarding policy, not this app."
 - **Check page (`idcheck-edit`):** date field (defaults today); the six sections as collapsible groups with their
   sub-titles; each question row has a 44px "Asked" tick and opens a `<textarea>`; when opened it shows "Last time
   (date): ..." muted above the box (orchestrator's call 4, computed in the SPA from the leader's entries already fetched).
   A tick or a non-empty note both count as asked. At the end "Notes for next time". A status line: "Saved 2:14pm" /
-  "Not saved, retrying". **Done** returns to the leader page. A random note uses the same page with one box.
+  "Not saved, retrying". Two buttons at the end: **Finish check** (flushes any pending save, then `PUT`s with
+  `finished: true`, then returns to the leader page; this is the only thing that resets the due timer) and **Save and
+  close** (returns with the check still in progress). Autosave never sets `finished`. A random note uses the same page
+  with one box and a single **Done**.
 - **Autosave (orchestrator's call 1, builder's detail):** the client makes the entry id when the page opens; every change
   schedules a `PUT /id-checks/entries/:id` (debounce ~1.5 s, plus on `visibilitychange`/`pagehide`). The first save
   creates the row. Unsaved text is held in `localStorage` under one key per entry id **only until the server confirms**,
   restored on reopen, removed on logout. The server compares nothing (author-only edits make last-write-wins safe).
-- **Admin:** Youth Setup → Modules gets the ID Checks switch (beside Notices, ~line 7474) and, when on, the cycle start
-  (`<input type="date">`) and interval (number, 1-12). A new `ADMIN_TABS` entry `['idchecks','ID Checks']`, shown only
-  while the module is on (filtered like `link`), holds the grid: sticky first column of leaders, one tick column per
-  account, the grid scrolls sideways inside its card (no page side-scroll), each column header has "Tick all / Clear".
-  A tick saves at once (`PUT /id-checks/access`) and reverts with a toast on failure.
+- **Admin settings:** Youth Setup → Modules gets the ID Checks switch (beside Notices, ~line 7474) and, when on, the cycle
+  start (`<input type="date">`) and interval (number, 1-12).
+- **Grid page (`idcheck-grid`, admin only, More → ID Checks):** the list page shows admins an **Assign leaders** button
+  (**builder's call:** a sub-page of the same More entry, so the phone list stays short; the operator's wording allows
+  these as sections of the one page instead). The page holds the grid: sticky first column of leaders, one tick column
+  per account, the grid scrolls sideways inside its card (no page side-scroll), each column header has "Tick all / Clear";
+  then the Archived leaders' history list (7.7a). A tick saves at once (`PUT /id-checks/access`) and reverts with a toast
+  on failure.
+- **Full Reset warning:** the New Year wizard's Full Reset step (the gated step that runs `POST /admin/reset`) adds one
+  line before it runs: "ID-check history is kept. Leaders are deleted, so it moves to Archived leaders' history in More,
+  ID Checks." (text only, no new confirm).
 
 ### 7.9 Privacy rules (orchestrator's call 5, how)
 
@@ -298,7 +366,7 @@ their group. Row meta shows the grades ("Gr 8, 9"). Columns show each account's 
   `oversight2` so shared ticks can be demoed; a few ticks and one fictional check (no real names). Update the CLAUDE.md
   seed table.
 - **Tests:** the rename sweep; `id-check.service.test.ts` (tick-only access incl. admin not ticked = 404 and admin ticked
-  = full read; author-only edit; delete rights; tick target must be oversight/admin; module off = 404; upsert idempotent);
+  = full read; author-only edit; delete rights; `finished` only false to true, and an unfinished check leaves `lastCheckOn` unchanged but still feeds "Last time"; deleting a leader (and `deleteAll`) keeps the entries as archived with their name, the ticks go, the admin list shows no text, delete-forever and re-attach work; More shows ID Checks to oversight and admin (admin unticked included) and to no other role; tick target must be oversight/admin; module off = 404; upsert idempotent);
   the rhythm test (7.6); route registration/401 tests pick up `/id-checks` automatically; module-completeness fixtures.
 
 ## 8. Release outline
@@ -369,7 +437,7 @@ apostrophes as above; the file is TypeScript, so the SPA apostrophe rule does no
   update CLAUDE.md, README, DEPLOY.md, current guides).
 - Debounce timing, retry back-off, and the exact draft key.
 - Plan order and lane split (Part 1 is a mechanical sweep that suits one lane; Part 2 splits into server and SPA lanes).
-- Any further simplification that keeps decisions A-H and the orchestrator's calls intact.
+- Any further simplification that keeps decisions A-L and the orchestrator's calls intact.
 
 ## 11. Review gates for the plan
 
