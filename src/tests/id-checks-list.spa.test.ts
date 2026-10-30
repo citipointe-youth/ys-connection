@@ -4,11 +4,11 @@ import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
-const FNS = ['esc', '_icJs', '_icSectionTitle', '_icGet', '_icListHtml', '_icLastTime', '_icEntryBody', '_icLeaderHtml', '_icDelete', '_icWaitFlying', '_icDraftKey'];
+const FNS = ['esc', '_icJs', '_icSectionTitle', '_icGet', '_icListHtml', '_icLastTime', '_icEntryBody', '_icHistCard', '_icLeaderHtml', '_icDelete', '_icWaitFlying', '_icDraftKey'];
 const CONSTS = ['_IC', '_IC_PILL', '_IC_BTN'].map((n) => HTML.match(new RegExp(`^const ${n} = .*$`, 'm'))![0]).join('\n');
 
 function load(env: Record<string, any> = {}) {
-  const scope = { fmtDay: (v: string) => 'D:' + v, S: { user: { id: 'u1', role: 'oversight' } }, ...env };
+  const scope = { fmtDay: (v: string) => 'D:' + v, icS: (k: string) => '<i>' + k + '</i>', S: { user: { id: 'u1', role: 'oversight' } }, ...env };
   const src = FNS.map((n) => extractFn(HTML, n)).join('\n');
   return new Function('__env', `with (__env) { ${CONSTS}\n${src}\n return { ${FNS.join(', ')}, _IC }; }`)(scope) as Record<string, any>;
 }
@@ -39,13 +39,20 @@ describe('list page', () => {
   it('empty states per role; Assign leaders only for an admin', () => {
     const o = F._icListHtml(list([]), false), a = F._icListHtml(list([]), true);
     expect(o).toContain('No leaders are ticked for you yet. Ask the admin.');
-    expect(a).toContain('No leaders are ticked for you yet. Tick some below.');
+    expect(a).toContain('No leaders are ticked for you yet. Use Assign leaders below.');
     expect(o).not.toContain('Assign leaders');
     expect(a).toMatch(/onclick="go\('idcheck-grid'\)">Assign leaders</);
   });
-  it('says so when the admin has not set the start date', () => {
-    expect(F._icListHtml(list([row()], ''), false)).toContain('The admin has not set the start date yet.');
-    expect(F._icListHtml(list([row()]), false)).not.toContain('start date');
+  it('no start date: a plain note for oversight, a Set the start date button for admin, never-checked reads Due now', () => {
+    const o = F._icListHtml(list([row(), row({ id: 'l2', lastCheckOn: null, status: 'never', dueOn: '2026-10-30' })], ''), false);
+    expect(o).toContain('No start date is set yet, so due dates count from each last check.');
+    expect(o).not.toContain('_icSetStart');
+    expect(o).toContain('>Due now<');
+    expect(o).toContain('Last check D:2026-10-16 · Due D:2027-02-15');
+    const a = F._icListHtml(list([row()], ''), true);
+    expect(a).toContain('onclick="_icSetStart()">Set the start date<');
+    expect(F._icListHtml(list([row()]), true)).not.toContain('start date');
+    expect(F._icListHtml(list([row({ lastCheckOn: null, status: 'never' })]), false)).toContain('>Due D:2027-02-15<');
   });
 });
 
@@ -88,7 +95,15 @@ describe('leader page', () => {
     expect(top.indexOf('Ask about camp')).toBeLessThan(top.indexOf('Going well'));
     expect(top).toContain('FAITH – their walk with God');
     const hist = h.slice(h.indexOf('History'));
-    expect(hist.indexOf('D:2026-10-25 · Note')).toBeLessThan(hist.indexOf('D:2026-09-01 · Check'));
+    expect(hist).toContain('D:2026-10-25 · Note');
+    expect(hist).not.toContain('D:2026-09-01 · Check'); // the newest finished check shows once, under Last finished check
+    expect(top).toContain('class="card rc drop open" id="ic-h-f1"');
+    expect(top).toContain('_icDelete(&quot;f1&quot;)');
+    expect(hist).toContain('<span class="drop-chev"><i>chevr</i></span>');
+    const two = F._icLeaderHtml(leaderData([note, chk({ id: 'f2', finished: true, heldOn: '2026-10-01' }), fin]), 'u1');
+    const h2 = two.slice(two.indexOf('History'));
+    expect(h2.indexOf('D:2026-10-25 · Note')).toBeLessThan(h2.indexOf('D:2026-09-01 · Check')); // older finished ones stay in History, newest first
+    expect(h2).not.toContain('ic-h-f2');
   });
   it('a question ticked with no note reads Asked', () => {
     const fin = chk({ finished: true, content: { answers: { faith01: { asked: true, note: '' } }, nextTime: '' } });

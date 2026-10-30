@@ -138,3 +138,26 @@ describe('block markers', () => {
     for (const m of markers) expect(HTML.split(/\r?\n/)).toContain(m);
   });
 });
+
+describe('module switched off mid-session (final review minor 7)', () => {
+  it('an /id-checks refusal gets plain words and refreshes settings; an ID Checks page goes Home', () => {
+    let refreshed = 0;
+    const { _moduleOffHit } = loadFns(['_moduleOffHit'], `const S = { user: { id: 'u1' } }; function _moduleDisabledRefresh() { globalThis.__mdr(); }`);
+    (globalThis as any).__mdr = () => { refreshed++; };
+    const err: any = { message: 'ID Checks is disabled for this deployment' };
+    _moduleOffHit('/id-checks/leaders/l1', err);
+    expect(err.message).toBe("That's not available here any more.");
+    expect(refreshed).toBe(1);
+    const other: any = { message: 'x' };
+    _moduleOffHit('/students', other);
+    expect(other.message).toBe('x');
+    expect(extractFn(HTML, '_moduleDisabledRefresh')).toContain("/^idcheck/.test(S.page || '')) go('home')");
+  });
+  it('the admin start-date link opens Youth Setup > Modules at the start date field', () => {
+    const fn = extractFn(HTML, '_icSetStart');
+    expect(fn).toContain("_setupOpen = { modules: true }");
+    expect(fn).toContain("_adminScroll = 'setup-idchecks-start'");
+    expect(fn).toContain("switchAdminTab('youthsetup')");
+    expect(HTML).toContain('id="setup-idchecks-start"');
+  });
+});

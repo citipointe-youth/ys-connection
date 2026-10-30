@@ -76,7 +76,7 @@ describe('the sheet and the download', () => {
     });
     const f = loadFns(['_icExportOpen', '_icExportGo', '_icExportAnswered', '_icExportSorted', '_icExportText', '_icExportRows'], `${PRELUDE}
       const _ICX = { id: null, sections: null, busy: false };
-      const _icGet = globalThis.__icget; const modal = globalThis.__modal; const toast = globalThis.__toast; const closeModal = globalThis.__close;
+      const API = { fresh: globalThis.__icget }; const _icGet = () => { throw new Error('export must not use the cached read'); }; const modal = globalThis.__modal; const toast = globalThis.__toast; const closeModal = globalThis.__close;
       const _downloadText = (...a) => globalThis.__text(...a); const _ensureXlsx = async () => {}; const XLSX = globalThis.__X;`, ['_icExportOpen', '_icExportGo']);
     return { f, calls };
   };
@@ -114,6 +114,8 @@ describe('the sheet and the download', () => {
     expect(calls.write[0][0].sheets[0][0]).toBe('ID checks');
     expect(calls.write[0][0].sheets[0][1].aoa[0][0]).toBe('Date');
     expect(calls.text.length).toBe(0);
+    expect(calls.toast).toEqual(['Downloaded']);
+    expect(calls.close.length).toBe(1);
   });
   it('a removed tick (404) gives a toast and no file of either kind', async () => {
     for (const kind of ['txt', 'xlsx']) {
@@ -131,10 +133,12 @@ describe('the sheet and the download', () => {
     expect(calls.toast).toEqual(['Could not export. Try again.']);
     expect(calls.text.length).toBe(0);
   });
-  it('the leader read is always the _icGet path (which drops the Cache entry first)', () => {
+  it('the leader read is always an uncached API.fresh, so no decrypted copy stays in the 30 s Cache', () => {
     const go = extractFn(HTML, '_icExportGo');
-    expect(go).toContain("await _icGet('/id-checks/leaders/'");
-    expect(go).not.toMatch(/API.get|Cache.get/);
+    expect(go).toContain("await API.fresh('/id-checks/leaders/'");
+    expect(go).not.toMatch(/API\.get|Cache\.get|_icGet/);
+    // the sheet closes before the file is made, so the Downloaded toast is never under it
+    expect(go.indexOf('closeModal()')).toBeLessThan(go.indexOf('XLSX.writeFile'));
   });
 });
 

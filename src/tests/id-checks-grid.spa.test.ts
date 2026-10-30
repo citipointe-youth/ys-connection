@@ -16,7 +16,7 @@ const DATA = {
 };
 
 describe('grid HTML', () => {
-  const { _icGridHtml } = loadFns(['_icGridHtml', '_icTickKeys', '_icRowMeta'], BASE);
+  const { _icGridHtml } = loadFns(['_icGridHtml', '_icTickKeys', '_icRowMeta', '_icJs'], BASE);
   it('has one column per account and a checked box only for a tick', () => {
     const h = _icGridHtml(DATA);
     expect((h.match(/class="ic-col"/g) || []).length).toBe(2);
@@ -42,7 +42,23 @@ describe('grid HTML', () => {
     const h = _icGridHtml({ ...DATA, rows: [{ id: 'l1', name: '<b>x</b>', gender: null, grades: [] }] });
     expect(h).not.toContain('<b>x</b>');
     expect(h).toContain('&lt;b&gt;x&lt;/b&gt;');
-    expect(h).toContain(`onchange="_icTick('u1','l1',this.checked)"`);
+    expect(h).toContain('onchange="_icTick(&quot;u1&quot;,&quot;l1&quot;,this.checked)"');
+    expect(h).toContain('onclick="_icTickCol(&quot;u1&quot;,true)"');
+  });
+  it('a column whose name is its role shows the word once; columns are narrow and wrap', () => {
+    const h = _icGridHtml({ ...DATA, columns: [{ id: 'u2', name: 'Admin', role: 'admin' }, { id: 'u1', name: 'Oversight Two', role: 'oversight' }] });
+    expect(h).not.toContain('Admin<span');
+    expect(h).toContain('Oversight Two<span class="lk-d" style="display:block">Oversight</span>');
+    expect(h).toContain('width:96px;min-width:96px');
+    expect(h).toContain('overflow-wrap:anywhere');
+  });
+  it('the page shows a swipe hint and an edge shadow only when more than two columns', () => {
+    const page = (cols: number) => loadFns(['_icGridPage', '_icGridHtml', '_icTickKeys', '_icRowMeta', '_icJs', '_icArchHtml'], `${BASE}
+      const _ICG = { data: ${JSON.stringify({ ...DATA, columns: [...Array(cols)].map((_, i) => ({ id: 'u' + i, name: 'N' + i, role: 'oversight' })) })}, arch: [] };`)._icGridPage();
+    expect(page(2)).not.toContain('Swipe the table');
+    expect(page(3)).toContain('Swipe the table sideways');
+    expect(page(3)).toContain('no-repeat local');
+    expect(page(2)).toContain('<div class="sh">Assign leaders</div>');
   });
   it('an empty roster says so', () => { expect(_icGridHtml({ rows: [], columns: DATA.columns, ticks: [] })).toContain('No active leaders yet.'); });
 });
@@ -78,6 +94,29 @@ describe('a tick saves at once', () => {
     const { f, boxes } = load(vi.fn().mockRejectedValue(new Error('x')));
     await f._icTick('u1', 'l1', false);
     expect(boxes.find(b => b.dataset.u === 'u1' && b.dataset.l === 'l1')!.checked).toBe(true);
+  });
+  it('quick tick then untick: the PUTs go one at a time in click order, so the last click wins', async () => {
+    const calls: any[] = [];
+    const put = vi.fn((_p: string, b: any) => new Promise((res) => calls.push({ b, res })));
+    const { f } = load(put);
+    const a = f._icTick('u2', 'l1', true);
+    const b = f._icTick('u2', 'l1', false);
+    await Promise.resolve(); await Promise.resolve();
+    expect(calls.map((c) => c.b.on)).toEqual([true]); // the untick waits for the tick
+    calls[0].res({});
+    await a;
+    await Promise.resolve(); await Promise.resolve();
+    expect(calls.map((c) => c.b.on)).toEqual([true, false]);
+    calls[1].res({});
+    await b;
+  });
+  it('a failed PUT does not block the next one', async () => {
+    let n = 0;
+    const put = vi.fn(() => (n++ === 0 ? Promise.reject(new Error('x')) : Promise.resolve({})));
+    const { f } = load(put);
+    await f._icTick('u2', 'l1', true);
+    await f._icTick('u2', 'l2', true);
+    expect(put).toHaveBeenCalledTimes(2);
   });
   it('Tick all sends only the ones not yet ticked; Clear sends only the ticked', async () => {
     const put = vi.fn().mockResolvedValue({});

@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
-const FNS = ['esc', '_icJs', '_icDraftDropIf', '_icLetGo', '_icWaitFlying', '_icSectionTitle', '_icLastTime', '_icMine', '_icDraftKey', '_icDraftGet', '_icDraftSave', '_icDraftDrop', '_icEd', '_icAnswered',
+const FNS = ['esc', '_icJs', '_icDraftDropIf', '_icLetGo', '_icWaitFlying', '_icSectionTitle', '_icLastTime', '_icMine', '_icDraftKey', '_icDraftGet', '_icDraftSave', '_icDraftDrop', '_icEd', '_icAnswered', '_icHasContent',
   '_icNew', '_icEdit', '_icStatusText', '_icEditHtml', 'renderIdCheckEdit', '_icTouch', '_icSet', '_icAns', '_icAsk', '_icNote', '_icSchedule',
   '_icPaint', '_icFlush', '_icFinish', '_icClose', '_icWire', '_icResendDrafts', '_icClearLocal'];
 const CONSTS = ['_IC', '_IC_BTN', '_IC_BACKOFF'].map((n) => HTML.match(new RegExp(`^const ${n} = .*$`, 'm'))![0]).join('\n');
@@ -165,6 +165,26 @@ describe('Finish check', () => {
     expect(t.puts.map((p) => p.body.finished)).toEqual([false]);
     expect(t.pages).toEqual(['idcheck-edit']);
     expect(t.toasts[0]).toMatch(/not finished/);
+  });
+  it('an untouched check cannot be finished: no PUT, a toast, and the button starts disabled', async () => {
+    const t = setup();
+    t.f._icNew('check');
+    await t.f._icFinish();
+    await vi.advanceTimersByTimeAsync(120000);
+    expect(t.puts).toHaveLength(0);
+    expect(t.pages).toEqual(['idcheck-edit']);
+    expect(t.toasts[0]).toMatch(/at least one question/);
+    expect(t.f._icHasContent({ answers: { a: { asked: false, note: ' ' } }, nextTime: '' })).toBe(false);
+    expect(t.f._icHasContent({ answers: {}, nextTime: 'x' })).toBe(true);
+    expect(t.f._icHasContent({ answers: { a: { asked: true, note: '' } } })).toBe(true);
+  });
+  it('re-editing a finished check never sends finished:true again', async () => {
+    const t = setup();
+    t.f._IC.leader.entries = [entry({ finished: true, content: { answers: { faith01: { asked: true, note: 'n' } }, nextTime: '' } })];
+    t.f._icEdit('e1');
+    await t.f._icFinish();
+    await vi.advanceTimersByTimeAsync(120000);
+    expect(t.puts).toHaveLength(0);
   });
   it('Save and close saves then goes back, leaving the check in progress', async () => {
     const t = setup();
@@ -353,6 +373,20 @@ describe('editor page', () => {
     expect(n).toContain('>Done<');
     expect(n).not.toContain('Finish check');
     expect(n.match(/<textarea/g)).toHaveLength(1);
+  });
+  it('Finish is disabled until something is asked or noted, and gone on a finished check', () => {
+    const t = setup();
+    expect(t.f._icEditHtml(st())).toMatch(/id="ic-finish"[^>]*disabled>Finish check</);
+    expect(t.f._icEditHtml(st({ content: { answers: { faith01: { asked: true, note: '' } }, nextTime: '' } }))).toContain('onclick="_icFinish(this)">Finish check<');
+    const fin = t.f._icEditHtml(st({ isNew: false, finished: true, content: { answers: { faith01: { asked: true, note: '' } }, nextTime: '' } }));
+    expect(fin).not.toContain('Finish check');
+    expect(fin).toContain('>Save and close<');
+  });
+  it('a question with an earlier answer shows a Last time marker and every question row a chevron', () => {
+    const t = setup();
+    const prev = entry({ id: 'p1', heldOn: '2026-09-01', finished: true, content: { answers: { faith01: { asked: true, note: 'prev note' } }, nextTime: '' } });
+    expect(t.f._icEditHtml(st({ entries: [prev] }))).toContain('<span class="pill neutral">Last time</span>');
+    expect(t.f._icEditHtml(st())).not.toContain('pill neutral');
   });
   it('escapes the leader name and typed text', () => {
     const t = setup();
