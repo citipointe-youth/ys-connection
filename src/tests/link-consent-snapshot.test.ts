@@ -93,4 +93,13 @@ describe('Refresh asks a rev 19 console through the claim reply', () => {
     }
     expect((await claim(h, 19)).consentSnap).toEqual({ ask: false });
   });
+  it('rev 21: an open ask carries askedAt (the stored value) only to a rev 21 console; no ask = no askedAt', async () => {
+    const h = await setup({ rev: 21 });
+    expect((await claim(h, 21)).consentSnap).toEqual({ ask: false });
+    await h.svc.consentSnapshotRefresh(ADMIN);
+    const { askedAt } = await h.link.consentSnapshotMeta();
+    expect(askedAt).toBeTruthy();
+    expect((await claim(h, 21)).consentSnap).toEqual({ ask: true, askedAt });
+    expect((await claim(h, 20)).consentSnap).toEqual({ ask: true });
+  });
 });
