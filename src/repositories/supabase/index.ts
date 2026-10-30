@@ -22,3 +22,4 @@ export { SupabaseLinkRepository } from './supabase.link';
 export { SupabaseErrorLogRepository } from './supabase.error-log';
 export { SupabaseUnsentRepository } from './supabase.unsent';
 export { SupabaseNoticeRepository, SupabaseNoticePushRepository } from './supabase.notices';
+export { SupabaseIdCheckRepository } from './supabase.id-checks';

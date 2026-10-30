@@ -5,6 +5,7 @@ import type { Leader } from '../../core/entities/leader';
 import type { PrayerRequest } from '../../core/entities/prayer';
 import type { Notice, NoticePushSub } from '../../core/entities/notice';
 import type { Connection } from '../../core/entities/connection';
+import type { IdCheckEntry, IdCheckTick } from '../../core/entities/id-check';
 import type {
   ServiceSession,
   ServiceAttendance,
@@ -204,3 +205,25 @@ export interface IBusRepository {
   setPoolIds(runId: string, ids: string[]): Promise<void>;
 }
 
+
+/** ID Checks (spec 2026-10-30 §7.1). Archived = leaderId null (leader deleted); archived entries never reach a leader read. */
+export interface IIdCheckRepository {
+  init(): Promise<void>;
+  findEntry(id: string): Promise<IdCheckEntry | null>;
+  /** held_on desc, updated_at desc. */
+  listByLeader(leaderId: string): Promise<IdCheckEntry[]>;
+  /** leaderId -> latest finished check held_on. */
+  lastFinished(leaderIds: string[]): Promise<Map<string, string>>;
+  /** leaderId -> newest unfinished check. */
+  inProgress(leaderIds: string[]): Promise<Map<string, { id: string; authorId: string; authorName: string }>>;
+  /** finished = stored.finished OR e.finished; kind/authorId/authorName/createdAt never change on update. */
+  upsert(e: IdCheckEntry): Promise<IdCheckEntry>;
+  deleteEntry(id: string): Promise<void>;
+  ticks(): Promise<IdCheckTick[]>;
+  ticksForLeader(leaderId: string): Promise<IdCheckTick[]>;
+  setTicks(userId: string, leaderIds: string[], on: boolean): Promise<void>;
+  /** Grouped by leader_name; never returns content. */
+  archivedGroups(): Promise<{ name: string; count: number; lastOn: string }[]>;
+  deleteArchived(name: string): Promise<number>;
+  attachArchived(name: string, leaderId: string, leaderName: string): Promise<number>;
+}
