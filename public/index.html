@@ -10720,7 +10720,7 @@ function _lkRefreshView() {
     if (fl && S.page === 'link-flows') fl.innerHTML = _lkFlowsHtml();
     const fr = document.getElementById('lk-fref');
     if (fr && S.page === 'link-flows') fr.outerHTML = _lkFlowsStl();
-    const lq =document.getElementById('lk-lq'), foot = document.getElementById('lk-lq-foot');
+    const lq = document.getElementById('lk-lq'), foot = document.getElementById('lk-lq-foot');
     if (lq && foot) { lq.innerHTML = _lkLeadersHtml(); foot.innerHTML = _lkLeadersFoot(); }
     if (S.page === 'link-checkin') _lkCiPoll(); // Plan F: every door repaint (re)arms the result poll
   } catch (e) {}

@@ -329,7 +329,7 @@ describe('F-49 report count label', () => {
   });
 });
 
-describe('GAP-4 fewer taps: newest week with no report, Yr chip opens a lone group', () => {
+describe('GAP-4 fewer taps: newest week with no report, a category chip only filters the list', () => {
   it('the group page offers a jump to the newest week with no report', () => {
     const h = setup(); // today Fri 16 Oct; this week's Tue 13 Oct has a report, the week of 6 Oct has none
     const g = h.get().LINK.groups[0];
