@@ -2165,6 +2165,85 @@ async function renderIdCheckGrid() {
   }
 }
 /*IC-GRID*/
+// ── Per-leader export (Task 16; spec decision M): a .txt or .xlsx built in the browser from a fresh read of the leader route. Nothing is logged or sent. ──
+// The question bank comes from the list payload, read once on first export.
+const _ICX = { id: null, sections: null, busy: false };
+
+// The answered questions of one check, as [{ sec, qs: [{ key, text, note }] }]: bank order, a key that is not in the bank prints as the key.
+function _icAnswered(entry, sections) {
+  const a = (entry.content && entry.content.answers) || {}, seen = new Set(), out = [];
+  const asked = k => { const x = a[k]; return !!x && (x.asked || String(x.note || '').trim() !== ''); };
+  for (const sec of sections || []) {
+    const qs = [];
+    for (const q of sec.questions || []) { seen.add(q.key); if (asked(q.key)) qs.push({ key: q.key, text: q.text, note: String(a[q.key].note || '').trim() }); }
+    out.push({ sec, qs });
+  }
+  for (const k of Object.keys(a)) {
+    if (seen.has(k) || !asked(k)) continue;
+    const home = out.find(o => o.sec.key === k.replace(/\d+$/, '')) || (out.push({ sec: { key: '', title: 'OTHER', subtitle: '', questions: [] }, qs: [] }), out[out.length - 1]);
+    home.qs.push({ key: k, text: k, note: String(a[k].note || '').trim() });
+  }
+  return out.filter(o => o.qs.length);
+}
+function _icExportSorted(entries) {
+  return [...(entries || [])].sort((x, y) => String(y.heldOn).localeCompare(String(x.heldOn)) || String(y.createdAt || '').localeCompare(String(x.createdAt || '')));
+}
+function _icExportText(leader, entries, sections) {
+  const L = ['ID checks: ' + leader.name, 'Exported ' + fmtDay(_siteDay(Date.now())) + ' by ' + ((S.user && S.user.displayName) || ''), ''];
+  for (const e of _icExportSorted(entries)) {
+    const head = fmtDay(e.heldOn) + ', ' + e.authorName;
+    if (e.kind === 'note') { L.push('== Note, ' + head + ' ==', String((e.content && e.content.text) || ''), ''); continue; }
+    L.push('== Check, ' + head + ' (' + (e.finished ? 'Finished' : 'In progress') + ') ==');
+    for (const o of _icAnswered(e, sections)) {
+      L.push(_icSectionTitle(o.sec));
+      for (const q of o.qs) { L.push('- ' + q.text + ' [Asked]'); if (q.note) L.push(...q.note.split('\n').map(s => '  ' + s)); }
+    }
+    const nt = String((e.content && e.content.nextTime) || '').trim();
+    if (nt) L.push('Notes for next time:', nt);
+    L.push('');
+  }
+  return L.join('\n');
+}
+function _icExportRows(leader, entries, sections) {
+  const rows = [['Date', 'Kind', 'Status', 'Author', 'Section', 'Question', 'Asked', 'Note']];
+  for (const e of _icExportSorted(entries)) {
+    if (e.kind === 'note') { rows.push([e.heldOn, 'Note', '', e.authorName, '', '', '', String((e.content && e.content.text) || '')]); continue; }
+    const st = e.finished ? 'Finished' : 'In progress';
+    for (const o of _icAnswered(e, sections)) for (const q of o.qs) rows.push([e.heldOn, 'Check', st, e.authorName, o.sec.title, q.text, 'Yes', q.note]);
+    const nt = String((e.content && e.content.nextTime) || '').trim();
+    if (nt) rows.push([e.heldOn, 'Check', st, e.authorName, '', 'Notes for next time', '', nt]);
+  }
+  return rows;
+}
+function _icExportOpen(leaderId) {
+  _ICX.id = leaderId;
+  modal(`<div class="mo-title">Export ID checks</div>
+    <p style="color:var(--ink-mid);margin-bottom:14px">The file holds private notes. Keep it safe and delete it when done.</p>
+    <div style="display:flex;gap:8px"><button type="button" class="btn btn-primary" style="flex:1" onclick="_icExportGo('txt')">Text file</button><button type="button" class="btn btn-primary" style="flex:1" onclick="_icExportGo('xlsx')">Excel file</button></div>
+    <button type="button" class="btn btn-ghost btn-full" style="margin-top:8px" onclick="closeModal()">Cancel</button>`);
+}
+// Always a fresh server-checked read: if the tick was removed since the page loaded, this is a 404 and no file is made.
+async function _icExportGo(kind) {
+  const id = _ICX.id; if (!id || _ICX.busy) return;
+  _ICX.busy = true;
+  try {
+    const d = await _icGet('/id-checks/leaders/' + encodeURIComponent(id));
+    if (!_ICX.sections) _ICX.sections = (await _icGet('/id-checks')).questions || [];
+    const name = (d.leader.name || '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'leader';
+    const base = 'id-checks-' + name + '-' + _siteDay(Date.now());
+    if (kind === 'xlsx') {
+      await _ensureXlsx();
+      const ws = XLSX.utils.aoa_to_sheet(_icExportRows(d.leader, d.entries, _ICX.sections));
+      ws['!cols'] = [{ wch: 12 }, { wch: 7 }, { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 50 }, { wch: 7 }, { wch: 60 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'ID checks');
+      XLSX.writeFile(wb, base + '.xlsx');
+      toast('Downloaded');
+    } else _downloadText(base + '.txt', _icExportText(d.leader, d.entries, _ICX.sections), 'text/plain');
+    closeModal();
+  } catch (e) { toast(e && e.status === 404 ? 'You no longer have access to this leader.' : 'Could not export. Try again.'); }
+  finally { _ICX.busy = false; }
+}
 /*IC-EXPORT*/
 /* ── END ID CHECKS ── */
 
