@@ -29,7 +29,9 @@ export type Action =
   | 'link:use'                // Elvanto link: check-in, actions, batch, lifegroups, flows, status
   | 'link:admin'              // Elvanto link, admin only: matching, log, detail, cancel anyone's, settle unclear rows
   | 'intake:admin'            // T4 (X19): youth intake + consents through the link, admin only (not oversight)
-  | 'link:flowRemove';        // rev 6 (R4): remove someone from an Elvanto flow step, bulk Complete (admin + oversight)
+  | 'link:flowRemove'         // rev 6 (R4): remove someone from an Elvanto flow step, bulk Complete (admin + oversight)
+  | 'idcheck:use'             // ID Checks: open the module (oversight + admin); reading a leader also needs a tick
+  | 'idcheck:assign';         // ID Checks: the tick grid and archived history (admin)
 
 const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
   // leader (junior leader, §5.2) — read-only, scoped to their OWN connected
@@ -103,6 +105,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'intake:write',
     'link:use',
     'link:flowRemove',
+    'idcheck:use',
   ]),
   // admin — everything including back-office management
   admin: new Set<Action>([
@@ -131,6 +134,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'link:admin',
     'intake:admin',
     'link:flowRemove',
+    'idcheck:use',
+    'idcheck:assign',
   ]),
 };
 
@@ -139,6 +144,17 @@ export function can(actor: Actor, action: Action): boolean {
 }
 
 /** Who a notice's alert goes to: active admin/oversight (every notice) and the active quad logins it is addressed to. */
+/** ID Checks (spec 2026-10-30 §7.4): the role must allow it AND the caller must be ticked. No admin short-cut;
+ *  a tick held by an account that is no longer oversight/admin is inert. */
+export function canSeeIdChecks(actor: Actor, tickedUserIds: Set<string>): boolean {
+  return can(actor, 'idcheck:use') && tickedUserIds.has(actor.id);
+}
+
+/** Who a tick may name: an active oversight or admin account. */
+export function isIdCheckTickTarget(u: { role: UserRole; status: string }): boolean {
+  return u.status === 'active' && (u.role === 'oversight' || u.role === 'admin');
+}
+
 export function receivesNoticePush(u: { role: UserRole; quad?: string | null; status: string }, recipients: readonly string[]): boolean {
   if (u.status !== 'active') return false;
   if (u.role === 'admin' || u.role === 'oversight') return true;
