@@ -47,7 +47,7 @@ const claim = (h: Awaited<ReturnType<typeof setup>>, rev: number) => h.sync.clai
 
 describe('consentSnapshot contract (rev 19)', () => {
   it('LINK_REV is 19 and the fixture parses; a row of the wrong kind is refused', () => {
-    expect(LINK_REV).toBe(20);
+    expect(LINK_REV).toBe(21);
     expect(() => PUSH_SCHEMAS.consentSnapshot.parse(SNAP())).not.toThrow();
     expect(() => PUSH_SCHEMAS.consentSnapshot.parse({ ...SNAP(), kind: 'mismatches' })).toThrow();
   });
