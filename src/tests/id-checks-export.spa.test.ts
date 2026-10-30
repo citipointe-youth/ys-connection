@@ -1,5 +1,5 @@
 // ID Checks Task 16: the per-leader export (.txt and .xlsx), built in the browser from a fresh read.
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterAll } from 'vitest';
 import { loadIndexHtml, loadFns, extractFn } from './helpers/extract-fn';
 import { ID_CHECK_SECTIONS } from '../core/id-check-questions';
 
@@ -17,6 +17,10 @@ const PRELUDE = `var S = { user: { displayName: 'Tom Admin' } };
   function _siteDay() { return '2026-10-30'; } function fmtDay(v) { return 'D:' + v; }
   function _icSectionTitle(sec) { return sec.subtitle ? sec.title + ' – ' + sec.subtitle : sec.title; }`;
 const fns = () => loadFns(['_icExportAnswered', '_icExportSorted', '_icExportText', '_icExportRows'], PRELUDE);
+// loadFns appends the real _siteDay (it overrides the prelude stub), so pin the clock to 30 Oct (site day).
+// Module level, not beforeAll: describe bodies build their text at collection time.
+vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-30T02:00:00Z') });
+afterAll(() => { vi.useRealTimers(); });
 
 describe('_icExportText', () => {
   const t = fns()._icExportText(LEADER, ENTRIES, ID_CHECK_SECTIONS);
