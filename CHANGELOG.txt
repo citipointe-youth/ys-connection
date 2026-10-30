@@ -4,6 +4,21 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+ROUND 2026-10-30  (link rev 21, ysc-v160, 2026-10-30, not yet live)
+-------------------------------------------------------------------------------
+- Admin > Elvanto link: the Activity list stays closed until you open it.
+- Consents: the "Checked" label counts only the newest check for each list.
+- Lifegroups: a category chip only filters the list; a group's header keeps
+  its Guys / Girls colour.
+- Flow steps (admin): "Updated X ago" and a Reload button.
+- Flows: when Elvanto says who can take the next step, Complete refuses a
+  leader it does not offer, and the app leaves that choice to Elvanto.
+- The console's heartbeat now keeps the rows it is working on leased, so a
+  long run of consent checks no longer re-hands them or counts false attempts.
+- Ship this app first, then the console. No migration; rollback = Instant
+  Rollback, nothing to undo.
+
+-------------------------------------------------------------------------------
 BUS CONSENT VIA THE ELVANTO FORM  (link rev 18, ysc-v143, 2026-10-22, not yet live)
 -------------------------------------------------------------------------------
 - Bus consent now comes from the Elvanto bus consent form. Each rider shows
