@@ -39,9 +39,9 @@ describe('stage of a child', () => {
 });
 
 describe('Needs action reasons', () => {
-  it('a hold (not "Waiting for parent form"), a mismatch, and a refused write with its real reason', () => {
+  it('a hold, a mismatch, and a refused write with its real reason; no parent form yet is said plainly (R2 2026-10-30)', () => {
     const st = {};
-    expect(F._hubReasons(kid({ intake: { date: 'd', row: irow({ status: 'needs-you', reason: 'Waiting for parent form' }) } }), st, {})).toEqual([]);
+    expect(F._hubReasons(kid({ intake: { date: 'd', row: irow({ status: 'needs-you', reason: 'Waiting for parent form' }) } }), st, {})).toEqual([['hold', 'No parent form yet']]);
     expect(F._hubReasons(kid({ intake: { date: 'd', row: irow({ status: 'needs-you', reason: 'Check the match' }) } }), st, {})).toEqual([['hold', 'Check the match']]);
     expect(F._hubReasons(kid({ mis: { row: {}, i: 0 } }), st, {})[0][0]).toBe('differs');
     const refused = crow({ actions: [{ type: 'consentSave', status: 'refused', reason: 'unknown', detail: 'The profile has no consent date field.' }] });

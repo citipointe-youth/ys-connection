@@ -12770,8 +12770,12 @@ function _ikChip(row, st, rows) {
   if (a.status === 'refused') return { label: 'Refused', tone: 'bad', line: _ikReasons()[a.reason] || a.detail || "The console couldn't do this. Do it in Elvanto." };
   return null; // R1 (UX cut 8): no Practice chip; there is no practice mode (operator 2026-10-15)
 }
-// Steps the family Save confirms: not done, not the parent text (it has its own confirm, R4).
-function _ikTodo(d) { return ((d && d.steps) || []).filter((s) => s.state !== 'done' && !_ikIsText(s)); }
+// Steps the family Save confirms: not done, not the parent text (it has its own confirm, R4). R1 (operator 2026-10-30): a family held
+// only by "Waiting for parent form" saves the student's own steps; the parent's wait for their form.
+function _ikTodo(d) {
+  const hs = (d && d.holds) || [], wait = hs.length > 0 && hs.every((h) => h.text === 'Waiting for parent form');
+  return ((d && d.steps) || []).filter((s) => s.state !== 'done' && !_ikIsText(s) && (!wait || s.role === 'student'));
+}
 function _ikTextStep(d) { return ((d && d.steps) || []).find((s) => s.state !== 'done' && _ikIsText(s)) || null; }
 // An extra's own button (Set grade, Fix mobile, Capitalise). Chain steps go with Save, never one at a time.
 function _ikAlone(d) { return ((d && d.extras) || []).filter((s) => s.state !== 'done'); }
@@ -12783,7 +12787,8 @@ function _ikSaveBlock(det, list, st) {
   const row = det.row || {}, acts = det.actions || [];
   if (row.status === 'done') return 'Done.';
   if (!list || !list.takenAt || list.stale) return 'Over 2 hours old. Tap Refresh.';
-  if (row.status === 'needs-you') return _ikHoldReason(det.detail) || 'Sort the lines at the top first.';
+  const hs = det.detail.holds || [], wait = hs.length > 0 && hs.every((h) => h.text === 'Waiting for parent form'); // R1: the student may go
+  if (row.status === 'needs-you' && !wait) return _ikHoldReason(det.detail) || 'Sort the lines at the top first.';
   if (_ikOpenOf(acts, ['intakeAnswer'])) return 'Updating plan…';
   if (_ikOpenOf(acts, ['intakeSave', 'consentSave', 'intakeText'])) return 'Waiting for the console';
   if (!_ikTodo(det.detail).length) return 'Nothing to save.';
@@ -12831,7 +12836,7 @@ const IK_HOLD = {
   'Notes unreadable': "Couldn't read the parent's notes, so the console can't tell if the note is already there. Press Refresh.",
   'Parent mobile needs fixing': "The parent's mobile in Elvanto isn't a valid 04 number, so the consent text can't be sent. Fix it on their profile.",
   'Not in consent step 1 yet': "The parent isn't in Parent Consent step 1 yet. Check it in Elvanto.",
-  'Waiting for parent form': "Waiting for parent form. Nothing is saved for this student until their parent's form comes in. If it's in under another name, choose it under Parent form below.",
+  'Waiting for parent form': "No parent form yet. Save adds the student to Elvanto now; the parent is added when their form comes in. If it's in under another name, choose it under Parent form below.",
   'Siblings share one parent form': 'More than one student matches this parent form. If they are siblings, press Same family; if not, choose the right parent form below.',
   'Check the match': "The parent form nearly matches this student's form. Check it's the same family, then press Same family, or choose another parent form below.",
   'Unreadable date': "Couldn't read when a form was sent. Open it in Elvanto.",
@@ -13598,10 +13603,10 @@ function _hubStage(c, now, cut, flowsKnown) {
   if (ir && !cr && !c.flow && flowsKnown && c.personId && past) return 'done'; // saved, texted, and no longer on New People step 0
   return past ? 'decided' : 'consent';
 }
-// [code, text]: the real reason, never a code. A wait for the parent form is not the admin's to do.
+// [code, text]: the real reason, never a code. R2 (operator 2026-10-30): a missing parent form is said plainly, never hidden.
 function _hubReasons(c, st, fixes) {
   const out = [], ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
-  if (ir && ir.status === 'needs-you' && ir.reason !== 'Waiting for parent form') out.push(['hold', ir.reason || 'Needs a look']);
+  if (ir && ir.status === 'needs-you') out.push(['hold', ir.reason === 'Waiting for parent form' ? 'No parent form yet' : ir.reason || 'Needs a look']);
   if (cr && cr.status === 'needs-you') out.push(['hold', cr.reason || 'Needs a look']);
   if (c.mis) out.push(['differs', 'Profile differs from the consent form']);
   for (const r of [ir, cr]) {
@@ -13732,14 +13737,15 @@ function _hubCheckedAt() {
     .concat(['unlinked', 'mismatches', 'forms'].map((k) => { const x = _ikLk(k); return x.res && x.res.takenAt; })).filter(Boolean).map(Date.parse);
   return ts.length ? new Date(Math.min(...ts)).toISOString() : null;
 }
-// Refresh: the console re-reads the consent lists (rev 19 ask; an older console: the on-demand lookups) and the newest plan dates.
+// Refresh: the console re-reads the consent lists (rev 19 ask; an older console: the on-demand lookups) and every listed plan date
+// (R3 2026-10-30: not only the newest, so an older week's rows can still be saved).
 async function _hubRefresh() {
   const I = _ik();
   if (I.hubAsk) return;
   I.hubAsk = Date.now(); _ikDraw();
-  const h = I.hub || {}, newest = (m) => { const k = _hubNewest(h.lists, m); return k && k.slice(m.length + 1); };
+  const h = I.hub || {};
   const asks = [API.post('/link/consents/refresh', {}).catch(() => null)];
-  for (const m of ['intake', 'consent']) { const d = newest(m); if (d) asks.push(API.post('/link/intake/refresh', { mode: m, date: d }).catch(() => null)); }
+  for (const k of Object.keys(h.lists || {})) { const [m, d] = k.split('|'); if (m === 'intake' || m === 'consent') asks.push(API.post('/link/intake/refresh', { mode: m, date: d }).catch(() => null)); }
   await Promise.all(asks);
   if (_ik() !== I) return;
   if (!(h.snap && h.snap.live)) { for (const k of ['unlinked', 'mismatches', 'forms']) _ikLkGo(k, 1, ''); I.hubAsk = 0; }

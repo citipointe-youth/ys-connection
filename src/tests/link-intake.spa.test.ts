@@ -200,7 +200,17 @@ describe('Save disabled reasons', () => {
     expect(nv([])).toBe('Sort the lines at the top first.');
     expect(nv([{ role: 'student', text: 'Same person?' }, { role: 'student', text: 'Fix the flagged items' }])).toBe('Answer the question and fix the flagged answers first.');
     expect(nv([{ role: 'student', text: 'Profile archived' }])).toBe('Unarchive the profile first.');
-    expect(nv([{ role: 'pair', text: 'Waiting for parent form' }])).toBe('Sort the line at the top first.'); // F-17: the hold is already at the top
+  });
+  it('R1 2026-10-30: held only by "Waiting for parent form" -> Save is on and confirms the student\'s steps only', () => {
+    const W = [{ role: 'pair', text: 'Waiting for parent form' }];
+    const d = DETAIL({ status: 'needs-you', holds: W, steps: [step({ key: 'approveNew:student:' + P(1), action: 'approveNew' }),
+      step({ key: 'category:student:' + P(1), action: 'category', state: 'wait' }), step({ key: 'familyLink:pair:x', action: 'familyLink', role: 'pair', state: 'wait' }), TEXT] });
+    const det = DET({ row: { key: P(1), status: 'needs-you', title: 'A' } }, d);
+    expect(block(det)).toBe('');
+    expect(makeEnv().fns._ikTodo(d).map((x: any) => x.key)).toEqual(['approveNew:student:' + P(1), 'category:student:' + P(1)]);
+    const done = DETAIL({ status: 'needs-you', holds: W, steps: [step({ key: 'approveNew:student:' + P(1), action: 'approveNew', state: 'done' }), TEXT] });
+    expect(block(DET({ row: { key: P(1), status: 'needs-you', title: 'A' } }, done))).toBe('Nothing to save.');
+    expect(block(DET({ row: { key: P(1), status: 'needs-you', title: 'A' } }, DETAIL({ status: 'needs-you', holds: [...W, { role: 'student', text: 'Same person?' }] })))).toBe('Answer the question first.');
   });
   it('an answer still pending', () => { expect(block(DET({ actions: [act({ type: 'intakeAnswer' })] }))).toBe('Updating plan…'); });
   it('stale plan', () => { expect(block(DET(), LIST({ stale: true }))).toBe('Over 2 hours old. Tap Refresh.'); });
@@ -440,7 +450,7 @@ describe('Form Approve & Consent review (spec 2026-10-14)', () => {
     const h = raw(d), t = strip(h);
     expect(h).toContain('ik-cmp ik-one');
     expect(t).toContain('No parent form matched.');
-    expect(t).toContain("Waiting for parent form. Nothing is saved for this student until their parent's form comes in.");
+    expect(t).toContain('No parent form yet. Save adds the student to Elvanto now; the parent is added when their form comes in.');
     expect(t).not.toContain('Before this family can be saved');
   });
   it('the verdict is asked as a sentence, in the console wording, with no codes', () => {
@@ -638,6 +648,16 @@ describe('Unlinked consent forms (L6)', () => {
 });
 
 // Task 11 fix round 1: the helpers the hub still uses, tested directly (their old cases went through the deleted Tidy up screens).
+describe('consent hub Refresh (R3 2026-10-30)', () => {
+  it('asks the console for every listed date of each mode, not only the newest', async () => {
+    const e = makeEnv(); const I = e.fns._ik();
+    I.hub = { snap: { live: true }, lists: { 'intake|2026-10-09': {}, 'intake|2026-10-23': {}, 'intake|2026-10-30': {}, 'consent|2026-10-16': {}, 'consent|2026-11-06': {} } };
+    await e.fns._hubRefresh();
+    const asks = e.calls.posts.filter((x: any) => x.p === '/link/intake/refresh').map((x: any) => x.b.mode + '|' + x.b.date).sort();
+    expect(asks).toEqual(['consent|2026-10-16', 'consent|2026-11-06', 'intake|2026-10-09', 'intake|2026-10-23', 'intake|2026-10-30']);
+  });
+});
+
 describe('consent hub Checked label (Y2)', () => {
   const setup = (consentTakenAt: string, fresh: string) => {
     const e = makeEnv(); const I = e.fns._ik(); const mins = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
