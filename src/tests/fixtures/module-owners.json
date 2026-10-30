@@ -11,7 +11,7 @@
   "busConsentForm": ["forms"],
   "newYouthForms": ["new-youth"],
   "intakeAdmin": [],
-  "idChecks": [],
+  "idChecks": ["idchecks", "idcheck-leader", "idcheck-edit", "idcheck-grid"],
   "flows": ["link-flows"],
   "checkin": ["link-checkin"],
   "lifegroupReport": ["link-groups"],

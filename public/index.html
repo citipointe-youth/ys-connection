@@ -1753,7 +1753,7 @@ function _modOn(key) {
   return v === 'admin' || v === 'shadow' ? !!S.user && S.user.role === 'admin' : v !== false && v !== 'off';
 }
 // page id -> module key. The dispatcher (render) sends a page whose module is off to Home. Lanes fill this in.
-const PAGE_MODULE = { 'new-youth': 'newYouthForms', 'link-admin': 'liveLink', 'link-intake': 'consentsHub', prayers: 'prayers', notices: 'notices', bus: 'busMinistry', 'ca-week': 'connectionAudit', 'ca-follow': 'connectionAudit', 'ca-term': 'connectionAudit', 'ca-quality': 'connectionAudit' /*CA-HOOK*/ };
+const PAGE_MODULE = { 'new-youth': 'newYouthForms', 'link-admin': 'liveLink', 'link-intake': 'consentsHub', prayers: 'prayers', notices: 'notices', idchecks: 'idChecks', 'idcheck-leader': 'idChecks', 'idcheck-edit': 'idChecks', 'idcheck-grid': 'idChecks', bus: 'busMinistry', 'ca-week': 'connectionAudit', 'ca-follow': 'connectionAudit', 'ca-term': 'connectionAudit', 'ca-quality': 'connectionAudit' /*CA-HOOK*/ };
 Object.assign(PAGE_MODULE, { 'link-flows': 'flows', 'link-checkin': 'checkin', 'link-groups': 'lifegroupReport' }); // lane 2.5: Elvanto link screens
 // A signed-in login hit MODULE_DISABLED on /prayers: pull fresh settings, rebuild the nav if it changed, leave the prayers page.
 let _mdBusy = false;
@@ -2001,6 +2001,35 @@ async function noticePushOff() {
   } catch { toast('Could not turn off alerts'); }
   finally { _ntPushBusy = false; _ntPushDraw(); }
 }
+
+/* ── ID CHECKS MODULE ── */
+// ID Checks (oversight + admin; module modules.idChecks off|on, default off). Leaders' ID check records. Later tasks insert above the four markers.
+function _icOn() {
+  const m = ((S.settings && S.settings.ministryConfig) || {}).modules || {};
+  return m.idChecks === 'on' && !!S.user && ['admin', 'oversight'].includes(S.user.role);
+}
+// Every /id-checks read goes through here: the 30 s Cache must never serve a stale record or tick list.
+function _icGet(p) { Cache.del('/id-checks'); return API.get(p); }
+// A section heading: the "general" section has no subtitle, so never a trailing dash.
+function _icSectionTitle(sec) { return sec.subtitle ? sec.title + ' – ' + sec.subtitle : sec.title; }
+// Logout: drop every ysc.ic.* key (drafts, filters) so the next login on this phone starts clean.
+function _icClearLocal() {
+  try {
+    const ks = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf('ysc.ic.') === 0) ks.push(k); }
+    ks.forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+}
+// Page stubs; the list, editor and grid tasks replace the bodies.
+function renderIdChecks() { setApp(shell('<div class="sh">ID Checks</div>')); }
+function renderIdCheckLeader() { setApp(shell('<div class="sh">ID Checks</div>')); }
+function renderIdCheckEdit() { setApp(shell('<div class="sh">ID Checks</div>')); }
+function renderIdCheckGrid() { setApp(shell('<div class="sh">ID Checks</div>')); }
+/*IC-LIST*/
+/*IC-EDIT*/
+/*IC-GRID*/
+/*IC-EXPORT*/
+/* ── END ID CHECKS ── */
 
 // ============================================================
 // HELPERS
@@ -2654,6 +2683,8 @@ function moreItems() {
   const xs = _prayersOn() ? [{ id:'prayers', ic:'pray', label:'Prayers', open:"go('prayers')" }] : [];
   if (_busOn()) xs.push({ id:'bus', ic:'bus', label:L('busMinistry'), open:"go('bus')" });
   if ((((S.settings && S.settings.ministryConfig) || {}).modules || {}).notices === 'on' && S.user && ['admin', 'oversight', 'quad'].includes(S.user.role)) xs.push({ id:'notices', ic:'bell', label:'Notices', mbl:'Notices', open:"go('notices')" });
+  // Inline like Notices (not _icOn()), so the many tests that extract moreItems alone keep working; _icOn() is the same rule.
+  if ((((S.settings && S.settings.ministryConfig) || {}).modules || {}).idChecks === 'on' && S.user && ['admin', 'oversight'].includes(S.user.role)) xs.push({ id:'idchecks', ic:'id', label:'ID Checks', mbl:'ID Checks', open:"go('idchecks')" });
   // nyOpen never wipes a send that is still in flight.
   if (_nyOn()) xs.push({ id:'new-youth', ic:'plus', label:'New person', open:'nyOpen()' });
   /*LINK*/ {
@@ -2825,6 +2856,7 @@ async function render() {
   if (p === 'prayers' && !_prayersOn()) { go('home'); return; }
   if (Object.prototype.hasOwnProperty.call(PAGE_MODULE, p) && !_modOn(PAGE_MODULE[p])) { go('home'); return; }
   if (p === 'notices' && !_noticesOn()) { go('home'); return; }
+  if (p.indexOf('idcheck') === 0 && !_icOn()) { go('home'); return; }
   if (p && p.indexOf('ca-') === 0 && window.CA) { await CA.render(p); return; } /*CA-HOOK*/
   if (p==='home') await renderHome();
   else if (p==='bus') await renderBus(); /*BUS-HOOK*/
@@ -2838,6 +2870,10 @@ async function render() {
   else if (p==='at-risk') await renderAtRisk();
   else if (p==='prayers') await renderPrayers();
   else if (p==='notices') await renderNotices();
+  else if (p==='idchecks') await renderIdChecks();
+  else if (p==='idcheck-leader') await renderIdCheckLeader();
+  else if (p==='idcheck-edit') await renderIdCheckEdit();
+  else if (p==='idcheck-grid') await renderIdCheckGrid();
   else if (p==='students') await renderStudents();
   else if (p==='trends') await renderTrends();
   else if (p==='import') await renderImport();
@@ -3047,6 +3083,7 @@ async function doLogout() {
   /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.cars = null; BUS.carsOpen = false; BUS.carsErr = false; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; BUS.tripDate = null; _busStopPoll();
   _previewStash = null;
   nyReset(); /*NEW-YOUTH*/
+  _icClearLocal();
   _vgReset(); // unsaved grade taps never fire after logout or carry into the next login
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
   try {
@@ -7374,7 +7411,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', genderPolicy: 'strict', serviceDayOfWeek: 5,
     timeZone: 'Australia/Brisbane', consentCutoff: '09:00' }, // Y3a: the location's time zone and consent cut-off
   roles: { enabled: { oversight: true, grade: true, quad: true, leader: false } },
-  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', intakeAdmin: 'off', flowHiddenStep: {}, prayers: true, liveLink: true, digest: true, camp: true, busConsentForm: true },
+  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', intakeAdmin: 'off', idChecks: 'off', flowHiddenStep: {}, prayers: true, liveLink: true, digest: true, camp: true, busConsentForm: true },
   logins: { simple: false },
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
   /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
@@ -7382,6 +7419,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   /*BUS-HOOK*/ // here purely so every module config block has a client-side mirror, same as the others.
   /*BUS-HOOK*/ busMinistry: { churchAddress: '', churchPlaceId: '', leaveTime: '21:00', targetRouteMin: 45, prefWeightMin: 10, genderWeightMin: 120, detourMin: 10, detourPct: 20, coordinatorLeaderIds: [], consentDeclaration: 'Do you give permission for [child] to travel on the Youth Society bus to, from and during Friday nights at Citipointe Brisbane? Do you consent to the leaders arranging emergency medical, hospital or ambulance care if needed, at your cost? Do you release Citipointe from liability as set out in the full form? Do you agree to us contacting you with updates? The full terms and privacy policy are at citipointechurch.com.', consentLastChecked: '', consentLastNew: 0 },
   elvanto: { baseUrl: '', studentFormId: '', parentFormId: '', location: '', locationQuestion: 'Citipointe Location', peopleFlowPrefix: '', consentFlowPrefix: '', state: '', fields: {}, options: {}, checkedAt: '', busConsentFormId: '' },
+  idChecks: { cycleStart: '', intervalMonths: 6 }, // mirrors src/core/ministry-config.ts (ID Checks rhythm)
 };
 
 // Lazily seed the draft from freshly-fetched settings — only when there isn't
@@ -7605,6 +7643,9 @@ function _youthSetupBody(settings, users) {
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('prayers')!==false?'checked':''} onchange="_setupPrayersToggle(this)"> <span>Prayers ${helpTip("Prayer requests for students, or general ones. Turn off to hide Prayers from every login. Prayers already saved are kept.")}</span></label>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${mv('busMinistry')?'checked':''} onchange="_setupSet('modules.busMinistry', this.checked)"> <span>${esc(lv('busMinistry'))} ${helpTip("Plan drop-home car runs after your service. Off by default.")}</span></label>
     ${_setupNoticesHtml(md, style)}
+    <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="setup-idchecks" ${mv('idChecks') === 'on' ? 'checked' : ''} onchange="_setupSet('modules.idChecks', this.checked ? 'on' : 'off')"> <span>ID Checks ${helpTip("Oversight and admin keep a record of each leader's ID check, with a reminder when the next one is due. Only logins ticked per leader can open a record. Off by default.")}</span></label>
+    ${mv('idChecks') === 'on' ? `<div class="fg"><label class="fl" for="setup-idchecks-start">First check cycle starts</label><input type="date" class="fi" id="setup-idchecks-start" value="${esc(String((cfg.idChecks || {}).cycleStart || ''))}" onchange="_setupSet('idChecks.cycleStart', this.value)"></div>
+    <div class="fg"><label class="fl" for="setup-idchecks-months">Months between checks</label><input type="number" class="fi" id="setup-idchecks-months" min="1" max="12" value="${esc(String((cfg.idChecks || {}).intervalMonths || 6))}" onchange="_setupSet('idChecks.intervalMonths', Math.min(12, Math.max(1, parseInt(this.value, 10) || 6)))"></div>` : ''}
     ${_setupElvantoModulesHtml(md)}
     ${_setupFlowHiddenHtml(md)}
     ${_setupIntakeHtml(md)}`);

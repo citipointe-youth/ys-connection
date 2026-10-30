@@ -237,6 +237,8 @@
      "_setupSet('modules.busMinistry', this.checked)",
      "#setup-notices",
      "_setupSet('modules.notices', this.checked ? 'on' : 'off')",
+     "#setup-idchecks",
+     "_setupSet('modules.idChecks', this.checked ? 'on' : 'off')",
      "#setup-liveLink",
      "_setupSet('modules.liveLink', this.checked)",
      "#setup-busConsentForm",
