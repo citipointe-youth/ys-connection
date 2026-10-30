@@ -165,7 +165,7 @@ describe('#10 the service worker serves the cached shell after 3 s on a slow net
     vi.useRealTimers();
   });
   it('the cache version was bumped with the change', () => {
-    expect(sw(() => Promise.resolve({ ok: false }), null).src).toMatch(/^const CACHE = 'ysc-v160';/);
+    expect(sw(() => Promise.resolve({ ok: false }), null).src).toMatch(/^const CACHE = 'ysc-v161';/);
   });
 });
 
