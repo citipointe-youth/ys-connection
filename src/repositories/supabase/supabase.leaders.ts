@@ -112,6 +112,9 @@ export class SupabaseLeaderRepository implements ILeaderRepository {
   }
 
   async deleteAll(): Promise<void> {
-    await this.sql`truncate table leaders cascade`;
+    // A plain DELETE, not TRUNCATE ... CASCADE: truncate ignores ON DELETE SET NULL and would empty the ID-check entries
+    // (spec 2026-10-30 Decision I: ID-check history survives a leader delete). Every other FK to leaders is ON DELETE
+    // CASCADE (connections, bus_leader_prefs, link_flow_assign, the ID-check ticks), so their rows still go, as before.
+    await this.sql`delete from leaders`;
   }
 }
