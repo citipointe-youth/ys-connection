@@ -1427,11 +1427,11 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
 
   it('T1: status carries consoleLinkRev (null before any console) and appLinkRev', async () => {
     const h = await setup();
-    expect(await h.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: 1, appLinkRev: 20 }); // rev 20: doorSearch; rev 18: bus consent forms; rev 16: Connection Audit push; rev 15: L7 recheck + L2 multi-name consent links; rev 14: X1 claim site; rev 13: flows serviceVisits; rev 12: C01 re-hand; rev 11: P4 consentLookup since; rev 10: R8 flows textedOn; rev 9: R4 notReceived; rev 8: Consents Other; fix16 C-1
+    expect(await h.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: 1, appLinkRev: 21 }); // rev 21: flows offered + consentSnap.askedAt; rev 20: doorSearch; rev 18: bus consent forms; rev 16: Connection Audit push; rev 15: L7 recheck + L2 multi-name consent links; rev 14: X1 claim site; rev 13: flows serviceVisits; rev 12: C01 re-hand; rev 11: P4 consentLookup since; rev 10: R8 flows textedOn; rev 9: R4 notReceived; rev 8: Consents Other; fix16 C-1
     await registerConsole(h.link, CONSOLE, CAPS, 60, 2);
     expect((await h.svc.status(GRADE)).consoleLinkRev).toBe(2);
     const none = await setup('on', { console: false });
-    expect(await none.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: null, appLinkRev: 20 });
+    expect(await none.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: null, appLinkRev: 21 });
   });
 
   it('T3: a checked-in person with no roster row is listed by the pushed name (leader by room name); no name, not listed', async () => {
@@ -1542,6 +1542,45 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     const c = step({ assignTo: P_CODY });
     expect((await enq(e.svc, GRADE, c, DEV)).outcome).toBe('saved');
     expect((await e.link.getAction(c.id))!.payload).not.toHaveProperty('assignTo'); // Dana has no Elvanto match (Q9)
+  });
+
+  // Round 2026-10-30 (LINK_REV 21, ruling Q4): the console pushes each step's offered next assignees; known = enforced.
+  const offer = async (h: H, offered: string[] | undefined) => h.link.replaceMirror('flows', await h.link.flows(),
+    { takenAt: `2026-10-16T08:${++pushN}:00.000Z`, consoleId: CONSOLE, steps: (await h.link.flows()).map((f) =>
+      ({ flowId: f.flowId, flowName: f.flowName, stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder, ...(offered ? { offered } : {}) })) });
+  it('r30 Q4: an admin assignTo Elvanto does not offer is refused; offered (any case) is saved; unknown or empty offered = today', async () => {
+    const h = await setup();
+    await offer(h, [u(999)]);
+    expect(await enq(h.svc, ADMIN, tom({ assignTo: P_CODY }), DEV))
+      .toMatchObject({ code: 'BAD_REQUEST', message: "Elvanto doesn't offer that leader for the next step. Pick another, or leave it to Elvanto." });
+    expect((await enq(h.svc, ADMIN, tom(), DEV)).outcome).toBe('saved'); // no pick: Elvanto's own
+    for (const o of [[P_CODY.toUpperCase()], undefined, []]) {
+      const g = await setup();
+      await offer(g, o);
+      expect((await enq(g.svc, ADMIN, tom({ assignTo: P_CODY }), DEV)).outcome).toBe('saved');
+    }
+  });
+  it('r30 Q4: a non-admin whose current leader is not offered hands the step to Elvanto (no assignTo); unknown offered = today', async () => {
+    const h = await setup();
+    await h.link.setFlowAssign({ flowId: FLOW_B, personId: P_AMY, leaderId: L_CODY, assignedBy: 'admin' });
+    await offer(h, [u(999)]);
+    const a = step();
+    expect((await enq(h.svc, GRADE, a, DEV)).outcome).toBe('saved');
+    expect((await h.link.getAction(a.id))!.payload).not.toHaveProperty('assignTo');
+    const g = await setup();
+    await g.link.setFlowAssign({ flowId: FLOW_B, personId: P_AMY, leaderId: L_CODY, assignedBy: 'admin' });
+    await offer(g, undefined);
+    const b = step();
+    expect((await enq(g.svc, GRADE, b, DEV)).outcome).toBe('saved');
+    expect((await g.link.getAction(b.id))!.payload).toMatchObject({ assignTo: P_CODY });
+  });
+  it('r30: GET /link/flows steps carry a known offered for admin/director only', async () => {
+    const h = await setup();
+    await offer(h, [P_CODY]);
+    expect((await h.svc.flows(ADMIN)).steps.every((s: any) => s.offered?.[0] === P_CODY)).toBe(true);
+    expect((await h.svc.flows(GRADE)).steps.some((s: any) => 'offered' in s)).toBe(false);
+    await offer(h, []);
+    expect((await h.svc.flows(ADMIN)).steps.some((s: any) => 'offered' in s)).toBe(false);
   });
 
   it('2026-10-24 review: flowAssignments is read once per batch, not once per completeStep', async () => {

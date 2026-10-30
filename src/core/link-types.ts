@@ -80,7 +80,7 @@ export interface LinkFlowRow { rowId: string; flowId: string; flowName: string; 
   /** Rev 13: distinct service days this term since the student form (the form day counts); null = unknown (or an older console). */
   serviceVisits?: number | null; }
 /** T12: one step of a pushed flow (the flows push's optional `steps`). */
-export interface LinkFlowStep { flowId: string; flowName: string; stepId: string; stepName: string; stepOrder: number; }
+export interface LinkFlowStep { flowId: string; flowName: string; stepId: string; stepName: string; stepOrder: number; offered?: string[]; } // r30: offered = rev 21
 /** T6: a flow person given to a self-identified leader (app only, never sent to Elvanto). */
 export interface LinkFlowAssign { flowId: string; personId: string; leaderId: string; assignedBy: string; assignedAt: string; }
 export type LogEvent = ActionType | 'identity' | 'cancel' | 'undo' | 'resolve'; // resolve: CY-A1 admin settles an unclear row

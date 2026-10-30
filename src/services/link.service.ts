@@ -495,6 +495,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       roster: memo(() => d.link.roster()), services: memo(() => d.link.services()), groups: memo(() => d.link.groups()),
       flows: memo(() => d.link.flows()), consoles: memo(() => d.link.listConsoles()), mirror: memo(() => d.link.mirrorState()),
       leaders: memo(() => d.leaders.findAll()), flowAssignments: memo(() => d.link.flowAssignments()), // review #4
+      flowSteps: memo(() => d.link.flowSteps()), // r30: offered (rev 21)
       // Rev 6: read once per batch. ponytail: a Complete and a Remove for one row queued in the SAME batch are not seen by each other.
       openFlowRows: memo(() => d.link.listActions({ types: FLOW_ROW_TYPES, statuses: OPEN })),
       consentRows: memo(async () => (d.intake ? d.intake.rows('consent') : [])),
@@ -792,7 +793,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         // 2026-10-24 (ruling Q4, r21 rule kept): only the admin or a director picks who gets the next step, and only a leader who
         // fits the person or the current assignee. Anyone else hands it to the current assignee (server-set, like notReceived);
         // with no Elvanto match for them, Elvanto's usual pick (Q9).
-        const [leaders, assigns] = await Promise.all([c.leaders(), c.flowAssignments()]);
+        const [leaders, assigns, steps] = await Promise.all([c.leaders(), c.flowAssignments(), c.flowSteps()]);
+        // r30 (rev 21, ruling Q4): the step's offered next assignees, when the console sent them (missing/empty = unknown = allow).
+        const offered = steps?.find((s) => s.stepId === row.stepId)?.offered;
+        const offers = (id: string) => !offered?.length || offered.some((o) => o.toLowerCase() === id.toLowerCase());
         const byRoster = new Map(roster.map((x) => [x.personId, x]));
         const a0 = row.personId ? assigns.find((x) => x.flowId === row.flowId && x.personId === row.personId) : undefined;
         const current = currentOf(row, a0 ? leaders.find((l) => l.id === a0.leaderId) : undefined, leaders);
@@ -802,10 +806,11 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
           if (pa.assignTo && !leaders.some((l) => l.active && personOf(l) === pa.assignTo && (fitsRow(l, row, byRoster) || l.id === current?.id))) {
             throw new BadRequestError('Pick a leader from the list.');
           }
+          if (pa.assignTo && !offers(pa.assignTo)) throw new BadRequestError("Elvanto doesn't offer that leader for the next step. Pick another, or leave it to Elvanto.");
         } else {
           delete pa.assignTo;
           const to = current ? personOf(current) : null;
-          if (to) pa.assignTo = to;
+          if (to && offers(to)) pa.assignTo = to; // not offered: Elvanto's own pick (Q9), never a console assignee-needed refusal
         }
         // R4: DO NOT CONTACT = Remove only. CY-B1: the flag GET /link/flows shows (the roster's sticky DNC when the flow
         // row's own is unreadable), so a Complete queued on a phone before the flag arrived is still refused.
@@ -1218,7 +1223,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
             ...refusedLast(o, done.filter((r) => (r.payload as { rowId?: string }).rowId === f.rowId)) };
         });
       // T12: the pushed list (empty steps included); an older console sends none, so the rows' steps. Admin: every step (the picker).
-      const steps = new Map((pushed ?? flows).map((f) => [f.stepId, { flowId: f.flowId, flowName: f.flowName, stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder }]));
+      // r30 (rev 21): a known offered (non-empty) goes to admin/director only, for the picker; a leader's assignTo is server-set.
+      const steps = new Map((pushed ?? flows).map((f) => { const o = (f as LinkFlowStep).offered; return [f.stepId, { flowId: f.flowId, flowName: f.flowName,
+        stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder, ...(o?.length && isAdminRole(actor) ? { offered: o } : {}) }]; }));
       const hidden = c.settings.ministryConfig.modules.flowHiddenStep;
       // S5: the console is reading the flows now (progress posted after the last flows push landed)
       const progress = progressOf(newest(consoles), 'flows', clock().getTime(), mirrors.find((m) => m.kind === 'flows')?.appliedAt ?? null);
