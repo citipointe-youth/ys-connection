@@ -4,9 +4,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
-const FNS = ['esc', '_icSectionTitle', '_icLastTime', '_icMine', '_icDraftKey', '_icDraftGet', '_icDraftSave', '_icDraftDrop', '_icEd', '_icAnswered',
+const FNS = ['esc', '_icJs', '_icDraftDropIf', '_icLetGo', '_icWaitFlying', '_icSectionTitle', '_icLastTime', '_icMine', '_icDraftKey', '_icDraftGet', '_icDraftSave', '_icDraftDrop', '_icEd', '_icAnswered',
   '_icNew', '_icEdit', '_icStatusText', '_icEditHtml', 'renderIdCheckEdit', '_icTouch', '_icSet', '_icAns', '_icAsk', '_icNote', '_icSchedule',
-  '_icPaint', '_icFlush', '_icFinish', '_icClose', '_icWire', '_icResendOrphans', '_icClearLocal'];
+  '_icPaint', '_icFlush', '_icFinish', '_icClose', '_icWire', '_icResendDrafts', '_icClearLocal'];
 const CONSTS = ['_IC', '_IC_BTN', '_IC_BACKOFF'].map((n) => HTML.match(new RegExp(`^const ${n} = .*$`, 'm'))![0]).join('\n');
 
 const BANK = [{ key: 'faith', title: 'FAITH', subtitle: 'their walk with God', questions: [{ key: 'faith01', text: 'How is it going?' }, { key: 'faith02', text: 'Old question', retired: true }] }];
@@ -192,12 +192,13 @@ describe('drafts on reopen', () => {
     await vi.advanceTimersByTimeAsync(1500);
     expect(t.puts[0]!.body.content.answers.faith01.note).toBe('unsent words');
   });
-  it('an older draft than the server copy is ignored', () => {
+  it('an older draft than the server copy is ignored and removed', () => {
     const store = new Map([['ysc.ic.u1.e1', JSON.stringify({ uid: 'u1', at: '2026-10-01T00:00:00Z', heldOn: '2026-10-20', content: { answers: {}, nextTime: 'stale' } })]]);
     const t = setup('u1', store);
     t.f._IC.leader.entries = [entry({ content: { answers: {}, nextTime: 'server' } })];
     t.f._icEdit('e1');
     expect(t.f._IC.ed.content.nextTime).toBe('server');
+    expect(store.has('ysc.ic.u1.e1')).toBe(false);
   });
   it('a draft stored by another login never restores, even under this login key', () => {
     const val = JSON.stringify({ uid: 'u2', at: '2026-10-30T00:00:00Z', heldOn: '2026-10-20', content: { answers: {}, nextTime: 'someone else' } });
@@ -222,19 +223,106 @@ describe('drafts on reopen', () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(t.puts).toHaveLength(0);
   });
-  it('a draft whose entry never reached the server is sent when its leader page loads', async () => {
-    const store = new Map([['ysc.ic.u1.e9', JSON.stringify({ uid: 'u1', leaderId: 'l1', kind: 'note', at: '2026-10-30T00:00:00Z', heldOn: '2026-10-29', content: { text: 'offline note' } })],
-      ['ysc.ic.u1.e8', JSON.stringify({ uid: 'u1', leaderId: 'other', kind: 'note', at: '2026-10-30T00:00:00Z', heldOn: '2026-10-29', content: { text: 'x' } })]]);
+  it('leader page load: an orphan draft is sent once, a covered or foreign one removed, a refused one removed', async () => {
+    const d = (o: any) => JSON.stringify({ uid: 'u1', leaderId: 'l1', kind: 'note', at: '2026-10-30T00:00:00Z', heldOn: '2026-10-29', content: { text: 'x' }, tok: 't:3', ...o });
+    const store = new Map([
+      ['ysc.ic.u1.e9', d({ content: { text: 'offline note' } })],
+      ['ysc.ic.u1.e8', d({ leaderId: 'other' })],
+      ['ysc.ic.u1.e7', d({ at: '2026-10-01T00:00:00Z' })], // the server copy is newer
+      ['ysc.ic.u1.e6', d({})], // someone else's entry
+      ['ysc.ic.u1.e5', d({})], // the server refuses it
+    ]);
     const t = setup('u1', store);
-    const n = t.f._icResendOrphans('l1', []);
+    const entries = [entry({ id: 'e7', updatedAt: '2026-10-29T00:00:00Z' }), entry({ id: 'e6', mine: false, authorId: 'u2' })];
+    const n = t.f._icResendDrafts('l1', entries);
     await vi.advanceTimersByTimeAsync(0);
     expect(t.puts.map((p) => p.path)).toEqual(['/id-checks/entries/e9']);
     expect(t.puts[0]!.body).toMatchObject({ leaderId: 'l1', kind: 'note', finished: false, content: { text: 'offline note' } });
     t.puts[0]!.resolve(ok);
+    await vi.advanceTimersByTimeAsync(0);
+    t.puts[1]!.reject(Object.assign(new Error('bad'), { status: 400 }));
     expect(await n).toBe(1);
-    expect(store.has('ysc.ic.u1.e9')).toBe(false);
+    expect([...store.keys()].sort()).toEqual(['ysc.ic.u1.e8']);
+    await vi.advanceTimersByTimeAsync(120000);
+    expect(t.puts).toHaveLength(2); // no retry loop from the leader page
+  });
+  it('a 503 on a leader-page resend keeps the draft and does not loop', async () => {
+    const store = new Map([['ysc.ic.u1.e9', JSON.stringify({ uid: 'u1', leaderId: 'l1', kind: 'note', at: '2026-10-30T00:00:00Z', heldOn: '2026-10-29', content: { text: 'n' }, tok: 't:1' })]]);
+    const t = setup('u1', store);
+    const n = t.f._icResendDrafts('l1', []);
+    await vi.advanceTimersByTimeAsync(0);
+    t.puts[0]!.reject(Object.assign(new Error('busy'), { status: 503 }));
+    expect(await n).toBe(0);
+    await vi.advanceTimersByTimeAsync(120000);
+    expect(t.puts).toHaveLength(1);
+    expect(store.has('ysc.ic.u1.e9')).toBe(true);
   });
 });
+
+describe('reopening an entry (review Important 1)', () => {
+  const contentOf = (p: Put) => p.body.content.nextTime;
+  it('offline save, Save and close, Resume, type, Finish: the old editor never sends again and the newest text wins', async () => {
+    const t = setup();
+    t.f._IC.leader.entries = [entry({ updatedAt: '2026-10-29T00:00:00Z' })];
+    t.f._icEdit('e1');
+    t.f._icSet('nextTime', 'old');
+    await vi.advanceTimersByTimeAsync(1500);
+    t.puts[0]!.reject(Object.assign(new Error('offline'), {}));
+    await vi.advanceTimersByTimeAsync(0);
+    const close = t.f._icClose();
+    await vi.advanceTimersByTimeAsync(0);
+    t.puts[1]!.reject(Object.assign(new Error('offline'), {}));
+    await close;
+    t.f._icLetGo(); // the leader page renders after Save and close
+    t.f._icEdit('e1'); // Resume: the draft ("old") is newer than the server copy
+    expect(t.f._IC.ed.content.nextTime).toBe('old');
+    t.f._icSet('nextTime', 'old and new');
+    const fin = t.f._icFinish();
+    await vi.advanceTimersByTimeAsync(0);
+    t.puts[2]!.resolve(ok);
+    await vi.advanceTimersByTimeAsync(0);
+    t.puts[3]!.resolve({ ...ok, finished: true });
+    await fin;
+    await vi.advanceTimersByTimeAsync(300000); // well past every back-off of the first editor
+    expect(t.puts.map((p) => [contentOf(p), p.body.finished])).toEqual([['old', false], ['old', false], ['old and new', false], ['old and new', true]]);
+    expect(t.store.has('ysc.ic.u1.e1')).toBe(false);
+  });
+  it('an old editor whose PUT lands after the reopen does not remove the newer draft, and the newer body is sent after it', async () => {
+    const t = setup();
+    t.f._IC.leader.entries = [entry({ updatedAt: '2026-10-29T00:00:00Z' })];
+    t.f._icEdit('e1');
+    t.f._icSet('nextTime', 'old');
+    await vi.advanceTimersByTimeAsync(1500); // PUT 0 ("old") is out, no reply yet
+    t.f._icLetGo();
+    t.f._icEdit('e1');
+    t.f._icSet('nextTime', 'newer');
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(t.puts).toHaveLength(1); // the new editor waits for the old PUT of the same entry
+    t.puts[0]!.resolve(ok);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(JSON.parse(t.store.get('ysc.ic.u1.e1')!).content.nextTime).toBe('newer'); // not removed by the old success
+    expect(t.puts.map(contentOf)).toEqual(['old', 'newer']);
+    t.puts[1]!.resolve(ok);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.store.has('ysc.ic.u1.e1')).toBe(false);
+  });
+  it('a leave-the-app flush during the Finish PUT waits for it and sends nothing', async () => {
+    const t = setup();
+    t.f._icNew('check');
+    t.f._icSet('nextTime', 'x');
+    const ed = t.f._IC.ed;
+    const fin = t.f._icFinish();
+    await vi.advanceTimersByTimeAsync(0);
+    t.puts[0]!.resolve(ok);
+    await vi.advanceTimersByTimeAsync(0); // the Finish PUT is out
+    t.f._icSet('nextTime', 'typed during finish');
+    const leave = t.f._icFlush(ed, true);
+    t.puts[1]!.resolve({ ...ok, finished: true });
+    await fin;
+    expect(await leave).toBe(true);
+    expect(t.puts.map((p) => p.body.finished)).toEqual([false, true]);
+  });
+  });
 
 describe('editor page', () => {
   const st = (o: Record<string, any> = {}) => ({ id: 'cur', kind: 'check', heldOn: '2026-10-30', isNew: true, status: '', leaderName: 'Sample Dummyton', questions: BANK, entries: [], content: { answers: {}, nextTime: '' }, ...o });

@@ -2025,9 +2025,11 @@ function _icClearLocal() {
 function renderIdCheckGrid() { setApp(shell('<div class="sh">ID Checks</div>')); }
 // ── List + leader pages (Task 13) ──
 // _IC: the list reply (questions, rhythm), the open leader and its entries, and the open editor (ed, Task 14).
-const _IC = { data: null, leaderId: null, leader: null, ed: null };
+const _IC = { data: null, leaderId: null, leader: null, ed: null, flying: {} };
 const _IC_PILL = { overdue: '<span class="pill bad">Overdue</span>', dueSoon: '<span class="pill warn">Due soon</span>', never: '<span class="pill neutral">Never</span>', onTrack: '<span class="pill ok">On track</span>' };
 const _IC_BTN = 'min-height:44px';
+// An id or key inside an onclick attribute: a JS string literal, HTML-escaped, so no value can break out of the call.
+function _icJs(v) { return esc(JSON.stringify(String(v))); }
 function _icListHtml(data, isAdmin) {
   const rows = (data && data.leaders) || [], rh = (data && data.rhythm) || {};
   let h = '<div class="sh">ID Checks</div>';
@@ -2035,7 +2037,7 @@ function _icListHtml(data, isAdmin) {
   if (!rows.length) h += `<div class="card lk-d">${isAdmin ? 'No leaders are ticked for you yet. Tick some below.' : 'No leaders are ticked for you yet. Ask the admin.'}</div>`;
   for (const l of rows) {
     const meta = (l.lastCheckOn ? 'Last check ' + fmtDay(l.lastCheckOn) + ' · ' : '') + 'Due ' + fmtDay(l.dueOn);
-    h += `<div class="card rc"><div class="rc-top"><button type="button" class="lk-nm rc-go" style="${_IC_BTN}" onclick="_icOpenLeader('${esc(l.id)}')">${esc(l.name)}</button>`
+    h += `<div class="card rc"><div class="rc-top"><button type="button" class="lk-nm rc-go" style="${_IC_BTN}" onclick="_icOpenLeader(${_icJs(l.id)})">${esc(l.name)}</button>`
       + `<span class="rc-pills">${_IC_PILL[l.status] || ''}${l.inProgress ? '<span class="pill info">In progress</span>' : ''}</span></div><div class="lk-d">${esc(meta)}</div></div>`;
   }
   if (isAdmin) h += `<button type="button" class="btn btn-secondary" style="${_IC_BTN};margin-top:var(--s3)" onclick="go('idcheck-grid')">Assign leaders</button>`;
@@ -2044,7 +2046,7 @@ function _icListHtml(data, isAdmin) {
 // State painted from memory belongs to the login that loaded it: a different login on this phone starts empty.
 function _icMine() { const u = S.user ? S.user.id : null; if (_IC.uid !== u) Object.assign(_IC, { uid: u, data: null, leaderId: null, leader: null, ed: null }); }
 async function renderIdChecks() {
-  _icMine();
+  _icMine(); _icLetGo();
   const h = _here();
   if (!_IC.data) setApp(shell(''));
   else setApp(shell(_icListHtml(_IC.data, S.user.role === 'admin')));
@@ -2079,14 +2081,14 @@ function _icEntryBody(e, questions) {
   return h || '<div class="lk-d">Nothing noted.</div>';
 }
 function _icLeaderHtml(data, userId) {
-  const ents = (data && data.entries) || [], qs = (data && data.questions) || [], lid = esc(data.leader.id);
+  const ents = (data && data.entries) || [], qs = (data && data.questions) || [];
   const mine = ents.find((e) => e.kind === 'check' && !e.finished && (e.mine || e.authorId === userId));
   const prev = ents.find((e) => e.kind === 'check' && e.finished);
   let h = `<div class="sh">${esc(data.leader.name)}</div>
     <div style="display:flex;flex-wrap:wrap;gap:var(--s2)">
-      <button type="button" class="btn btn-primary" style="${_IC_BTN}" onclick="${mine ? `_icEdit('${esc(mine.id)}')` : "_icNew('check')"}">${mine ? 'Resume ID check' : 'Start ID check'}</button>
+      <button type="button" class="btn btn-primary" style="${_IC_BTN}" onclick="${mine ? `_icEdit(${_icJs(mine.id)})` : "_icNew('check')"}">${mine ? 'Resume ID check' : 'Start ID check'}</button>
       <button type="button" class="btn btn-secondary" style="${_IC_BTN}" onclick="_icNew('note')">Add note</button>
-      <button type="button" class="btn btn-secondary" style="${_IC_BTN}" onclick="_icExportOpen('${lid}')">Export</button>
+      <button type="button" class="btn btn-secondary" style="${_IC_BTN}" onclick="_icExportOpen(${_icJs(data.leader.id)})">Export</button>
     </div>
     <p class="lk-d">Worried about someone's safety? Follow the safeguarding policy, not this app.</p>`;
   if (prev) h += `<div class="sh">Last finished check · ${esc(fmtDay(prev.heldOn))}</div><div class="card">${_icEntryBody(prev, qs)}</div>`;
@@ -2095,21 +2097,21 @@ function _icLeaderHtml(data, userId) {
   for (const e of ents) {
     const own = e.mine || e.authorId === userId, id = esc(e.id);
     const pill = e.kind === 'check' && !e.finished ? `<span class="pill info">${own ? 'In progress' : 'In progress (' + esc(e.authorName) + ')'}</span>` : '';
-    h += `<div class="card rc drop" id="ic-h-${id}"><div class="rc-top drop-head" style="cursor:pointer;${_IC_BTN}" onclick="_drop('ic-h-${id}')"><span class="lk-nm">${esc(fmtDay(e.heldOn))} · ${e.kind === 'check' ? 'Check' : 'Note'}</span>${pill ? `<span class="rc-pills">${pill}</span>` : ''}</div>
+    h += `<div class="card rc drop" id="ic-h-${id}"><div class="rc-top drop-head" style="cursor:pointer;${_IC_BTN}" onclick="_drop(${_icJs('ic-h-' + e.id)})"><span class="lk-nm">${esc(fmtDay(e.heldOn))} · ${e.kind === 'check' ? 'Check' : 'Note'}</span>${pill ? `<span class="rc-pills">${pill}</span>` : ''}</div>
       <div class="lk-d">${esc(e.authorName)}</div><div class="drop-body">${_icEntryBody(e, qs)}</div>
-      <div class="rc-foot" style="display:flex;gap:var(--s2);justify-content:flex-end">${own ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_icEdit('${id}')">Edit</button>` : ''}<button type="button" class="btn btn-secondary btn-sm" id="ic-del-${id}" onclick="_icDelete('${id}')">Delete</button></div></div>`;
+      <div class="rc-foot" style="display:flex;gap:var(--s2);justify-content:flex-end">${own ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_icEdit(${_icJs(e.id)})">Edit</button>` : ''}<button type="button" class="btn btn-secondary btn-sm" id="ic-del-${id}" onclick="_icDelete(${_icJs(e.id)})">Delete</button></div></div>`;
   }
   return h;
 }
 async function renderIdCheckLeader() {
-  _icMine();
+  _icMine(); _icLetGo();
   if (!_IC.leaderId) { go('idchecks'); return; }
   const h = _here(), id = _IC.leaderId;
   if (_IC.leader && _IC.leader.leader.id === id) setApp(shell(_icLeaderHtml(_IC.leader, S.user.id))); else setApp(shell(''));
   try {
     const path = '/id-checks/leaders/' + encodeURIComponent(id);
     let [d, list] = await Promise.all([_icGet(path), _IC.data ? _IC.data : _icGet('/id-checks')]);
-    if (await _icResendOrphans(id, d.entries)) d = await _icGet(path);
+    if (await _icResendDrafts(id, d.entries)) d = await _icGet(path);
     _IC.data = list; _IC.leader = Object.assign({}, d, { questions: list.questions });
   } catch (e) {
     if (!_still(h)) return;
@@ -2138,14 +2140,19 @@ function _icDraftGet(key) {
   try { const d = JSON.parse(localStorage.getItem(key) || 'null'); return d && S.user && d.uid === S.user.id ? d : null; } catch (e) { return null; }
 }
 function _icDraftSave(ed) {
-  try { localStorage.setItem(ed.key, JSON.stringify({ uid: ed.uid, leaderId: ed.leaderId, kind: ed.kind, at: new Date().toISOString(), heldOn: ed.heldOn, content: ed.content })); } catch (e) {}
+  try { localStorage.setItem(ed.key, JSON.stringify({ uid: ed.uid, leaderId: ed.leaderId, kind: ed.kind, at: new Date().toISOString(), heldOn: ed.heldOn, content: ed.content, tok: ed.tok + ':' + ed.ver })); } catch (e) {}
 }
 function _icDraftDrop(key) { try { localStorage.removeItem(key); } catch (e) {} }
+// Remove the draft only if it still holds what this editor sent (version ver); a newer draft from another editor stays.
+function _icDraftDropIf(ed, ver) { try { const d = JSON.parse(localStorage.getItem(ed.key) || 'null'); if (d && d.tok === ed.tok + ':' + ver) localStorage.removeItem(ed.key); } catch (e) {} }
+// Stop the open editor: no more debounce or retry from it. Its draft stays and is sent from the leader page.
+function _icLetGo() { const ed = _IC.ed; if (!ed) return; ed.dead = true; clearTimeout(ed.timer); ed.timer = null; _IC.ed = null; }
 function _icEd(o) {
-  return Object.assign({ uid: S.user.id, key: _icDraftKey(o.id), leaderId: _IC.leaderId, ver: 0, sentVer: 0, retryN: 0, timer: null, inflight: null, status: '', isNew: false }, o);
+  return Object.assign({ uid: S.user.id, key: _icDraftKey(o.id), leaderId: _IC.leaderId, ver: 0, sentVer: 0, retryN: 0, timer: null, status: '', isNew: false, tok: Math.random().toString(36).slice(2) }, o);
 }
 function _icAnswered(a) { return !!a && (a.asked || !!(a.note || '').trim()); }
 function _icNew(kind) {
+  _icLetGo();
   _IC.ed = _icEd({ id: _lkUuid(), kind, heldOn: _siteDay(Date.now()), isNew: true, content: kind === 'check' ? { answers: {}, nextTime: '' } : { text: '' } });
   go('idcheck-edit');
 }
@@ -2155,7 +2162,9 @@ function _icEdit(id) {
   const c = JSON.parse(JSON.stringify(e.content || {}));
   const ed = _icEd({ id, kind: e.kind, heldOn: e.heldOn, content: e.kind === 'check' ? { answers: c.answers || {}, nextTime: c.nextTime || '' } : { text: c.text || '' } });
   const d = _icDraftGet(ed.key);
-  if (d && Date.parse(d.at) > (Date.parse(e.updatedAt) || 0)) { ed.heldOn = d.heldOn; ed.content = d.content; ed.ver = 1; }
+  if (d && Date.parse(d.at) > (Date.parse(e.updatedAt) || 0)) { ed.heldOn = d.heldOn; ed.content = d.content; ed.ver = 1; _icDraftSave(ed); }
+  else if (d) _icDraftDrop(ed.key); // older than the server copy: of no use
+  _icLetGo();
   _IC.ed = ed;
   go('idcheck-edit');
   if (ed.ver) _icSchedule(ed);
@@ -2181,15 +2190,15 @@ function _icEditHtml(st) {
     const qs = sec.questions.filter((q) => !q.retired || (!st.isNew && _icAnswered(ans[q.key])));
     if (!qs.length) continue;
     const open = qs.some((q) => _icAnswered(ans[q.key]));
-    h += `<div class="card drop${open ? ' open' : ''}" id="ic-s-${esc(sec.key)}"><div class="drop-head" style="display:flex;align-items:center;gap:var(--s2);cursor:pointer;${B}" onclick="_drop('ic-s-${esc(sec.key)}')"><span class="drop-chev">${icS('chevr')}</span><b>${esc(_icSectionTitle(sec))}</b></div><div class="drop-body">`;
+    h += `<div class="card drop${open ? ' open' : ''}" id="ic-s-${esc(sec.key)}"><div class="drop-head" style="display:flex;align-items:center;gap:var(--s2);cursor:pointer;${B}" onclick="_drop(${_icJs('ic-s-' + sec.key)})"><span class="drop-chev">${icS('chevr')}</span><b>${esc(_icSectionTitle(sec))}</b></div><div class="drop-body">`;
     for (const q of qs) {
       const a = ans[q.key] || { asked: false, note: '' }, k = esc(q.key), last = _icLastTime(st.entries, st.id, q.key);
       h += `<div style="border-top:1px solid var(--paper-dark);padding:var(--s2) 0">
         <div style="display:flex;align-items:center;gap:var(--s2)">
-          <label style="display:inline-flex;align-items:center;gap:6px;min-height:44px;min-width:44px;flex:0 0 auto"><input type="checkbox" id="ic-a-${k}"${_icAnswered(a) ? ' checked' : ''} onchange="_icAsk('${k}', this.checked)">Asked</label>
-          <button type="button" style="flex:1;min-width:0;text-align:left;${B};background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer" onclick="_icOpenQ('${k}')">${esc(q.text)}</button>
+          <label style="display:inline-flex;align-items:center;gap:6px;min-height:44px;min-width:44px;flex:0 0 auto"><input type="checkbox" id="ic-a-${k}"${a.asked ? ' checked' : ''} onchange="_icAsk(${_icJs(q.key)}, this.checked)">Asked</label>
+          <button type="button" style="flex:1;min-width:0;text-align:left;${B};background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer" onclick="_icOpenQ(${_icJs(q.key)})">${esc(q.text)}</button>
         </div>
-        <div id="ic-q-${k}"${(a.note || '').trim() ? '' : ' hidden'}>${last ? `<div class="lk-d" style="white-space:pre-wrap">Last time (${esc(fmtDay(last.on))}): ${esc(last.note.trim() || 'Asked')}</div>` : ''}<textarea class="ft" rows="3" maxlength="4000" aria-label="Note" oninput="_icNote('${k}', this.value)">${esc(a.note || '')}</textarea></div>
+        <div id="ic-q-${k}"${(a.note || '').trim() ? '' : ' hidden'}>${last ? `<div class="lk-d" style="white-space:pre-wrap">Last time (${esc(fmtDay(last.on))}): ${esc(last.note.trim() || 'Asked')}</div>` : ''}<textarea class="ft" rows="3" maxlength="4000" aria-label="Note" oninput="_icNote(${_icJs(q.key)}, this.value)">${esc(a.note || '')}</textarea></div>
       </div>`;
     }
     h += '</div></div>';
@@ -2228,28 +2237,32 @@ function _icSchedule(ed = _IC.ed) { if (!ed) return; clearTimeout(ed.timer); ed.
 function _icPaint(ed) { const el = _IC.ed === ed && document.getElementById('ic-status'); if (el) el.textContent = _icStatusText(ed); }
 // Send the newest state if the server does not have it yet. Autosave never finishes a check. true = the server has it.
 async function _icFlush(ed = _IC.ed, keep) {
-  if (!ed || ed.done) return true; // a finished-here check never gets an autosave after its Finish
+  if (!ed || ed.done || ed.dead) return true; // finished here, or let go: this editor never sends again
   clearTimeout(ed.timer); ed.timer = null;
   if (!S.user || S.user.id !== ed.uid) return false; // signed out, or another login: never send under its token
-  while (ed.inflight) await ed.inflight.catch(() => {});
+  await _icWaitFlying(ed.id); // one PUT per entry at a time, whichever editor sent it, so an older body never lands last
+  if (ed.done || ed.dead) return true;
   if (ed.ver === ed.sentVer) return true;
   const ver = ed.ver, body = JSON.parse(JSON.stringify({ leaderId: ed.leaderId, kind: ed.kind, heldOn: ed.heldOn, finished: false, content: ed.content }));
   const p = API.put('/id-checks/entries/' + encodeURIComponent(ed.id), body, 0, true, !!keep && JSON.stringify(body).length < 60000);
-  ed.inflight = p;
+  _IC.flying[ed.id] = p;
   try {
     await p;
     ed.sentVer = ver; ed.retryN = 0; ed.status = 'saved'; ed.savedAt = Date.now();
-    if (ed.ver === ver) _icDraftDrop(ed.key);
+    _icDraftDropIf(ed, ver);
     _icPaint(ed);
     return true;
   } catch (e) {
     if (e.status === 401) return false; // the session handler shows sign-in; the draft stays on this phone
     const again = !e.status || e.status >= 500 || e.status === 408 || e.status === 429;
     ed.status = again ? 'retry' : 'error'; ed.errMsg = e.message;
-    if (again && !ed.done && !ed.noRetry) { const ms = _IC_BACKOFF[ed.retryN++] || 30000; ed.timer = setTimeout(() => _icFlush(ed), ms); }
+    if (again && !ed.done && !ed.dead && !ed.noRetry) { const ms = _IC_BACKOFF[ed.retryN++] || 30000; ed.timer = setTimeout(() => _icFlush(ed), ms); }
     _icPaint(ed);
     return false;
-  } finally { if (ed.inflight === p) ed.inflight = null; }
+  } finally { if (_IC.flying[ed.id] === p) delete _IC.flying[ed.id]; }
+}
+async function _icWaitFlying(id) {
+  while (_IC.flying[id]) { const q = _IC.flying[id]; await q.catch(() => {}); if (_IC.flying[id] === q) delete _IC.flying[id]; }
 }
 // Finish = save what is pending, then mark finished (the one thing that resets the due date), then back to the leader.
 async function _icFinish(btn) {
@@ -2259,10 +2272,13 @@ async function _icFinish(btn) {
   const stop = (msg) => { ed.finishing = false; if (btn) btn.disabled = false; toast(msg); if (ed.ver !== ed.sentVer) _icSchedule(ed); };
   if (!(await _icFlush(ed))) { stop('Not saved yet, so the check is not finished. Try again in a moment.'); return; }
   const ver = ed.ver;
-  try { await API.put('/id-checks/entries/' + encodeURIComponent(ed.id), { leaderId: ed.leaderId, kind: ed.kind, heldOn: ed.heldOn, finished: true, content: ed.content }); }
+  const fp = API.put('/id-checks/entries/' + encodeURIComponent(ed.id), { leaderId: ed.leaderId, kind: ed.kind, heldOn: ed.heldOn, finished: true, content: ed.content });
+  _IC.flying[ed.id] = fp;
+  try { await fp; }
   catch (e) { stop(e.message || 'Could not finish'); return; }
+  finally { if (_IC.flying[ed.id] === fp) delete _IC.flying[ed.id]; }
   ed.done = true; clearTimeout(ed.timer); ed.timer = null; ed.sentVer = ver;
-  if (ed.ver === ver) _icDraftDrop(ed.key);
+  _icDraftDropIf(ed, ver);
   if (_IC.ed === ed) _IC.ed = null;
   if (_still(h)) go('idcheck-leader');
 }
@@ -2282,18 +2298,24 @@ function _icWire() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && _IC.ed) _icFlush(_IC.ed, true); });
   window.addEventListener('pagehide', () => { if (_IC.ed) _icFlush(_IC.ed, true); });
 }
-// A draft for this leader whose entry never reached the server (a new check typed offline, then the app closed):
-// send it now, so it becomes an ordinary in-progress entry. Returns how many went.
-async function _icResendOrphans(leaderId, entries) {
+// This login's drafts for this leader, sent once when the leader page loads (the editor is gone by then):
+// a draft newer than the server copy of an own entry, or one whose entry never reached the server (typed offline,
+// then the app closed). A draft the server copy already covers, one for someone else's entry, or one the server
+// refuses (4xx) is removed. Returns how many went.
+async function _icResendDrafts(leaderId, entries) {
   if (!S.user) return 0;
-  const have = new Set((entries || []).map((e) => e.id)), pre = 'ysc.ic.' + S.user.id + '.', ids = [];
+  const byId = new Map((entries || []).map((e) => [e.id, e])), pre = 'ysc.ic.' + S.user.id + '.', ids = [];
   try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf(pre) === 0) ids.push(k.slice(pre.length)); } } catch (e) { return 0; }
   let n = 0;
   for (const id of ids) {
-    if (have.has(id) || (_IC.ed && _IC.ed.id === id)) continue;
-    const d = _icDraftGet(pre + id);
+    if (_IC.ed && _IC.ed.id === id) continue;
+    const key = pre + id, d = _icDraftGet(key), e = byId.get(id);
     if (!d || d.leaderId !== leaderId) continue;
-    if (await _icFlush(_icEd({ id, leaderId, kind: d.kind, heldOn: d.heldOn, content: d.content, ver: 1, noRetry: true }))) n++;
+    if (e && (!(e.mine || e.authorId === S.user.id) || Date.parse(d.at) <= (Date.parse(e.updatedAt) || 0))) { _icDraftDrop(key); continue; }
+    const [tok, v] = String(d.tok || '').split(':');
+    const ed = _icEd({ id, leaderId, kind: d.kind, heldOn: d.heldOn, content: d.content, noRetry: true, tok: tok || 'none', ver: Number(v) || 1 });
+    if (await _icFlush(ed)) n++;
+    else if (ed.status === 'error') _icDraftDrop(key);
   }
   return n;
 }

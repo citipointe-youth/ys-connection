@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
-const FNS = ['esc', '_icSectionTitle', '_icGet', '_icListHtml', '_icLastTime', '_icEntryBody', '_icLeaderHtml', '_icDelete', '_icDraftKey'];
+const FNS = ['esc', '_icJs', '_icSectionTitle', '_icGet', '_icListHtml', '_icLastTime', '_icEntryBody', '_icLeaderHtml', '_icDelete', '_icDraftKey'];
 const CONSTS = ['_IC', '_IC_PILL', '_IC_BTN'].map((n) => HTML.match(new RegExp(`^const ${n} = .*$`, 'm'))![0]).join('\n');
 
 function load(env: Record<string, any> = {}) {
@@ -60,7 +60,7 @@ describe('leader page', () => {
     const start = F._icLeaderHtml(leaderData([chk({ finished: true })]), 'u1');
     expect(start).toContain(`onclick="_icNew('check')">Start ID check<`);
     const resume = F._icLeaderHtml(leaderData([chk({ id: 'c2' }), chk({ finished: true })]), 'u1');
-    expect(resume).toContain(`onclick="_icEdit('c2')">Resume ID check<`);
+    expect(resume).toContain(`onclick="_icEdit(&quot;c2&quot;)">Resume ID check<`);
     // someone else's unfinished check is not a Resume for me
     const other = F._icLeaderHtml(leaderData([chk({ mine: false, authorId: 'u2', authorName: 'Codeman' })]), 'u1');
     expect(other).toContain('Start ID check');
@@ -69,15 +69,15 @@ describe('leader page', () => {
   it('Add note, Export and the safeguarding line', () => {
     const h = F._icLeaderHtml(leaderData([]), 'u1');
     expect(h).toContain(`onclick="_icNew('note')">Add note<`);
-    expect(h).toContain(`onclick="_icExportOpen('l1')">Export<`);
+    expect(h).toContain(`onclick="_icExportOpen(&quot;l1&quot;)">Export<`);
     expect(h).toContain("Worried about someone's safety? Follow the safeguarding policy, not this app.");
   });
   it('Edit only on own entries; Delete on every entry', () => {
     const h = F._icLeaderHtml(leaderData([chk({ id: 'mine1' }), chk({ id: 'theirs1', mine: false, authorId: 'u2', authorName: 'Codeman' })]), 'u1');
-    expect(h).toContain(`_icEdit('mine1')`);
-    expect(h).not.toContain(`_icEdit('theirs1')`);
-    expect(h).toContain(`_icDelete('mine1')`);
-    expect(h).toContain(`_icDelete('theirs1')`);
+    expect(h).toContain(`_icEdit(&quot;mine1&quot;)`);
+    expect(h).not.toContain(`_icEdit(&quot;theirs1&quot;)`);
+    expect(h).toContain(`_icDelete(&quot;mine1&quot;)`);
+    expect(h).toContain(`_icDelete(&quot;theirs1&quot;)`);
   });
   it('the previous finished check in full, next-time notes first; history in the given (newest first) order with kind words', () => {
     const fin = chk({ id: 'f1', finished: true, heldOn: '2026-09-01', content: { answers: { faith01: { asked: true, note: 'Going well' } }, nextTime: 'Ask about camp' } });
