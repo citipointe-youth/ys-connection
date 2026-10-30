@@ -18,7 +18,7 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const Answer = z.object({ asked: z.boolean(), note: z.string().max(4000) }).strict();
 // Ids are strict UUIDs: entry ids are made by the phone and the SPA puts ids into inline onclick strings, so nothing
 // else may ever be stored or echoed (a refusal carries the fixed 'Invalid' message only).
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/; // lower-case only: Postgres prints uuids lower-case and the content AAD is bound to the id string
 const Uuid = z.string().regex(UUID_RE);
 const Base = { leaderId: Uuid, heldOn: day, finished: z.boolean() };
 const UpsertSchema = z.discriminatedUnion('kind', [
@@ -131,9 +131,9 @@ export function makeIdCheckService(deps: {
       return { leader: { id: l.id, name: l.fullName }, entries };
     },
 
-    async upsert(a, id, body) {
+    async upsert(a, rawId, body) {
       await assertOn();
-      parse(IdSchema, id);
+      const id = parse(IdSchema, rawId);
       const d = parse(UpsertSchema, body);
       const l = await seenLeader(a, d.leaderId);
       const old = await repo.findEntry(id);
@@ -148,9 +148,9 @@ export function makeIdCheckService(deps: {
       return { updatedAt: saved.updatedAt, finished: saved.finished };
     },
 
-    async remove(a, id) {
+    async remove(a, rawId) {
       await assertOn();
-      parse(IdSchema, id);
+      const id = parse(IdSchema, rawId);
       const e = await repo.findEntry(id);
       const l = e?.leaderId ? await activeLeader(e.leaderId) : null;
       if (!e || !l) throw new NotFoundError('Entry not found');

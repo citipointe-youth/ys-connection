@@ -196,8 +196,12 @@ describe('validation never echoes a value', () => {
     }
     expect((await svc.leader(ov1, girl.id)).entries).toEqual([]);
     expect(await repo.findEntry(bad)).toBeNull();
-    // an upper-case UUID is still a UUID
-    await expect(svc.upsert(ov1, randomUUID().toUpperCase(), check(girl.id))).resolves.toMatchObject({ finished: false });
+    // upper case is refused too: Postgres stores uuids lower-case and the content AAD is bound to the id string
+    const upper = randomUUID().toUpperCase();
+    expect(errorResponse(await svc.upsert(ov1, upper, check(girl.id)).catch((e) => e)).status).toBe(400);
+    expect(await repo.findEntry(upper)).toBeNull();
+    expect(await repo.findEntry(upper.toLowerCase())).toBeNull();
+    expect((await svc.leader(ov1, girl.id)).entries).toEqual([]);
   });
   it('leader and user ids in bodies must be strict UUIDs too', async () => {
     for (const p of [svc.upsert(ov1, randomUUID(), check("x');alert(1);//")),
