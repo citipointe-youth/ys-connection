@@ -16,7 +16,7 @@ const ENTRIES = [E.fin, E.prog, E.note];
 const PRELUDE = `var S = { user: { displayName: 'Tom Admin' } };
   function _siteDay() { return '2026-10-30'; } function fmtDay(v) { return 'D:' + v; }
   function _icSectionTitle(sec) { return sec.subtitle ? sec.title + ' – ' + sec.subtitle : sec.title; }`;
-const fns = () => loadFns(['_icAnswered', '_icExportSorted', '_icExportText', '_icExportRows'], PRELUDE);
+const fns = () => loadFns(['_icExportAnswered', '_icExportSorted', '_icExportText', '_icExportRows'], PRELUDE);
 
 describe('_icExportText', () => {
   const t = fns()._icExportText(LEADER, ENTRIES, ID_CHECK_SECTIONS);
@@ -74,7 +74,7 @@ describe('the sheet and the download', () => {
       __icget: (p: string) => { calls.get.push(p); return opts.get(p); },
       __modal: (h: string) => calls.modal.push(h), __toast: (m: string) => calls.toast.push(m), __text: (...a: any[]) => calls.text.push(a), __close: () => calls.close.push(1), __X: XLSX,
     });
-    const f = loadFns(['_icExportOpen', '_icExportGo', '_icAnswered', '_icExportSorted', '_icExportText', '_icExportRows'], `${PRELUDE}
+    const f = loadFns(['_icExportOpen', '_icExportGo', '_icExportAnswered', '_icExportSorted', '_icExportText', '_icExportRows'], `${PRELUDE}
       const _ICX = { id: null, sections: null, busy: false };
       const _icGet = globalThis.__icget; const modal = globalThis.__modal; const toast = globalThis.__toast; const closeModal = globalThis.__close;
       const _downloadText = (...a) => globalThis.__text(...a); const _ensureXlsx = async () => {}; const XLSX = globalThis.__X;`, ['_icExportOpen', '_icExportGo']);

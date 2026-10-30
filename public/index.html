@@ -2021,8 +2021,6 @@ function _icClearLocal() {
     ks.forEach(k => localStorage.removeItem(k));
   } catch (e) {}
 }
-// Page stubs; the list, editor and grid tasks replace the bodies.
-function renderIdCheckGrid() { setApp(shell('<div class="sh">ID Checks</div>')); }
 // ── List + leader pages (Task 13) ──
 // _IC: the list reply (questions, rhythm), the open leader and its entries, and the open editor (ed, Task 14).
 const _IC = { data: null, leaderId: null, leader: null, ed: null, flying: {} };
@@ -2125,6 +2123,7 @@ async function _icDelete(id) {
   const btn = document.getElementById('ic-del-' + id);
   if (btn && btn.dataset.armed !== '1') { btn.dataset.armed = '1'; btn.textContent = 'Delete for good?'; return; }
   if (btn) btn.disabled = true;
+  await _icWaitFlying(id); // an in-flight save would recreate the entry the delete just removed
   try { await API.del('/id-checks/entries/' + encodeURIComponent(id)); } catch (e) { toast(e.message || 'Could not delete'); if (btn) btn.disabled = false; return; }
   try { localStorage.removeItem(_icDraftKey(id)); } catch (e) {}
   if (S.page === 'idcheck-leader') renderIdCheckLeader();
@@ -2443,7 +2442,6 @@ function _icGridPage() {
     + `<div class="card" style="padding:0;overflow:hidden"><div id="ic-grid" style="overflow-x:auto;-webkit-overflow-scrolling:touch">${_icGridHtml(_ICG.data)}</div></div>`
     + `<div id="ic-arch">${_icArchHtml(_ICG.arch)}</div>`;
 }
-// Replaces the T12 stub above (a later declaration wins).
 async function renderIdCheckGrid() {
   if (!S.user || S.user.role !== 'admin') { go('idchecks'); return; }
   const h = _here();
@@ -2463,7 +2461,7 @@ async function renderIdCheckGrid() {
 const _ICX = { id: null, sections: null, busy: false };
 
 // The answered questions of one check, as [{ sec, qs: [{ key, text, note }] }]: bank order, a key that is not in the bank prints as the key.
-function _icAnswered(entry, sections) {
+function _icExportAnswered(entry, sections) {
   const a = (entry.content && entry.content.answers) || {}, seen = new Set(), out = [];
   const asked = k => { const x = a[k]; return !!x && (x.asked || String(x.note || '').trim() !== ''); };
   for (const sec of sections || []) {
@@ -2487,7 +2485,7 @@ function _icExportText(leader, entries, sections) {
     const head = fmtDay(e.heldOn) + ', ' + e.authorName;
     if (e.kind === 'note') { L.push('== Note, ' + head + ' ==', String((e.content && e.content.text) || ''), ''); continue; }
     L.push('== Check, ' + head + ' (' + (e.finished ? 'Finished' : 'In progress') + ') ==');
-    for (const o of _icAnswered(e, sections)) {
+    for (const o of _icExportAnswered(e, sections)) {
       L.push(_icSectionTitle(o.sec));
       for (const q of o.qs) { L.push('- ' + q.text + ' [Asked]'); if (q.note) L.push(...q.note.split('\n').map(s => '  ' + s)); }
     }
@@ -2502,7 +2500,7 @@ function _icExportRows(leader, entries, sections) {
   for (const e of _icExportSorted(entries)) {
     if (e.kind === 'note') { rows.push([e.heldOn, 'Note', '', e.authorName, '', '', '', String((e.content && e.content.text) || '')]); continue; }
     const st = e.finished ? 'Finished' : 'In progress';
-    for (const o of _icAnswered(e, sections)) for (const q of o.qs) rows.push([e.heldOn, 'Check', st, e.authorName, o.sec.title, q.text, 'Yes', q.note]);
+    for (const o of _icExportAnswered(e, sections)) for (const q of o.qs) rows.push([e.heldOn, 'Check', st, e.authorName, o.sec.title, q.text, 'Yes', q.note]);
     const nt = String((e.content && e.content.nextTime) || '').trim();
     if (nt) rows.push([e.heldOn, 'Check', st, e.authorName, '', 'Notes for next time', '', nt]);
   }

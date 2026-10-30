@@ -189,9 +189,9 @@ describe('the page', () => {
     await f();
     expect(setApp.mock.calls.at(-1)![0]).toContain('Could not load. Try again.');
   });
-  it('the block sits above its marker and overrides the T12 stub (the later declaration wins)', () => {
+  it('the block sits above its marker and renderIdCheckGrid is defined once', () => {
     expect(HTML.indexOf('async function renderIdCheckGrid')).toBeLessThan(HTML.indexOf('/*IC-GRID*/'));
-    expect(HTML.lastIndexOf('async function renderIdCheckGrid')).toBeGreaterThan(HTML.indexOf('function renderIdCheckGrid()'));
+    expect(HTML.match(/function renderIdCheckGrid\b/g)).toHaveLength(1);
     expect(HTML.indexOf('function _icTick(')).toBeLessThan(HTML.indexOf('/*IC-GRID*/'));
   });
 });

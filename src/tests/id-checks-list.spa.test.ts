@@ -4,13 +4,13 @@ import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
-const FNS = ['esc', '_icJs', '_icSectionTitle', '_icGet', '_icListHtml', '_icLastTime', '_icEntryBody', '_icLeaderHtml', '_icDelete', '_icDraftKey'];
+const FNS = ['esc', '_icJs', '_icSectionTitle', '_icGet', '_icListHtml', '_icLastTime', '_icEntryBody', '_icLeaderHtml', '_icDelete', '_icWaitFlying', '_icDraftKey'];
 const CONSTS = ['_IC', '_IC_PILL', '_IC_BTN'].map((n) => HTML.match(new RegExp(`^const ${n} = .*$`, 'm'))![0]).join('\n');
 
 function load(env: Record<string, any> = {}) {
   const scope = { fmtDay: (v: string) => 'D:' + v, S: { user: { id: 'u1', role: 'oversight' } }, ...env };
   const src = FNS.map((n) => extractFn(HTML, n)).join('\n');
-  return new Function('__env', `with (__env) { ${CONSTS}\n${src}\n return { ${FNS.join(', ')} }; }`)(scope) as Record<string, any>;
+  return new Function('__env', `with (__env) { ${CONSTS}\n${src}\n return { ${FNS.join(', ')}, _IC }; }`)(scope) as Record<string, any>;
 }
 const F = load();
 
@@ -157,5 +157,19 @@ describe('escaping', () => {
       F._icLeaderHtml({ ...leaderData([chk({ authorName: bad, mine: false, authorId: 'u2', content: { answers: { faith01: { asked: true, note: bad } }, nextTime: bad } }), chk({ id: 'n', kind: 'note', content: { text: bad } })]), leader: { id: 'l1', name: bad } }, 'u1'),
     ];
     for (const h of outs) { expect(h).not.toContain(bad); expect(h).toContain('&lt;b&gt;x&lt;/b&gt;'); }
+  });
+});
+
+describe('Delete waits for an in-flight save', () => {
+  it('the delete request goes out only after the flying save settles', async () => {
+    const btn: any = { dataset: { armed: '1' }, textContent: '', disabled: false };
+    const order: string[] = [];
+    const f = load({
+      document: { getElementById: () => btn }, API: { del: () => { order.push('del'); return Promise.resolve({}); } },
+      localStorage: { removeItem: () => {} }, toast: () => {}, renderIdCheckLeader: () => {},
+    });
+    f._IC.flying.c1 = new Promise<void>((r) => setTimeout(() => { order.push('save'); r(); }, 20));
+    await f._icDelete('c1');
+    expect(order).toEqual(['save', 'del']);
   });
 });
