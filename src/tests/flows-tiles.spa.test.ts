@@ -113,6 +113,66 @@ describe('Flow steps: no tiles; step 0 and Parent Consent step 1 are the hub\'s'
   });
 });
 
+// Y5 (2026-10-30): admin only, "Updated 6m ago · Reload" on Flow steps; Reload re-reads /link/status and /link/flows.
+describe('Y5 Flow steps: Updated X ago · Reload (admin only)', () => {
+  const NOW = Date.parse('2026-10-30T10:06:00Z');
+  const g = loadFns(['_lkFlowsStl', '_lkFlowsReload', '_lkPaintFlows', '_lkRefreshView', '_lkOnPage', '_lkStatusLoad', '_lkLoadFlows', '_laRelTime'], `
+    var ROLE = 'admin', FETCHED = [], HELD = null, DOM = {}, PAINT = '', DRAWS = 0, NOWMS = ${NOW};
+    var S = { get user() { return { role: ROLE }; }, page: 'link-flows' };
+    var LINK = { status: null, flows: [] };
+    var API = { fresh: (u) => { FETCHED.push(u); return Promise.resolve(u === '/link/flows' ? { rows: [], steps: [] } : { mirrors: { flows: { takenAt: '2026-10-30T10:00:00Z' } } }); } };
+    var document = { getElementById: (id) => DOM[id] || null, visibilityState: 'visible' };
+    var Date = Object.assign(function () { return new globalThis.Date(...arguments); }, { parse: globalThis.Date.parse, now: () => NOWMS });
+    function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+    function _lkTop() { return 'TOP'; } function _lkFlowTypes() { return []; } function _lkFlowsHtml() { return 'LIST'; }
+    function _lkGroup() { return null; } function _lkEsPaint() {} function _lkCiPoll() {} function _lkFlowsDraw() { DRAWS++; }
+    function shell(h) { return h; } function setApp(h) { PAINT = h; }
+    function set(o) { if ('role' in o) ROLE = o.role; FETCHED.length = 0; PAINT = ''; DRAWS = 0; DOM = {}; Object.keys(LINK).forEach((k) => delete LINK[k]); }
+    function out() { return { FETCHED, PAINT, DRAWS, DOM }; }
+    function dom(id, el) { DOM[id] = el; }
+  `, ['_lkFlowsStl', '_lkFlowsReload', '_lkPaintFlows', '_lkRefreshView', 'LINK', 'set', 'out', 'dom']);
+  beforeEach(() => g.set({ role: 'admin' }));
+  const withStatus = () => { g.LINK.status = { mirrors: { flows: { takenAt: '2026-10-30T10:00:00Z' } } }; };
+  it('admin: the paint carries the status line, "Updated 6m ago" and the link button', () => {
+    withStatus();
+    g._lkPaintFlows();
+    const h = g.out().PAINT;
+    expect(h).toContain('id="lk-fref"');
+    expect(h).toContain('Updated 6m ago');
+    expect(h).toContain('class="ik-lnk"');
+    expect(h.indexOf('id="lk-fref"')).toBeGreaterThan(h.indexOf('Flow steps'));
+    expect(h.indexOf('id="lk-fref"')).toBeLessThan(h.indexOf('id="lk-top"'));
+  });
+  it('admin with no push yet: just the Reload button', () => {
+    g._lkPaintFlows();
+    expect(g.out().PAINT).toContain('id="lk-fref"');
+    expect(g.out().PAINT).not.toContain('Updated');
+  });
+  it('director and leader: no status line', () => {
+    withStatus();
+    for (const role of ['director', 'leader']) { g.set({ role }); withStatus(); g._lkPaintFlows(); expect(g.out().PAINT).not.toContain('lk-fref'); }
+  });
+  it('a repaint of the view redraws #lk-fref on the flows page', () => {
+    withStatus();
+    const el: any = { outerHTML: '' };
+    g.dom('lk-fref', el);
+    g._lkRefreshView();
+    expect(el.outerHTML).toContain('Updated 6m ago');
+  });
+  it('Reload fetches /link/status and /link/flows once each; a second call while busy fetches nothing', async () => {
+    const first = g._lkFlowsReload();
+    expect(g.LINK.fRel).toBe(1);
+    expect(g._lkFlowsStl()).toContain('disabled');
+    expect(g._lkFlowsStl()).toContain('Reloading…');
+    await g._lkFlowsReload();
+    await first;
+    expect(g.out().FETCHED.slice().sort()).toEqual(['/link/flows', '/link/status']);
+    expect(g.LINK.fRel).toBe(0);
+    expect(g.out().DRAWS).toBe(1);
+    expect(g._lkFlowsStl()).toContain('Updated 6m ago');
+  });
+});
+
 // Y2b: the flow kinds follow this location's two flow names (Youth Setup); an admin sees a banner while the New People flow is unknown.
 describe('Y2b Flow step kinds from config', () => {
   const E = f.S.settings.ministryConfig.elvanto;
