@@ -17,10 +17,10 @@ Rollback = Vercel dashboard > Deployments > the previous good build > Instant Ro
 **round/2026-10-30: LINK_REV 21, no migration (`schema.current` stays 0051), SW ysc-v160; ship before the console; rollback = Instant Rollback to f800e08, nothing to undo.**
 
 <!-- live -->
-- master sha: bc6eba7 (ys/dashboard-birthdays)
-- last ship: 2026-10-28 08:54 EAST
+- master sha: c8d9d24 (round/2026-10-30)
+- last ship: 2026-10-30 13:43 EAST
 - migration: 0051
-- SW version: ysc-v159
+- SW version: ysc-v160
 - promote: auto (Vercel promotes every master build); check /health after the build
 - pending branches: chore/ship ux17/bus 
 <!-- /live -->
