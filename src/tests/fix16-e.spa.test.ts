@@ -11,7 +11,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays',
-  '_lkLastReportLabel', '_lkAddReport', '_lkCatFilter', '_lkCat', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
+  '_lkLastReportLabel', '_lkAddReport', '_lkCatFilter', '_lkCat', '_lkTint', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkPicked', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
@@ -344,16 +344,20 @@ describe('GAP-4 fewer taps: newest week with no report, Yr chip opens a lone gro
     g.history = ['2026-10-06', '2026-09-29', '2026-09-22', '2026-09-15', '2026-09-08', '2026-09-01', '2026-08-25'].map((date, i) => ({ ...g.lastReport, reportId: G(20 + i), date })); // all 8 weeks (T3, 2026-10-21)
     expect(h.fns._lkGroupHtml(g)).not.toContain('Go to the newest week');
   });
-  it('a category with one group opens it; with two it only filters', () => {
+  it('a category chip only filters the list, whatever its count (one group does not open)', () => {
     const h = setup();
     const L = h.get().LINK;
     L.groups.push({ ...grp(), groupId: G(2), name: 'Yr 12 Boys', grade: 12, gender: 'male' }, { ...grp(), groupId: G(3), name: 'Yr 9 Boys', grade: 9, gender: 'male' },
-      { ...grp(), groupId: G(4), name: 'Yr 8 Boys', grade: 8, gender: 'male' });
+      { ...grp(), groupId: G(4), name: 'Yr 8 Boys', grade: 8, gender: 'male' }, { ...grp(), groupId: G(5), name: 'City of Logan', grade: null, gender: null });
     L.gid = null;
-    h.fns._lkCatFilter('sg');
-    expect(L.gid).toBe(G(2));
-    L.gid = null;
-    h.fns._lkCatFilter('jg');
+    h.calls.els['lk-glist'] = { innerHTML: '' };
+    h.fns._lkCatFilter('sg'); // one group
     expect(L.gid).toBeNull();
+    expect(h.calls.els['lk-glist'].innerHTML).toContain('Yr 12 Boys');
+    h.fns._lkCatFilter('jg'); // two groups
+    expect(L.gid).toBeNull();
+    h.fns._lkCatFilter('mx'); // one Mixed group
+    expect(L.gid).toBeNull();
+    expect(h.calls.els['lk-glist'].innerHTML).toContain('City of Logan');
   });
 });

@@ -11,7 +11,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays',
-  '_lkLastReportLabel', '_lkAddReport', '_lkCatFilter', '_lkCat', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
+  '_lkLastReportLabel', '_lkAddReport', '_lkCatFilter', '_lkCat', '_lkTint', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel', '_lkDraftKey', '_lkDraftGet', '_lkDraftDrop',
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkPicked', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
@@ -1362,10 +1362,21 @@ describe('F2 lifegroup report', () => {
     expect(all).not.toContain("_lkCatFilter('jg')"); // no Junior Guys group: no chip
     expect(all).toContain('>Jr Girls<'); expect(all).toContain('>Mixed<');
     expect(all).toContain('var(--girl-light)'); expect(all).toContain('var(--boy-light)');
-    h.fns._lkCatFilter('sf'); // one group: opens it
+    h.get().LINK.gid = null;
+    h.fns._lkCatFilter('sf'); // one group: still just filters
+    expect(h.get().LINK.gid).toBeNull();
     h.fns._lkCatFilter('mx');
     const mx = h.fns._lkGroupsHtml();
     expect(mx).toContain('City of Logan'); expect(mx).not.toContain('Grade 12');
+  });
+  it('Y4: the group page header keeps the gender tint of its list row', () => {
+    const h = setup('L1', { grade: 9, gender: 'female' });
+    const g0 = h.get().LINK.groups[0];
+    const tinted = (g: any) => h.fns._lkGroupHtml(g).match(/^\s*<div class="card"([^>]*)>/)![1];
+    expect(tinted({ ...g0, name: 'Grade 9 Girls', grade: 9, gender: 'female' })).toContain('background:var(--girl-light)');
+    expect(tinted({ ...g0, name: 'Grade 12 Boys', grade: 12, gender: 'male' })).toContain('background:var(--boy-light)');
+    expect(tinted({ ...g0, name: 'City of Logan', grade: null, gender: null })).toContain('background:var(--mix-light)');
+    expect(tinted({ ...g0, name: 'Grade 9 Girls', grade: null, gender: 'female' })).not.toContain('background:'); // null category: no bracket, no tint
   });
   it('a date equal to the last report date shows the message and queues nothing', () => {
     const h = setup();
