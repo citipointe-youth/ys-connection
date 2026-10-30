@@ -11373,8 +11373,8 @@ function _lkGroupsHtml() {
   const chips = cats.length > 1 ? `<div class="filter-row lk-ff lk-cf" role="group" aria-label="Filter lifegroups">${[['all', 'All', '']].concat(cats).map(([k, l, c]) =>
     `<button type="button" class="fc${c ? ' lk-ff-' + c : ''}${k === sel ? ' on' : ''}" aria-pressed="${k === sel}" aria-label="${l}" onclick="_lkCatFilter('${k}')">${l.replace(/^(J|S)\w+/, '$1r')}</button>`).join('')}</div>` : '';
   return chips + gs.filter((g) => sel === 'all' || _lkCat(g) === sel).map((g) => {
-    const a = _lkGroupAct(g), c = _lkCat(g), tint = { f: 'girl', g: 'boy', x: 'mix' }[String(c || '').slice(-1)], bg = tint ? ` style="background:var(--${tint}-light)"` : '';
-    return `<div class="li lk-row" role="button"${bg} onclick="_lkOpenGroup('${esc(g.groupId)}')"><div class="lk-grow"><div class="lk-nm">${esc(lgDisplayName(g.name))}</div>
+    const a = _lkGroupAct(g);
+    return `<div class="li lk-row" role="button"${_lkTint(g)} onclick="_lkOpenGroup('${esc(g.groupId)}')"><div class="lk-grow"><div class="lk-nm">${esc(lgDisplayName(g.name))}</div>
       <div class="lk-d">${esc(_lkLastReportLabel(g))}</div>${a ? `<div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>` : ''}</div>${icS('chevr')}</div>`;
   }).join('');
 }
@@ -11388,11 +11388,13 @@ function _lkCat(g) {
   const b = g.grade != null ? (g.grade <= gradeBands().junior.slice(-1)[0] ? 'j' : 's') : /\bjunior\b/i.test(n) ? 'j' : /\bsenior\b/i.test(n) ? 's' : '';
   return b ? b + sex : null;
 }
+// Gender tint for a group's row and header (category null = no bracket = no tint).
+function _lkTint(g) {
+  const t = { f: 'girl', g: 'boy', x: 'mix' }[String(_lkCat(g) || '').slice(-1)];
+  return t ? ` style="background:var(--${t}-light)"` : '';
+}
 function _lkCatFilter(v) {
   try { localStorage.setItem('yap_lk_cat', v); } catch (e) {}
-  // GAP-4: a category with one group opens it straight away (one tap, not two); Back shows the filtered list.
-  const one = v === 'all' ? [] : (LINK.groups || []).filter((g) => _lkCat(g) === v);
-  if (one.length === 1) { _lkOpenGroup(one[0].groupId); return; }
   const gl = document.getElementById('lk-glist');
   if (gl) gl.innerHTML = _lkGroupsHtml();
 }
@@ -11444,7 +11446,7 @@ function _lkGroupHtml(g) {
   // GAP-4: one tap to the newest week that still needs a report (and that can be sent from here).
   const gap = _lkWeeks(_lkToday()).findIndex((x) => !_lkWeekReports(g, x).length && _lkReportDateFor(g.meets, x, _lkToday()).state === 'ok');
   const jump = gap >= 0 && gap !== k ? `<button type="button" class="btn btn-secondary btn-sm btn-full" onclick="_lkWeekGo(${gap - k})">Go to the newest week with no report</button>` : '';
-  return `<div class="card"><div class="lk-svc-t">${esc(lgDisplayName(g.name))}</div><div class="lk-d">${esc(g.meets)}</div>${line}</div>
+  return `<div class="card"${_lkTint(g)}><div class="lk-svc-t">${esc(lgDisplayName(g.name))}</div><div class="lk-d">${esc(g.meets)}</div>${line}</div>
     ${_lkMembersHtml(g)}
     <div class="lk-wknav"><button type="button" class="btn btn-secondary btn-sm"${k >= 7 ? ' disabled' : ''} aria-label="Earlier week" onclick="_lkWeekGo(1)">${icS('arrl')}</button>
       <div class="lk-wkt"><b>${esc(_lkDay(w.start) + ' to ' + _lkDay(w.end))}</b><span class="lk-d">${when}</span></div>
