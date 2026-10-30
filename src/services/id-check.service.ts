@@ -16,7 +16,11 @@ import { BadRequestError, ForbiddenError, ModuleDisabledError, NotFoundError } f
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
   .refine((v) => { const t = Date.parse(`${v}T00:00:00Z`); return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v; });
 const Answer = z.object({ asked: z.boolean(), note: z.string().max(4000) }).strict();
-const Base = { leaderId: z.string().uuid(), heldOn: day, finished: z.boolean() };
+// Ids are strict UUIDs: entry ids are made by the phone and the SPA puts ids into inline onclick strings, so nothing
+// else may ever be stored or echoed (a refusal carries the fixed 'Invalid' message only).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const Uuid = z.string().regex(UUID_RE);
+const Base = { leaderId: Uuid, heldOn: day, finished: z.boolean() };
 const UpsertSchema = z.discriminatedUnion('kind', [
   z.object({ ...Base, kind: z.literal('check'), content: z.object({
     answers: z.record(z.string().refine((k) => ID_CHECK_KEYS.has(k), 'Unknown question'), Answer),
@@ -24,10 +28,10 @@ const UpsertSchema = z.discriminatedUnion('kind', [
   }).strict() }),
   z.object({ ...Base, kind: z.literal('note'), content: z.object({ text: z.string().max(8000) }).strict() }),
 ]);
-const AccessSchema = z.object({ userId: z.string().uuid(), leaderIds: z.array(z.string().uuid()).min(1).max(500), on: z.boolean() });
+const AccessSchema = z.object({ userId: Uuid, leaderIds: z.array(Uuid).min(1).max(500), on: z.boolean() });
 const NameSchema = z.object({ name: z.string().max(200) });
-const AttachSchema = z.object({ name: z.string().max(200), leaderId: z.string().uuid() });
-const IdSchema = z.string().uuid();
+const AttachSchema = z.object({ name: z.string().max(200), leaderId: Uuid });
+const IdSchema = Uuid;
 
 /** safeParse, then a ZodError with only code-free fixed messages and the path: never `received`, never a value. */
 function parse<T>(schema: z.ZodType<T>, input: unknown): T {
@@ -146,7 +150,8 @@ export function makeIdCheckService(deps: {
 
     async remove(a, id) {
       await assertOn();
-      const e = IdSchema.safeParse(id).success ? await repo.findEntry(id) : null;
+      parse(IdSchema, id);
+      const e = await repo.findEntry(id);
       const l = e?.leaderId ? await activeLeader(e.leaderId) : null;
       if (!e || !l) throw new NotFoundError('Entry not found');
       const author = can(a, 'idcheck:use') && e.authorId === a.id;

@@ -185,6 +185,30 @@ describe('finish, due date, in progress', () => {
 });
 
 describe('validation never echoes a value', () => {
+  it('an entry id that is not a strict UUID is refused (400) without echo, and nothing is stored', async () => {
+    await tick(ov1, [girl]);
+    const bad = "x');alert(1);//";
+    for (const id of [bad, `${randomUUID()}x`, randomUUID().replace(/-/g, ''), ` ${randomUUID()}`]) {
+      const r = errorResponse(await svc.upsert(ov1, id, check(girl.id)).catch((e) => e));
+      expect([id, r.status, r.body.code]).toEqual([id, 400, 'VALIDATION_ERROR']);
+      expect(JSON.stringify(r.body)).not.toContain('alert');
+      expect(errorResponse(await svc.remove(ov1, id).catch((e) => e)).status).toBe(400);
+    }
+    expect((await svc.leader(ov1, girl.id)).entries).toEqual([]);
+    expect(await repo.findEntry(bad)).toBeNull();
+    // an upper-case UUID is still a UUID
+    await expect(svc.upsert(ov1, randomUUID().toUpperCase(), check(girl.id))).resolves.toMatchObject({ finished: false });
+  });
+  it('leader and user ids in bodies must be strict UUIDs too', async () => {
+    for (const p of [svc.upsert(ov1, randomUUID(), check("x');alert(1);//")),
+      svc.setAccess(admin, { userId: "x');alert(1);//", leaderIds: [girl.id], on: true }),
+      svc.setAccess(admin, { userId: ov1.id, leaderIds: ["x');alert(1);//"], on: true }),
+      svc.archivedAttach(admin, { name: 'Sample Dummyton', leaderId: "x');alert(1);//" })]) {
+      const r = errorResponse(await p.catch((e) => e));
+      expect(r.status).toBe(400);
+      expect(JSON.stringify(r.body)).not.toContain('alert');
+    }
+  });
   it('unknown question key = 400 and the details hold no note text', async () => {
     await tick(ov1, [girl]);
     const body = check(girl.id, { content: { answers: { faith99: { asked: true, note: SECRET } }, nextTime: '' } });
