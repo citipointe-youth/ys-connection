@@ -17,7 +17,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkPicked', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
-  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkRcHtml', '_lkRcDone', '_lkRcType', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmCreate', '_lkAdmLoadRoster', '_lkAdmDraw', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
+  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkRcHtml', '_lkRcDone', '_lkRcType', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmCreate', '_lkAdmLoadRoster', '_lkAdmDraw', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml', 'renderLinkAdmin', '_lkAdmLoadLog', '_lkAdmLoadActs', '_lkAdmLogToggle',
   '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
   // run 2026-10-15 lane B: DNC, flow filters, bulk Complete, Remove from step, console offline
   '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFfGet',
@@ -68,6 +68,7 @@ function makeEnv(e: Partial<Env> = {}) {
     const closeModal = () => { __calls.closed++; };
     const icS = (k) => '<svg data-ic="' + k + '"></svg>';
     const L = (k) => k;
+    const icN = () => ''; const _adminTabsHtml = () => ''; const _attnLoad = () => {}; // renderLinkAdmin (Y1)
     const _busOn = () => false;
     const _prayersOn = () => true;
     const _deviceId = () => 'dev-1';
@@ -2118,6 +2119,22 @@ describe('F4.2 admin page', () => {
     const text = strip(out);
     for (const t of ['Status', 'Matching', 'Activity']) expect(text).toContain(t);
     expect(text).not.toContain('Kiosk vs app check');
+  });
+  it('Y1: Activity is a collapsed <details>, closed on every page open, and loads the log only when first opened', async () => {
+    const seen: string[] = [];
+    const h = makeEnv({ role: 'admin', fresh: (p: string) => { seen.push(p); return Promise.resolve(p.startsWith('/link/admin/log') ? { rows: [] } : []); } });
+    h.get().LINK.today = '2026-10-16';
+    const out = h.fns._lkAdminHtml();
+    expect(out).toContain('<details class="card lk-mem" id="lk-adm-log"');
+    expect(out).not.toMatch(/id="lk-adm-log"[^>]* open/);
+    h.get().LINK.adm.logOpen = true;
+    expect(h.fns._lkAdminHtml()).toMatch(/id="lk-adm-log" open/);
+    await h.fns.renderLinkAdmin(); // LINK.adm survives navigation: the page resets it to closed
+    expect(h.get().LINK.adm.logOpen).toBe(false);
+    expect(seen.some((p) => p.startsWith('/link/admin/log'))).toBe(false);
+    h.fns._lkAdmLogToggle(true);
+    h.fns._lkAdmLogToggle(true); // ontoggle also fires on a repaint: no second load
+    expect(seen.filter((p) => p.startsWith('/link/admin/log'))).toHaveLength(1);
   });
   it('A4 / X17: the Status card says how to stop all data flow', () => {
     const h = makeEnv({ role: 'admin' });
