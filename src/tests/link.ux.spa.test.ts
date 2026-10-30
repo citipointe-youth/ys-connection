@@ -132,9 +132,9 @@ describe('the source keeps its rules', () => {
 
 describe('T9 admin page source', () => {
   const html = loadIndexHtml();
-  it('Matching and Activity each have a one-sentence tooltip', () => {
-    for (const t of ['Pairs each Elvanto student with their YS student so check-ins and reports land on the right person; most pair themselves by name.',
-      'Every check-in, report and flow step sent from the app, newest first, with who did it.']) expect(html).toContain(`helpTip("${t}")`);
+  it('Matching has a one-sentence tooltip; Activity (collapsible since r30) opens on the same sentence', () => {
+    expect(html).toContain(`helpTip("${'Pairs each Elvanto student with their YS student so check-ins and reports land on the right person; most pair themselves by name.'}")`);
+    expect(html).toContain('<p class="lk-sub">'+'Every check-in, report and flow step sent from the app, newest first, with who did it.'+'</p>');
   });
   it('the first heading in a card has no top margin', () => { expect(html).toContain('.card>.lk-sec:first-child{margin-top:0}'); });
   it('each link page is guarded by its own feature, and the admin page by _linkAdminOn', () => {
