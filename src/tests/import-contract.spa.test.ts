@@ -34,16 +34,16 @@ describe('Import screen contract (console Friday import)', () => {
     expect(html).toMatch(/onclick="closeModal\(\);uploadServiceImport\([^"]*\)">Import<\/button>/);
     expect(html).toMatch(/onclick="closeModal\(\);uploadGroupImport\([^"]*\)">Import<\/button>/);
   });
-  it('admin and director desk nav still have Import (the console clicks that link)', () => {
+  it('admin and oversight desk nav still have Import (the console clicks that link)', () => {
     const nav = new Function(`const S = { settings: {} };\n${extractFn(html, '_navItemsBase')}\nreturn _navItemsBase;`)();
-    for (const role of ['admin', 'director']) {
+    for (const role of ['admin', 'oversight']) {
       expect(nav({ role }).map((i: { id: string }) => i.id)).toContain('import');
     }
     expect(html).toContain("else if (p==='import') await renderImport();");
   });
   it('the nav the shell renders labels the Import link exactly "Import" (the console clicks by that text)', () => {
     const names = ['navItems', '_navSlots', 'moreItems', '_navItemsBase'];
-    for (const role of ['admin', 'director']) {
+    for (const role of ['admin', 'oversight']) {
       const navItems = new Function(`const S = { user: { role: '${role}' }, settings: {} };
         const _prayersOn = () => true, _busOn = () => true, _nyOn = () => true, _linkOn = () => true, L = (k) => k;
         ${names.map((n) => extractFn(html, n)).join('\n')}
@@ -69,7 +69,7 @@ const rec = (i: number, over: Record<string, unknown> = {}) => ({ id: 'r' + i, t
 describe('Import tab tidy (B5)', () => {
   it('inside Admin there is no second page header; the standalone page keeps it', () => {
     expect(loadImportBody({ role: 'admin' }, 'admin')([])).not.toContain('ph-title');
-    expect(loadImportBody({ role: 'director' }, 'import')([])).toContain('ph-title');
+    expect(loadImportBody({ role: 'oversight' }, 'import')([])).toContain('ph-title');
   });
   it('no Clear All and no per-row delete', () => {
     const out = loadImportBody({ role: 'admin' }, 'admin')([rec(1)]);

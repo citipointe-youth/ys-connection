@@ -1778,14 +1778,14 @@ function _moduleOffHit(path, err) {
 }
 
 // ============================================================
-// NOTICES (admin/director send to the four quad logins; module modules.notices off|on, default off)
+// NOTICES (admin/oversight send to the four quad logins; module modules.notices off|on, default off)
 // ============================================================
 const NOTICE_QUADS = [['b79', 'Junior Guys'], ['g79', 'Junior Girls'], ['b1012', 'Senior Guys'], ['g1012', 'Senior Girls']];
 function _noticesOn() {
   const m = ((S.settings && S.settings.ministryConfig) || {}).modules || {};
-  return m.notices === 'on' && !!S.user && ['admin', 'director', 'quad'].includes(S.user.role);
+  return m.notices === 'on' && !!S.user && ['admin', 'oversight', 'quad'].includes(S.user.role);
 }
-function _noticeSender() { return !!S.user && ['admin', 'director'].includes(S.user.role); }
+function _noticeSender() { return !!S.user && ['admin', 'oversight'].includes(S.user.role); }
 function _noticeToList(n) {
   return (n.recipients || []).map(q => { const f = NOTICE_QUADS.find(x => x[0] === q); return f ? f[1] : q; }).join(', ');
 }
@@ -2026,7 +2026,7 @@ function quadLabel(q) { return SIMPLE_QUAD_LABELS[q] || q; }
 // Fixed role labels (not per-deployment configurable, §5.2). grade/quad
 // logins keep their own richer badges (grade numbers / quad name) — see
 // roleBadge/roleBadgeInner below.
-const _ROLE_LABEL_DEFAULTS = { admin: 'Admin', director: 'Director', leader: 'Leader', grade: 'Grade', quad: 'Junior/Senior' };
+const _ROLE_LABEL_DEFAULTS = { admin: 'Admin', oversight: 'Oversight', leader: 'Leader', grade: 'Grade', quad: 'Junior/Senior' };
 function _roleLabel(role) {
   return _ROLE_LABEL_DEFAULTS[role] || (role.charAt(0).toUpperCase() + role.slice(1));
 }
@@ -2034,7 +2034,7 @@ const ROLE_TIPS = {
   grade: (u) => `${gradeBadgeLabel(u)} login — manages leaders and connections for ${gradeBadgeLabel(u)}`,
   quad:  (u) => `${quadLabel(u.quad)} login — fully manages leaders and connections within its Junior/Senior group`,
   leader: () => `${_roleLabel('leader')} — sees and follows up only their own connected students`,
-  director: () => `${_roleLabel('director')} — full ministry access, can import data`,
+  oversight: () => `${_roleLabel('oversight')} — full ministry access, can import data`,
   admin: () => `${_roleLabel('admin')} — full access including settings and accounts`,
 };
 function roleBadge(u) {
@@ -2316,7 +2316,7 @@ function phoneLink(raw, firstName, isParent) {
   const num = esc(String(raw).replace(/['\\]/g, ''));
   return `<a onclick="callPhone('${num}','${fn}',${isParent ? 'true' : 'false'})" style="color:var(--accent-dark);font-weight:700;cursor:pointer;text-decoration:none">${esc(fmtPhone(raw))}</a>`;
 }
-// R1 DO NOT CONTACT (LINK_REV 6): the server strips mobile + parentPhone for non-admin logins; admin/director keep the
+// R1 DO NOT CONTACT (LINK_REV 6): the server strips mobile + parentPhone for non-admin logins; admin/oversight keep the
 // numbers and see the same banner. s.dnc is the server's flag (false or missing = show nothing).
 function dncChip(s) { return s && s.dnc ? '<span class="chip c-dnc">DO NOT CONTACT</span>' : ''; }
 function dncBanner(s) {
@@ -2653,7 +2653,7 @@ function _navClick(it) { return it.action || "go('" + it.id + "')"; }
 function moreItems() {
   const xs = _prayersOn() ? [{ id:'prayers', ic:'pray', label:'Prayers', open:"go('prayers')" }] : [];
   if (_busOn()) xs.push({ id:'bus', ic:'bus', label:L('busMinistry'), open:"go('bus')" });
-  if ((((S.settings && S.settings.ministryConfig) || {}).modules || {}).notices === 'on' && S.user && ['admin', 'director', 'quad'].includes(S.user.role)) xs.push({ id:'notices', ic:'bell', label:'Notices', mbl:'Notices', open:"go('notices')" });
+  if ((((S.settings && S.settings.ministryConfig) || {}).modules || {}).notices === 'on' && S.user && ['admin', 'oversight', 'quad'].includes(S.user.role)) xs.push({ id:'notices', ic:'bell', label:'Notices', mbl:'Notices', open:"go('notices')" });
   // nyOpen never wipes a send that is still in flight.
   if (_nyOn()) xs.push({ id:'new-youth', ic:'plus', label:'New person', open:'nyOpen()' });
   /*LINK*/ {
@@ -2663,16 +2663,16 @@ function moreItems() {
     if (r !== 'leader' && _linkOn('flows')) xs.push({ id:'link-flows', ic:'target', label:'Flow steps', mbl:'Flows', open:"go('link-flows')" });
     // T4: Intake, the admin login with module intakeAdmin On (a plain switch: no admin-only state, no inheriting New person).
     if (r === 'admin' && (((S.settings && S.settings.ministryConfig) || {}).modules || {}).intakeAdmin === 'on') xs.push({ id:'link-intake', ic:'id', label:'New youth & consent', mbl:'Intake', open:"go('link-intake')" });
-    // r22 U1 (operator): Import left Home, so a director (no Admin tab) always has it in More (_navSlots keeps More for a director).
-    if (r === 'director') xs.push({ id:'import', ic:'upload', label:'Import', open:"go('import')" });
+    // r22 U1 (operator): Import left Home, so an oversight (no Admin tab) always has it in More (_navSlots keeps More for an oversight).
+    if (r === 'oversight') xs.push({ id:'import', ic:'upload', label:'Import', open:"go('import')" });
   }
   return xs;
 }
 // The Prayers slot in each role's nav: 2+ modules -> More; exactly 1 -> that module as a plain tab; none -> null (no slot).
 function _navSlots(u) {
   const more = moreItems();
-  // Y5: a junior leader has no Setup page, so More (with Change password) is always there; r22 U1: a director's More always holds Import.
-  const pw = ['leader', 'director'].includes(((u || S.user) || {}).role);
+  // Y5: a junior leader has no Setup page, so More (with Change password) is always there; r22 U1: an oversight's More always holds Import.
+  const pw = ['leader', 'oversight'].includes(((u || S.user) || {}).role);
   return _navItemsBase(u).map(it => {
     if (it.id !== 'prayers') return it;
     if (more.length >= 2 || pw) return { id:'more', ic:'grid', label:'More', mbl:'More', action:'openMore()' };
@@ -2754,7 +2754,7 @@ function _navItemsBase(u = S.user) {
     ...(caOn ? [caItem] : []), /*CA-HOOK*/
     { id:'birthdays',  ic:'cake',     label:'Upcoming Birthdays',mbl:'Birthdays' },
   ];
-  // Director: same as admin minus admin tile
+  // Oversight: same as admin minus admin tile
   return [
     { id:'home',       ic:'home',     label:'Home',              mbl:'Home' },
     { id:'at-risk',    ic:'heart',    label:'Health',            mbl:'Health' },
@@ -3119,7 +3119,7 @@ async function submitMustChangePassword() {
 function _hQuadGrades(q) { return quadGrades(q); }
 function _hGradeAvg(trends, g) { const x = ((trends && trends.byGrade) || []).find(y => y.grade === g); return x ? Math.round(x.averageAttendance) : 0; }
 // Gendered per-grade Svc/wk. trends.byGrade is whole-grade (both genders) for an
-// admin/director login, so the quad dropdown must NOT use it for a gendered grade
+// admin/oversight login, so the quad dropdown must NOT use it for a gendered grade
 // row. averageOf over a session set == sum(svcAttended)/svcTotal over its members,
 // so we derive the gendered average straight from the already gender-filtered
 // student aggregates — matching the Svc-uniq count shown beside it.
@@ -3153,7 +3153,7 @@ function _mergeGradeSessions(trends, grades) {
   }
   return [...byDate.values()].sort((a, b) => a.sessionDate.localeCompare(b.sessionDate));
 }
-// Per-grade dropdown row for admin/director's "Youth By Quad" tiles — youth
+// Per-grade dropdown row for admin/oversight's "Youth By Quad" tiles — youth
 // attendance only (no lifegroup row; that data lives in the separate
 // "Lifegroups by Quad" section below, so showing it here was redundant).
 function _hGradeMini(label, studs, avgWk) {
@@ -3195,11 +3195,11 @@ function _hAttTile(label, studs, avgWk, opts) {
   return `<div class="qcard" style="padding:11px;${borderStyle}">${inner}</div>`;
 }
 
-// /connections is only needed by the admin/director "Connection by Grade" bars
+// /connections is only needed by the admin/oversight "Connection by Grade" bars
 // (_connSet in _renderHomeInner) — skip that whole round-trip for grade/quad
 // logins, who never render that section, to shrink Home's cold-load fan-out.
 function HOME_PATHS() {
-  const wide = S.user && ['admin', 'director'].includes(S.user.role);
+  const wide = S.user && ['admin', 'oversight'].includes(S.user.role);
   return wide
     ? ['/overview', '/trends', '/students', '/lifegroups/stats', '/connections']
     : ['/overview', '/trends', '/students', '/lifegroups/stats'];
@@ -3256,7 +3256,7 @@ let _homeRevalidating = false;
 // working without threading a param through inline HTML.
 //   undefined = use the leader-scoped `data.birthdays` from the followup API
 //               (role='leader' — their own connections ARE their scope)
-//   null      = suppress the card entirely (admin/director — see bug list)
+//   null      = suppress the card entirely (admin/oversight — see bug list)
 //   array     = grade/quad-scoped list computed from Home's own already
 //               role-scoped `/students` fetch, independent of which
 //               individual leader identity is self-selected via `mine`
@@ -3309,9 +3309,9 @@ function _homeCheckinTile() {
   return `<div class="bus-tile" onclick="go('link-checkin')" role="button" tabindex="0">
     <div class="bt-ic">${icN('check')}</div><div class="bt-label">Check-in</div></div>`;
 }
-// Y6b (multisite SPEC Y6): Home "Needs attention" for admin and director. Every count comes from a route this login can
+// Y6b (multisite SPEC Y6): Home "Needs attention" for admin and oversight. Every count comes from a route this login can
 // already read, so no permission is widened: the error log, Unsent new people, System check and the intake plan are
-// admin-only (admin:manage / the admin's intake module); a director gets the link lines only while a link screen is on.
+// admin-only (admin:manage / the admin's intake module); an oversight gets the link lines only while a link screen is on.
 // The Admin tab badges show the same counts. Hidden when there is nothing (a healthy Brisbane never sees it).
 let _attn = null;
 function _attnMine() { return _attn && S.user && _attn.uid === S.user.id ? _attn : null; }
@@ -3333,7 +3333,7 @@ function _attnCounts(r, now) {
     needsYou: ((r.ik && r.ik.dates) || []).reduce((n, d) => n + (Number(d && d.counts && d.counts.needsYou) || 0), 0),
   };
 }
-// [text, onclick ('' = not a link)]. A director cannot open Admin, so their lines are plain text.
+// [text, onclick ('' = not a link)]. An oversight cannot open Admin, so their lines are plain text.
 function _attnLines(a) {
   if (!a) return [];
   const adm = a.role === 'admin', link = adm ? "go('link-admin')" : '', L = [];
@@ -3358,12 +3358,12 @@ function _attnHtml(a) {
     + L.map(([t, on]) => on ? `<div role="button" tabindex="0" onclick="${on}" style="padding:5px 0;cursor:pointer;color:var(--accent-dark)">${esc(t)} ›</div>` : `<div style="padding:5px 0">${esc(t)}</div>`).join('') + '</div>';
 }
 function _attnBadges(a) { return a ? { problems: a.errors + a.unsent + a.fix.length, link: a.unclear + a.waiting } : {}; }
-function _attnSlot(role) { return role === 'admin' || role === 'director' ? `<div id="home-attn">${_attnHtml(_attnMine())}</div>` : ''; }
-// ponytail: one reload a minute per login (up to 7 small reads, admin/director only); a shared /batch section if it ever bites.
+function _attnSlot(role) { return role === 'admin' || role === 'oversight' ? `<div id="home-attn">${_attnHtml(_attnMine())}</div>` : ''; }
+// ponytail: one reload a minute per login (up to 7 small reads, admin/oversight only); a shared /batch section if it ever bites.
 let _attnBusy = null; // the read in flight: a second call meanwhile (stale paint + revalidate, Home then Admin) waits for it
 async function _attnLoad(force) {
   const u = S.user, role = u && u.role;
-  if (role !== 'admin' && role !== 'director') return;
+  if (role !== 'admin' && role !== 'oversight') return;
   const mine = _attnMine();
   if (!force && mine && Date.now() - mine.at < 60000) return;
   if (_attnBusy) return _attnBusy;
@@ -3397,7 +3397,7 @@ async function _renderHomeInner(stale, fromCache) {
   // Stale mode reads straight from the last-known cache (Promise.resolve, no network)
   // so the page paints instantly; renderHome handles the background refresh.
   const G = stale ? (p) => Promise.resolve(Cache.getStale(p)) : (p) => API.get(p);
-  const needConns = ['admin', 'director'].includes(qu.role);
+  const needConns = ['admin', 'oversight'].includes(qu.role);
   let stats, trends, sc = [], lgStats = null, conns = [], notices = [];
   try {
     [stats, trends, sc, lgStats, conns, notices] = await Promise.all([
@@ -3421,7 +3421,7 @@ async function _renderHomeInner(stale, fromCache) {
   }
   // Bug list item 1: birthdays-this-week must be grade/quad-scoped, not tied
   // to whichever leader identity is self-selected in Follow Up, and must not
-  // show at all for director/admin. See _homeBirthdaysCtx's doc comment.
+  // show at all for oversight/admin. See _homeBirthdaysCtx's doc comment.
   // Junior/Senior logins: the shared grade filter narrows "Birthdays this week" and the
   // quad's "Attendance by Grade" tiles only (hero totals stay whole-bracket).
   _homeBirthdaysCtx = (u.role === 'grade' || u.role === 'quad') ? _scopedWeeklyBirthdays(sc) : null;
@@ -3468,7 +3468,7 @@ async function _renderHomeInner(stale, fromCache) {
   const havePrev = pSvcTot > 0 || pGrpTot > 0;
   // A Trends shortcut sits in the hero banner opposite the Prev term toggle for
   // every role. For grade it replaces the quick-action grid entry (see below);
-  // for quad/director/admin, Trends is already its own bottom-nav tab, so this
+  // for quad/oversight/admin, Trends is already its own bottom-nav tab, so this
   // is just a convenience shortcut alongside it.
   const trendsPill = `<button onclick="go('trends')" style="margin-top:6px;background:rgba(255,255,255,.1);border:none;color:#fff;opacity:.75;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:6px;padding:4px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">${icS('chart')} Trends</button>`;
   if (havePrev) {
@@ -3526,7 +3526,7 @@ async function _renderHomeInner(stale, fromCache) {
     }
 
     // ── Weekly follow-up (Recommendation 3) — filled in asynchronously below ──
-    // Grade logins get it near the top; admin/director/quad get it at the BOTTOM
+    // Grade logins get it near the top; admin/oversight/quad get it at the BOTTOM
     // of the home page (appended just before setApp).
     if (u.role === 'grade') body += '<div id="home-flows"></div><div id="home-followup"></div>';
 
@@ -3535,8 +3535,8 @@ async function _renderHomeInner(stale, fromCache) {
       // Connection by Grade bars — rendered FIRST (above Attendance/Lifegroups),
       // so leaders see the connection gap before the raw attendance numbers.
       // Hidden entirely under cohortModel 'none' (no grade cohorting — §6b).
-      if (_cohorted() && ['admin', 'director'].includes(u.role)) {
-        // Director/admin: each grade row split into girls (left) and boys (right).
+      if (_cohorted() && ['admin', 'oversight'].includes(u.role)) {
+        // Oversight/admin: each grade row split into girls (left) and boys (right).
         const grades = _gradeList().filter(gr => sc.some(s => s.grade === gr));
         if (grades.length) {
           const half = (all) => {
@@ -3577,10 +3577,10 @@ async function _renderHomeInner(stale, fromCache) {
         }
       }
 
-      // Director/Admin: Youth By Quad — tap to expand per-grade rows. Youth-only
+      // Oversight/Admin: Youth By Quad — tap to expand per-grade rows. Youth-only
       // (no Lifegroups row/columns): the separate "Lifegroups by Quad" section
       // below already covers that, so showing it here too was redundant.
-      if (['admin', 'director'].includes(u.role)) {
+      if (['admin', 'oversight'].includes(u.role)) {
         const vq = (stats.byQuad || []).filter(q => q.totalStudents > 0);
         if (vq.length) {
           body += '<div class="sh">' + L('service') + ' By Group</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
@@ -3619,7 +3619,7 @@ async function _renderHomeInner(stale, fromCache) {
       // average = individuals attending a lifegroup each week the scope ran.
       // Quad no longer gets a separate "Lifegroups by Grade" section here — that
       // content now lives inside each Attendance-by-Grade tile's dropdown above.
-      if (lifegroupsOn && lgStats && ['admin', 'director'].includes(u.role)) {
+      if (lifegroupsOn && lgStats && ['admin', 'oversight'].includes(u.role)) {
         const quads = (lgStats.byQuad || []).filter(q => q.current.uniqueAttenders > 0 || q.current.members > 0);
         if (quads.length) {
           body += '<div class="sh">' + L('smallGroupPlural') + ' by Group</div><div style="margin-bottom:16px">';
@@ -3643,7 +3643,7 @@ async function _renderHomeInner(stale, fromCache) {
     }
   }
 
-  // Admin/director/quad: follow-up sits at the bottom of the home page.
+  // Admin/oversight/quad: follow-up sits at the bottom of the home page.
   if (u.role !== 'grade') body += '<div id="home-flows"></div><div id="home-followup"></div>';
 
   setApp(shell(body));
@@ -3716,7 +3716,7 @@ async function renderHomeFollowup(fromCache) {
   const svcTitle = 'Not Seen Last ' + _serviceDayName() + (data.latestSvcDate ? ` (${_fridayLabel(data.latestSvcDate)})` : '');
   const grpTitle = 'Not At A ' + L('smallGroup') + ' Last Week' + (data.latestGrpDate ? ` (ending ${_fridayLabel(data.latestGrpDate)})` : '');
   let h = `<div class="sh" style="display:flex;align-items:center;justify-content:space-between;font-size:13px"><span>Follow Up · ${esc(data.leader.fullName)} ${helpTip("These are students who've attended a service or lifegroup recently, but weren't here last service.")}</span>${changeBtn}</div>`;
-  // _homeBirthdaysCtx: null suppresses the card (admin/director); an array is
+  // _homeBirthdaysCtx: null suppresses the card (admin/oversight); an array is
   // the grade/quad-scoped list; undefined falls back to the leader-scoped
   // `data.birthdays` (role='leader'). See its doc comment near _revalidateHome.
   if (_homeBirthdaysCtx !== null) {
@@ -4042,7 +4042,7 @@ function renderConnectView() {
   // students to connect — but Total/Connected/Pending and the "Students not
   // Connected" dropdown should reflect only the login's OWN remit (own grade for
   // a grade login, own quad bracket for a quad login), or they double-count
-  // students who only show up here because of that widening. director/admin have
+  // students who only show up here because of that widening. oversight/admin have
   // no narrower remit than the full fetch, so they're unfiltered.
   const _ownGrades = new Set(userGrades(u));
   const inOwnScope = s => u.role === 'quad' ? s.quad === u.quad
@@ -4061,10 +4061,10 @@ function renderConnectView() {
 
   // Filters are scoped to the login: grade logins get none (they only see their
   // grade's leaders); quad logins get a grade filter for their bracket but no
-  // gender filter (leaders are already their gender); director/admin get both.
+  // gender filter (leaders are already their gender); oversight/admin get both.
   const fGrades = u.role === 'quad' ? quadGrades(u.quad)
-    : ['director','admin'].includes(u.role) ? _gradeList() : [];
-  const showGender = ['director','admin'].includes(u.role);
+    : ['oversight','admin'].includes(u.role) ? _gradeList() : [];
+  const showGender = ['oversight','admin'].includes(u.role);
   const showSearch = showGender || u.role === 'quad'; // r21 L1: Junior/Senior logins get the same leader search
   const gChips = fGrades.map(g =>
     `<button class="fc ${gf.has(g)?'on':''}" onclick="toggleAF('g',${g})" aria-pressed="${gf.has(g)}">${g}</button>`
@@ -4074,7 +4074,7 @@ function renderConnectView() {
   ).join('') : '';
 
   // Grade ascending first, then alphabetical within the grade — matters for
-  // quad/director/admin logins whose "Students not Connected" list spans
+  // quad/oversight/admin logins whose "Students not Connected" list spans
   // multiple grades; a no-op ordering for grade logins since connectable is
   // already scoped to a single grade there.
   const unallocated = connectable.filter(s => !connectedStudentIds.has(s.id))
@@ -4172,7 +4172,7 @@ function renderConnectView() {
   document.querySelectorAll('.connect-students').forEach(_syncConnectThumb);
 }
 
-// I3 (R2 2026-10-17): Connect Setup leader search, admin/director (+ quad, r21 L1); matches active leader names (the cards shown).
+// I3 (R2 2026-10-17): Connect Setup leader search, admin/oversight (+ quad, r21 L1); matches active leader names (the cards shown).
 function _csLeaderQ(v) {
   _aS.lq = String(v || '').trim().toLowerCase();
   for (const c of document.querySelectorAll('.connect-leader')) c.style.display = (c.dataset.name || '').includes(_aS.lq) ? '' : 'none';
@@ -4484,7 +4484,7 @@ function _fmtUpcoming(date) {
   return { weekday: WD[date.getDay()], day: date.getDate(), month: MON[date.getMonth()], monthName: FULL[date.getMonth()] };
 }
 const BIRTHDAYS_PATHS = ['/students', '/leaders', '/connections'];
-// Grade/gender filters — admin/director only (they see the whole ministry list;
+// Grade/gender filters — admin/oversight only (they see the whole ministry list;
 // grade/quad logins are already scoped to their own cohort server-side).
 let _bdayFilter = { grade: null, gender: null };
 function setBdayFilter(key, val) {
@@ -4527,9 +4527,9 @@ async function renderUpcomingBirthdays() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const cap = new Date(today.getFullYear(), today.getMonth() + 2, today.getDate());
 
-  // Grade/gender dropdown filters — admin/director only (they see the whole
+  // Grade/gender dropdown filters — admin/oversight only (they see the whole
   // ministry list here; grade/quad logins are already scoped server-side).
-  const showBdayFilters = ['admin', 'director'].includes(u.role);
+  const showBdayFilters = ['admin', 'oversight'].includes(u.role);
   let scopedStudents = students || [];
   const vgOn = _vgActive(); // Junior/Senior logins: the shared grade filter
   if (vgOn) scopedStudents = _vgStudents(scopedStudents, _vgGrades());
@@ -4643,11 +4643,11 @@ async function renderMyStudents() {
   }
 
   // Grade + gender filters that narrow the leader dropdown, as Health's .fc chips — scoped to the
-  // login: grade → none; quad → its year bracket (no gender); director/admin → all years + gender.
+  // login: grade → none; quad → its year bracket (no gender); oversight/admin → all years + gender.
   const mu = S.user;
   const myYears = mu.role === 'quad' ? quadGrades(mu.quad)
-    : ['director','admin'].includes(mu.role) ? _gradeList() : [];
-  const showG = ['director','admin'].includes(mu.role);
+    : ['oversight','admin'].includes(mu.role) ? _gradeList() : [];
+  const showG = ['oversight','admin'].includes(mu.role);
   const _fc = (on, click, lbl) => `<button class="fc ${on ? 'on' : ''}" aria-pressed="${on}" onclick="${click}">${lbl}</button>`;
   const _fl = (w) => `<span style="font-size:11px;font-weight:700;color:var(--ink-mid)">${w}</span>`;
   let filters = '';
@@ -4863,7 +4863,7 @@ async function renderAtRisk() {
 
   const arGrades = u.role==='grade' ? [] : u.role==='quad'
     ? quadGrades(u.quad) : _gradeList();
-  const arGenders = ['director','admin'].includes(u.role) ? ['male','female'] : [];
+  const arGenders = ['oversight','admin'].includes(u.role) ? ['male','female'] : [];
   const gChips = arGrades.map(g => `<button class="fc ${_arFilter.grade==g?'on':''}" onclick="setArFilter('grade',${g})">${g}</button>`).join('');
   const dChips = arGenders.map(g => `<button class="fc ${_arFilter.gender===g?'on':''}" onclick="setArFilter('gender','${g}')">${g.charAt(0).toUpperCase()+g.slice(1)}</button>`).join('');
 
@@ -5011,10 +5011,10 @@ function _prayersHtml(list) {
   const archived = inFilter.filter(p => p.status === 'archived');
 
   // Same chip set Health uses: grade role gets none (already single-scoped),
-  // quad gets its own 3 grades, director/admin get every configured grade +
+  // quad gets its own 3 grades, oversight/admin get every configured grade +
   // gender. See renderAtRisk() for the reference pattern.
   const prGrades = u.role === 'grade' ? [] : u.role === 'quad' ? quadGrades(u.quad) : _gradeList();
-  const prGenders = ['director', 'admin'].includes(u.role) ? ['male', 'female'] : [];
+  const prGenders = ['oversight', 'admin'].includes(u.role) ? ['male', 'female'] : [];
   const gChips = prGrades.map(g => `<button class="fc ${_prayerFilter.grade == g ? 'on' : ''}" onclick="setPrayerFilter('grade',${g})">${g}</button>`).join('');
   const dChips = prGenders.map(g => `<button class="fc ${_prayerFilter.gender === g ? 'on' : ''}" onclick="setPrayerFilter('gender','${g}')">${g.charAt(0).toUpperCase() + g.slice(1)}</button>`).join('');
   let filterHtml = '';
@@ -5443,7 +5443,7 @@ function renderStudentView() {
   const ssGrades = u.role==='grade' ? [] : u.role==='quad'
     ? quadGrades(u.quad)
     : _gradeList();
-  const ssGenders = ['director','admin'].includes(u.role) ? ['male','female'] : [];
+  const ssGenders = ['oversight','admin'].includes(u.role) ? ['male','female'] : [];
   const gChips = ssGrades.map(g => `<button class="fc ${gf.has(g)?'on':''}" onclick="toggleSF('g',${g})">${g}</button>`).join('');
   const dChips = ssGenders.map(g => `<button class="fc ${df.has(g)?'on':''}" onclick="toggleSF('d','${g}')">${g.charAt(0).toUpperCase()+g.slice(1)}</button>`).join('');
 
@@ -5532,7 +5532,7 @@ async function showStudentDetail(id, opts) {
     ]);
   } catch { toast('Failed to load'); return; }
   _sdStudent = s; _sdLeaders = allLeaders; _sdAssigned = new Set(myAllocs.map(a => a.leaderId));
-  const canEdit = ['grade', 'quad', 'director', 'admin'].includes(S.user.role);
+  const canEdit = ['grade', 'quad', 'oversight', 'admin'].includes(S.user.role);
   const pct = svcPct(s);
   const grpPct = s.grpTotal > 0 ? Math.round(s.grpAttended / s.grpTotal * 100) : null;
 
@@ -5726,7 +5726,7 @@ async function renderTrends() {
     if (TREND_PATHS.some(p => Cache.get(p) === null)) _revalidateTrends();
   }
 
-  const canExport = ['quad','director','admin'].includes(u.role);
+  const canExport = ['quad','oversight','admin'].includes(u.role);
 
   // Compute per-grade stats from students
   function gradeStats(sc) {
@@ -5776,13 +5776,13 @@ async function renderTrends() {
     : _curTerm ? `${fmtDay(_curTerm.startDate)} – ${fmtDay(_curTerm.endDate)}` : '';
 
   if (_trTab === 'svc') {
-    // Ministry-wide overview — director/admin only. Grade logins go straight to
+    // Ministry-wide overview — oversight/admin only. Grade logins go straight to
     // their own grade's numbers below (the ministry-wide block was redundant
     // context for a single-grade login and just added scroll); quad logins get
     // their own scoped quad+by-grade section further down (matching how the
     // Lifegroups tab already scopes quad server-side), so this whole-ministry
     // block would otherwise leak ministry-wide data to a quad account.
-    if (['director', 'admin'].includes(u.role)) {
+    if (['oversight', 'admin'].includes(u.role)) {
       const mn = (trends && trends.ministry) || {};
       body += `<div class="sh">Ministry Overview</div><div class="card">`;
       body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term${_termNote ? ` (${_termNote})` : ''}</div>`;
@@ -5845,7 +5845,7 @@ async function renderTrends() {
       }
       body += '</div>';
     } else {
-      // Director / admin: collapsible quad cards (current + previous term)
+      // Oversight / admin: collapsible quad cards (current + previous term)
       body += `<div class="sh">By Group</div>`;
       for (const q of byQuad) {
         if (!q.count) continue;
@@ -6008,7 +6008,7 @@ function _revalidateImport() {
 }
 // Pure HTML builder for the Import screen — takes already-fetched history, does
 // no fetching/caching/setApp. Shared by the standalone Import page (renderImport,
-// still reachable directly from nav for director/admin) and the embedded Import
+// still reachable directly from nav for oversight/admin) and the embedded Import
 // tab inside Admin (renderAdminView) so the two never drift apart.
 // r22 B5: inside Admin the "Admin" header is already there, so skip this one. History comes newest first.
 function _importBodyHtml(history) {
@@ -6588,9 +6588,9 @@ async function renderAdminView(settings, users, history) {
     // whole section here even if inactive accounts of that role still exist —
     // settings.service.ts's role-disable also bulk-deactivates them, but the
     // section itself is gated on the toggle, not on "any accounts left".
-    const roleOrder = ['admin','director','quad','grade','leader'];
+    const roleOrder = ['admin','oversight','quad','grade','leader'];
     const roleLabels = {
-      admin: _roleLabel('admin'), director: _roleLabel('director'),
+      admin: _roleLabel('admin'), oversight: _roleLabel('oversight'),
       quad: _roleLabel('quad') + ' Logins', grade: _roleLabel('grade') + ' Logins',
       leader: _roleLabel('leader') + 's',
     };
@@ -7373,7 +7373,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   labels: { smallGroup: 'Lifegroup', smallGroupPlural: 'Lifegroups', service: 'Youth', serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection', groupNameStrip: ['Brisbane - YS - '], /*BUS-HOOK*/ busMinistry: 'Bus Ministry' },
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', genderPolicy: 'strict', serviceDayOfWeek: 5,
     timeZone: 'Australia/Brisbane', consentCutoff: '09:00' }, // Y3a: the location's time zone and consent cut-off
-  roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
+  roles: { enabled: { oversight: true, grade: true, quad: true, leader: false } },
   modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', intakeAdmin: 'off', flowHiddenStep: {}, prayers: true, liveLink: true, digest: true, camp: true, busConsentForm: true },
   logins: { simple: false },
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
@@ -7450,19 +7450,19 @@ async function saveMinistrySetup(confirmIntakeOff) {
 }
 
 // Login style (2026-10-27): one control for the stored cohort model, Quad/Grade roles and logins.simple. Pure.
-// Quad role on (the default) = Junior/Senior, which is Brisbane's live state; Quad off = Director and leaders.
+// Quad role on (the default) = Junior/Senior, which is Brisbane's live state; Quad off = Oversight and leaders.
 function _loginStyleOf(c) {
   const en = (c && c.roles && c.roles.enabled) || {};
-  return en.quad === false ? 'director-leaders' : 'junior-senior';
+  return en.quad === false ? 'oversight-leaders' : 'junior-senior';
 }
 // Writes the stored fields for a style into a draft and returns it. Both keep logins.simple on (no grade logins; the
 // server pairs grades-quads with the Quad role and none with no Quad role). Notices has nobody to send to without the
-// Junior/Senior logins, so Director and leaders turns it off; nothing here turns it on.
+// Junior/Senior logins, so Oversight and leaders turns it off; nothing here turns it on.
 function _applyLoginStyle(d, style) {
   const at = (o, k) => (o[k] && typeof o[k] === 'object' ? o[k] : (o[k] = {}));
   const js = style === 'junior-senior';
   at(d, 'structure').cohortModel = js ? 'grades-quads' : 'none';
-  Object.assign(at(at(d, 'roles'), 'enabled'), js ? { director: true, grade: false, quad: true } : { director: true, grade: false, quad: false, leader: true });
+  Object.assign(at(at(d, 'roles'), 'enabled'), js ? { oversight: true, grade: false, quad: true } : { oversight: true, grade: false, quad: false, leader: true });
   at(d, 'logins').simple = true;
   if (!js) at(d, 'modules').notices = 'off';
   return d;
@@ -7471,7 +7471,7 @@ function _setupSetLoginStyle(style) { _setupDraft = _applyLoginStyle(_setupDraft
 // Notices: a checkbox like the other modules (stored 'on' / 'off'), offered only for Junior/Senior.
 function _setupNoticesHtml(md, style) {
   if (style !== 'junior-senior') return '';
-  return `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="setup-notices" ${md && md.notices === 'on' ? 'checked' : ''} onchange="_setupSet('modules.notices', this.checked ? 'on' : 'off')"> <span>Notices ${helpTip("Admin and director send a message to the four Junior/Senior logins (Junior or Senior, Guys or Girls). Shows under More and on Home for 24 hours. Off by default. Notices already sent are kept.")}</span></label>`;
+  return `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="setup-notices" ${md && md.notices === 'on' ? 'checked' : ''} onchange="_setupSet('modules.notices', this.checked ? 'on' : 'off')"> <span>Notices ${helpTip("Admin and oversight send a message to the four Junior/Senior logins (Junior or Senior, Guys or Girls). Shows under More and on Home for 24 hours. Off by default. Notices already sent are kept.")}</span></label>`;
 }
 function _youthSetupBody(settings, users) {
   _ensureSetupDraft(settings);
@@ -7499,11 +7499,11 @@ function _youthSetupBody(settings, users) {
   // popup's z-index and letting the next role row paint over it.
   const adminRoleRow = `<label class="fg" style="display:flex;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:8px;opacity:.7"><input type="checkbox" checked disabled> <span>Admin</span></span> ${helpTip("Full access to everything, including settings and accounts. You can create more Admin logins, but the one named “Admin” can't be renamed, deactivated, or deleted.")}</label>`;
   const roleToggleRows = [
-    ['director', 'Director', 'Sees and manages every student and leader across the whole ministry, and can upload attendance files.'],
+    ['oversight', 'Oversight', 'Sees and manages every student and leader across the whole ministry, and can upload attendance files.'],
     ['leader', 'Leader', 'A login that only sees the students connected to it.'],
   ].map(([k, label, hint]) => `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${roleEnabled(k)?'checked':''} onchange="_setupSet('roles.enabled.${k}', this.checked)"> <span>${esc(label)} ${helpTip(hint)}</span></label>`
   ).join('');
-  const loginStyleTip = "Junior/Senior: four shared logins, Junior Girls, Junior Guys, Senior Girls and Senior Guys. Each gets a Grades filter, saved for the name chosen in “I am…”. Bus is run by admin, director and named Bus coordinators. Director and leaders: a director login plus a login for each leader, who sees only the students connected to them.";
+  const loginStyleTip = "Junior/Senior: four shared logins, Junior Girls, Junior Guys, Senior Girls and Senior Guys. Each gets a Grades filter, saved for the name chosen in “I am…”. Bus is run by admin, oversight and named Bus coordinators. Oversight and leaders: an oversight login plus a login for each leader, who sees only the students connected to them.";
 
   // Branding / Terminology / Modules editors. bv/lv/mv read the draft with a
   // fallback to the mirrored defaults.
@@ -7525,7 +7525,7 @@ function _youthSetupBody(settings, users) {
   let b = _setupCard('structure', 'Structure & Roles', `
     <div class="fg"><label class="fl" for="fl-login-style">Login style ${helpTip(loginStyleTip)}</label>
       <select id="fl-login-style" class="fs" onchange="_setupSetLoginStyle(this.value)">
-        ${[['junior-senior', 'Junior/Senior'], ['director-leaders', 'Director and leaders']].map(([v, l]) => `<option value="${v}" ${style === v ? 'selected' : ''}>${l}</option>`).join('')}
+        ${[['junior-senior', 'Junior/Senior'], ['oversight-leaders', 'Oversight and leaders']].map(([v, l]) => `<option value="${v}" ${style === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select></div>
     <label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" ${includeGrade6?'checked':''} onchange="_setupSetGrade6(this.checked)"> <span>Include ${esc(gLabel)} 6 (kids-church intake) ${helpTip('The oldest grade is always '+esc(gLabel)+' 12. Turn this on if your ministry also takes in '+esc(gLabel).toLowerCase()+' 6 students straight from kids\' church. '+esc(gLabel)+' 6 counts as a junior year.')}</span></label>
     <div class="fg"><label class="fl" for="fl-gender-policy">Gender policy ${helpTip('Strict: logins and leader-student connections are limited to matching genders. Soft: gender is still shown but never limits who can see or connect with whom. Off: gender is hidden everywhere in the app.')}</label>
@@ -7639,7 +7639,7 @@ function _setupRiskyDiff(saved, draft) {
   if (simple(s) !== simple(d)) out.push('logins.simple');
   if (prayers(s) !== prayers(d)) out.push('modules.prayers');
   // Junior/Senior on retires the grade logins itself (they come back), so Grade is not also flagged.
-  for (const k of ['director', 'grade', 'quad', 'leader']) if (role(s, k) && !role(d, k) && !(k === 'grade' && simple(d))) out.push('roles.' + k);
+  for (const k of ['oversight', 'grade', 'quad', 'leader']) if (role(s, k) && !role(d, k) && !(k === 'grade' && simple(d))) out.push('roles.' + k);
   if (intake(s) && !intake(d)) out.push('modules.intakeAdmin');
   return out;
 }
@@ -7654,7 +7654,7 @@ function confirmSaveMinistrySetup() {
       const coords = (saved.busMinistry && saved.busMinistry.coordinatorLeaderIds) || [];
       const busOn = !!(draft.modules && draft.modules.busMinistry);
       risky += `<div class="alert al-warn" style="margin-bottom:10px">This ${n ? `switches off the ${n} grade logins (they come back if you turn this off) and ` : ''}renames the 4 Junior/Senior logins to Junior Girls, Junior Guys, Senior Girls and Senior Guys.${busOn ? ' Junior/Senior logins stop coordinating Bus.' : ''}</div>`;
-      if (busOn && !coords.length) risky += `<div class="alert" style="margin-bottom:10px;background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626">No Bus coordinators are set. Only admin and director can run Bus.</div>`;
+      if (busOn && !coords.length) risky += `<div class="alert" style="margin-bottom:10px;background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626">No Bus coordinators are set. Only admin and oversight can run Bus.</div>`;
     } else {
       risky += `<div class="alert al-warn" style="margin-bottom:10px">This turns Junior/Senior logins off. The grade logins it switched off come back. The 4 Junior/Senior logins keep their names.</div>`;
     }
@@ -7763,7 +7763,7 @@ function _setupFlowHiddenHtml(md) {
   const picks = md.flowHiddenStep || {}, flows = {};
   _setupFlowSteps.forEach((x) => (flows[x.flowId] = flows[x.flowId] || { name: x.flowName, steps: [] }).steps.push(x));
   return Object.keys(flows).map((id) => { const f = flows[id], hid = _flowHiddenList(picks, id, f.steps);
-    return `<div class="fg"><div class="fl">Flow steps: ${esc(f.name)} ${helpTip('A ticked step is not listed on Flow steps for leader logins, and they cannot complete or assign it there. Admin and director logins still see it. The New youth & consent screen is not changed.')}</div>
+    return `<div class="fg"><div class="fl">Flow steps: ${esc(f.name)} ${helpTip('A ticked step is not listed on Flow steps for leader logins, and they cannot complete or assign it there. Admin and oversight logins still see it. The New youth & consent screen is not changed.')}</div>
       ${f.steps.map((x) => `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:4px 0"><input type="checkbox" ${hid.includes(x.stepId) ? 'checked' : ''} onchange="_setupFlowStepToggle('${esc(id)}', '${esc(x.stepId)}', this.checked)"> <span>${esc(x.stepName)} <span class="help-text" style="margin:0">Leaders can't see or tick this</span></span></label>`).join('')}</div>`; }).join('');
 }
 // T4: Intake (Elvanto) is a plain Off / On switch (R3), the admin login only; it does not follow New person.
@@ -8045,8 +8045,8 @@ function suggestEmail() {
   } else if (role === 'quad') {
     const quad = document.getElementById('u-quad')?.value;
     if (quad) suggestedEmail = quad;
-  } else if (role === 'director') {
-    suggestedEmail = 'director';
+  } else if (role === 'oversight') {
+    suggestedEmail = 'oversight';
   } else if (role === 'admin') {
     suggestedEmail = 'admin';
   }
@@ -8108,14 +8108,14 @@ function _accGradeChecks(sel) {
   ).join('');
 }
 
-// Config-aware role <option>s: Admin always available; Director/Grade/Quad/
+// Config-aware role <option>s: Admin always available; Oversight/Grade/Quad/
 // Leader are opt-in per ministry (ministryConfig.roles.enabled, §5.2).
 function _accRoleOptions(selected) {
   const en = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.roles && S.settings.ministryConfig.roles.enabled) || {};
   const roles = [];
   if (en.grade) roles.push('grade');
   if (en.quad) roles.push('quad');
-  if (en.director) roles.push('director');
+  if (en.oversight) roles.push('oversight');
   roles.push('admin');
   if (en.leader) roles.push('leader');
   // Ensure the current role is present even if it's since been disabled.
@@ -9531,7 +9531,7 @@ function dispatch(p){
   S.page='ca-week';return rWeek();
 }
 async function render(p){
-  if(!S.user||!['director','admin'].includes(S.user.role)){go('home');return;}
+  if(!S.user||!['oversight','admin'].includes(S.user.role)){go('home');return;}
   // Ensure the audit list is known and a year is loaded (default: most recent).
   await auditList();
   if(!AUDIT&&AUDIT_YEAR==null){ await auditLoad(AUDIT_SUMMARIES&&AUDIT_SUMMARIES.length?AUDIT_SUMMARIES[0].year:Number(_siteDay(Date.now()).slice(0,4))); } // no row yet: the current year's list status (Y8)
@@ -9739,7 +9739,7 @@ async function busRefresh() {
     }
     // Re-render whichever screen is actually showing Bus data — previously only the Bus
     // Ministry screen itself repainted, so a Home-triggered warm load (the tile count, the
-    // admin/director New people card) silently sat stale until some LATER, unrelated Home
+    // admin/oversight New people card) silently sat stale until some LATER, unrelated Home
     // re-render happened to run _busHomeTile() again.
     if (gen === BUS.gen && S.user) {
       // I5: skip the repaint while a field inside the page is focused — the data (BUS.view)
@@ -10274,11 +10274,11 @@ function _lkBanner(types, st) {
       "Taps are saved on this phone and will send shortly. Use the kiosk if it's urgent.")]);
   }
   if (S.user && S.user.role === 'admin' && c && c.consoles > 1) out.push(['warn', c.consoles + ' consoles are running']);
-  // Y6c: Flow steps only (its types carry completeStep). The server sends dncReady to admin/director only; missing = say nothing.
+  // Y6c: Flow steps only (its types carry completeStep). The server sends dncReady to admin/oversight only; missing = say nothing.
   if (types.indexOf('completeStep') >= 0 && _lkBoss() && st.dncReady === false) out.push(['warn', _lkDncText()]);
   return out.map((x) => `<div class="lk-alert ${x[0]}">${icS('info')}<div>${esc(x[1])}</div></div>`).join('');
 }
-// R8: admin/director see "Console offline since HH:MM" once the console's last check-in (GET /link/status
+// R8: admin/oversight see "Console offline since HH:MM" once the console's last check-in (GET /link/status
 // console.lastSeenAt) is over 15 minutes old. Returns that lastSeenAt, else ''. Never seen = '' (the warn line covers it).
 const LK_OFFLINE_MS = 15 * 60000;
 function _lkOfflineSince(st, now) {
@@ -10287,8 +10287,8 @@ function _lkOfflineSince(st, now) {
   return isFinite(t) && now - t > LK_OFFLINE_MS ? c.lastSeenAt : '';
 }
 function _lkDncText() { return "Do not contact isn't fully on yet. Finish Matching in Admin > Elvanto link."; }
-function _lkBoss() { const r = S.user && S.user.role; return r === 'admin' || r === 'director'; }
-// Leader plain-language pass (operator 2026-10-25): bosses (admin, director) keep every technical word; everyone else
+function _lkBoss() { const r = S.user && S.user.role; return r === 'admin' || r === 'oversight'; }
+// Leader plain-language pass (operator 2026-10-25): bosses (admin, oversight) keep every technical word; everyone else
 // gets the plain line. _lkSay(boss, plain) picks one; _lkSys swaps Elvanto for "the system" (new person, bus forms).
 function _lkSay(boss, plain) { return _lkBoss() ? boss : plain; }
 function _lkSys(t) { return _lkBoss() || !t ? t : String(t).replace(/(^|[.!?] )Elvanto\b/g, '$1The system').replace(/\bElvanto\b/g, 'the system'); }
@@ -10327,7 +10327,7 @@ function _lkPlainStatus(row, t) {
     && !(row.reason === 'no-room' && row.type === 'checkOut')) return "Couldn't save. Try again, or tell the admin.";
   return t.replace(/(Do|do) (it|this) (in Elvanto|there)( as usual| for now)?\./g, (m, d) => (d === 'Do' ? 'Tell' : 'tell') + ' the admin.')
     .replace(/(Edit this report|Remove a leader) in Elvanto\./, 'Tell the admin.')
-    .replace(/^Pick who gets the next step, .*Complete again\.$/, 'Tell the admin.') // r21: only admin/director have the picker
+    .replace(/^Pick who gets the next step, .*Complete again\.$/, 'Tell the admin.') // r21: only admin/oversight have the picker
     .replace(/ in Elvanto\b/g, '').replace(/^Elvanto\b/, 'The system').replace(/\bElvanto\b/g, 'the system');
 }
 function _lkOfflineHtml() {
@@ -11270,7 +11270,7 @@ function _lkIamListHtml(q, ls) {
   const toks = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
   // F-01 (FX3): a grade/quad login may pick only its own leaders: the server's /leaders?pick=1 list (leaderInScope),
   // loaded once per session into LINK.iamPick (undefined = not asked, null = loading, 'err' = failed, Set = loaded).
-  // FAIL CLOSED: no names until the list is in; a failure shows a retry. Admin, director and junior leader: unchanged.
+  // FAIL CLOSED: no names until the list is in; a failure shows a retry. Admin, oversight and junior leader: unchanged.
   const u = S.user, scoped = !!u && (u.role === 'grade' || u.role === 'quad');
   LINK.iamQ = q || '';
   if (scoped && LINK.iamPick === undefined) {
@@ -11734,7 +11734,7 @@ function _lkMembersHtml(g) {
         + `${r.grade != null ? `<span class="lk-chip">Gr ${esc(r.grade)}</span>` : ''}${r.leader ? '<span class="lk-chip lead">Leader</span>' : ''}${btn}</div>`;
     }).join('') || '<p class="lk-sub">No members.</p>';
     if (canAdd) body += `<div class="lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkMemPick(${a})">${icS('plus')} Add student</button></div>`;
-    else if (!v.canEdit && !getMyLeaderId() && S.user && S.user.role !== 'admin' && S.user.role !== 'director') {
+    else if (!v.canEdit && !getMyLeaderId() && S.user && S.user.role !== 'admin' && S.user.role !== 'oversight') {
       body += `<p class="lk-sub lk-mt">A leader of this group can add or remove students.</p><button type="button" class="btn btn-secondary btn-sm" onclick="_lkMemIam(${a})">Pick who you are</button>`;
     }
   }
@@ -11895,7 +11895,7 @@ function _lkMyFlowRows(rows, leaderId, today) {
   return (rows || []).filter((r) => r.assignedLeaderId === leaderId).sort((a, b) => late(a) - late(b)
     || (a.due || '9999').localeCompare(b.due || '9999') || String(a.name || '').localeCompare(String(b.name || '')));
 }
-// R4 filters (admin/director): junior/senior = gradeBands() (passed in as b).
+// R4 filters (admin/oversight): junior/senior = gradeBands() (passed in as b).
 // null = unknown grade or gender, or a grade outside both brackets: always shown.
 const LK_FF = [['jg', 'Junior Guys', 'boy'], ['jf', 'Junior Girls', 'girl'], ['sg', 'Senior Guys', 'boy'], ['sf', 'Senior Girls', 'girl']];
 function _lkFlowBucket(r, b) {
@@ -11925,7 +11925,7 @@ function _lkFfHtml(on) {
     return `<button type="button" class="fc lk-ff-${c}${p ? ' on' : ''}" aria-pressed="${p}" aria-label="${l}" onclick="_lkFfToggle('${k}')">${l.replace(/^(J|S)\w+/, '$1r')}</button>`;
   }).join('')}</div>`;
 }
-// The rows this login sees on the screen (filters only for admin/director).
+// The rows this login sees on the screen (filters only for admin/oversight).
 function _lkFlowVisible() {
   const rows = LINK.flows || [];
   return _lkBoss() ? _lkFlowShown(rows, _lkFfGet(), gradeBands()) : rows;
@@ -11987,7 +11987,7 @@ function _lkNotReceivedText(r) {
 }
 // Free = nothing open for the row (none, or the last one was refused / cancelled).
 function _lkFlowFree(r) { const a = _lkFlowAct(r); return !(a && !['refused', 'cancelled'].includes(a.status)); }
-// Bulk Complete (admin/director): only rows that are shown, free and not blocked can be ticked.
+// Bulk Complete (admin/oversight): only rows that are shown, free and not blocked can be ticked.
 function _lkTickable(r) { return _lkCanComplete(r); }
 function _lkSelIds(rows, sel) { return (rows || []).filter((r) => sel && sel[r.rowId] && _lkTickable(r)).map((r) => r.rowId); }
 function _lkSel(id, on) {
@@ -12106,7 +12106,7 @@ function _lkHomeFlowsHtml() {
 async function _lkHomeFlows() {
   const draw = () => { const el = document.getElementById('home-flows'); if (el && S.page === 'home') el.innerHTML = _lkOfflineHtml() + (_linkOn('flows') && getMyLeaderId() ? _lkHomeFlowsHtml() : ''); };
   draw();
-  // R8: admin/director Home shows the red console-offline line too (status read at most once a minute).
+  // R8: admin/oversight Home shows the red console-offline line too (status read at most once a minute).
   if (typeof _attnBusy !== 'undefined' && _attnBusy) _attnBusy.then(draw); // Y6c: Needs attention is reading it; draw when it lands
   if (_lkBoss() && _linkOn() && Date.now() - (LINK.statusAt || 0) > 60000) {
     LINK.statusAt = Date.now();
@@ -12121,7 +12121,7 @@ async function _lkHomeFlows() {
 function _lkCanComplete(r) {
   return !_lkHubOwned(r) && !_lkCapOff('completeStep') && !_lkStepBlock(r) && _lkFlowFree(r);
 }
-// Remove from step (rev 6): admin/director, while the console lists the type and nothing is open for the row.
+// Remove from step (rev 6): admin/oversight, while the console lists the type and nothing is open for the row.
 function _lkCanRemove(r) {
   return !_lkHubOwned(r) && _lkBoss() && !_lkMemOff('removeFromFlowStep') && _lkFlowFree(r);
 }
@@ -12153,7 +12153,7 @@ function _lkStepHtml() {
     : why && _lkFlowFree(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(why)}</div></div>` : '';
   let assign = `<p class="lk-sub">${_lkSay('This person has no Elvanto profile, so they cannot be assigned.', "This person can't be assigned yet.")}</p>`;
   if (r.personId && _lkBoss()) {
-    // 2026-10-24 flows reassign: admin/director pick from the leaders who fit this person; Reassign saves it, Complete gives them the next step
+    // 2026-10-24 flows reassign: admin/oversight pick from the leaders who fit this person; Reassign saves it, Complete gives them the next step
     const ls = _lkPickList(r), l = _lkPicked(r);
     assign = `<div class="fg"><label class="fl" for="lk-assign">Assigned to</label><select class="fs" id="lk-assign" onchange="LINK.fs.pick=this.value||null;_lkStepDraw()"><option value="">Nobody (Elvanto's usual pick)</option>
       ${ls.map((x) => `<option value="${esc(x.id)}"${l && x.id === l.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
@@ -12204,7 +12204,7 @@ function _lkStepBtns() {
       ${re ? `<button type="button" class="btn btn-secondary" onclick="_lkReassign()">Reassign</button>` : ''}
       ${can ? `<button type="button" class="btn btn-primary" onclick="_lkStepSend()">${icS('check')} ${_lkFlowKind(r) === 'parent' ? 'Send parent text' : 'Complete'}</button>` : ''}`;
 }
-// The admin/director pick, as a leader from _lkPickList(r) (null = Nobody).
+// The admin/oversight pick, as a leader from _lkPickList(r) (null = Nobody).
 function _lkPickList(r) {
   const ls = (LINK.fLeaders || []).filter((l) => _lkFits(l, r.grade, r.gender) || l.id === r.currentLeaderId);
   // a current leader missing from a stale LINK.fLeaders: keep them listed so the sheet never unassigns by itself
@@ -12218,7 +12218,7 @@ function _lkOffers(r, pid) {
   const s = (LINK.fSteps || []).find((x) => x.stepId === r.stepId), o = (s && s.offered) || [];
   return !o.length || (!!pid && o.some((x) => String(x).toLowerCase() === String(pid).toLowerCase()));
 }
-// Flows (2026-10-24, ruling Q1): mirrors the server's leaderFitsPerson. No grades = director/admin level (anyone, any gender);
+// Flows (2026-10-24, ruling Q1): mirrors the server's leaderFitsPerson. No grades = oversight/admin level (anyone, any gender);
 // else the person's grade, and the leader's gender unset or the person's.
 function _lkFits(l, grade, gender) {
   if (!l || l.active === false) return false;
@@ -12232,7 +12232,7 @@ async function _lkAssignSave(r, l) {
   await API.post('/link/flows/assign', { flowId: r.flowId, personId: r.personId, leaderId: lid });
   (LINK.flows || []).forEach((x) => { if (x.flowId === r.flowId && x.personId === r.personId) { x.assignedLeaderId = lid; x.assignedLeaderName = l ? l.name : null; x.currentLeaderId = lid; x.currentLeaderLinked = !!(l && l.personId); } });
 }
-// Reassign (admin/director): saves the pick, does not complete the step.
+// Reassign (admin/oversight): saves the pick, does not complete the step.
 async function _lkReassign() {
   const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
   if (!r || !r.personId || !_lkBoss()) return;
@@ -12264,7 +12264,7 @@ function _lkStepSend() {
   const lid = getMyLeaderId();
   if (!lid) { _lkIamPick(() => _lkOpenStep(r.rowId)); return; }
   const note = String(f.note || '').trim() ? f.note : null;
-  // admin/director: the pick gets the next step (no Elvanto person = Elvanto's usual pick); a changed pick is also saved here.
+  // admin/oversight: the pick gets the next step (no Elvanto person = Elvanto's usual pick); a changed pick is also saved here.
   // Other logins send no assignTo: the server gives the next step to the current assignee.
   const l = _lkBoss() && r.personId ? _lkPicked(r) : null;
   if (_lkBoss() && r.personId && (l ? l.id : null) !== (r.currentLeaderId || null)) _lkAssignSave(r, l).catch((e) => toast(e.message || 'Could not assign.'));
@@ -12325,7 +12325,7 @@ async function _lkLoadFlows(quiet) {
       if (a && a.id && ['pending', 'claimed'].includes(a.status) && listed[x.rowId] && !listed[x.rowId].openAction) left[a.id] = x.rowId;
     });
     LINK.fSteps = (r && r.steps) || [];
-    LINK.fLeaders = (r && r.leaders) || []; // 2026-10-24 flows reassign: admin/director only
+    LINK.fLeaders = (r && r.leaders) || []; // 2026-10-24 flows reassign: admin/oversight only
     LINK.flowsAt = Date.now();
     // S5: while the console reads the flows (step n of N), look again in 3 s so the bar moves
     LINK.fProg = (r && r.progress) || null;
@@ -14779,8 +14779,8 @@ async function renderBus() {
   if (undoMs > 0) BUS.undoTimer = setTimeout(() => { if (S.page === 'bus' && !_busEditing()) renderBus(); }, undoMs + 500);
   const v = BUS.view, u = S.user;
   const canRoster = u.role !== 'leader' || v.canCoordinate;
-  const isAdmin = u.role === 'admin', seesPast = u.role === 'admin' || u.role === 'director';
-  // 2026-10-15: route analysis for every Bus login except a junior leader on "My car only"; Past stays director/admin.
+  const isAdmin = u.role === 'admin', seesPast = u.role === 'admin' || u.role === 'oversight';
+  // 2026-10-15: route analysis for every Bus login except a junior leader on "My car only"; Past stays oversight/admin.
   const seesAnalysis = seesPast || v.canCoordinate || u.role !== 'leader';
   const seesForms = (isAdmin || !!v.canCoordinate) && _modOn('busConsentForm'); // consent hub: Bus > Forms
   const tabs = [
@@ -16238,7 +16238,7 @@ function _busEmcCarDetails() {
   busOwnCarSheet(true);
 }
 
-// ── Route analysis (R3, director/admin) ──
+// ── Route analysis (R3, oversight/admin) ──
 async function busOpenAnalysis() {
   BUS.tab = 'analysis'; BUS.analysis = null; BUS.analysisErr = ''; BUS.mapUrl = null;
   renderBus();

@@ -25,7 +25,7 @@ import LIVE_MODULES from './fixtures/live-modules.json';
 import OWNERS from './fixtures/module-owners.json';
 
 const HTML = loadIndexHtml();
-const ROLES = ['admin', 'director', 'grade', 'quad', 'leader'];
+const ROLES = ['admin', 'oversight', 'grade', 'quad', 'leader'];
 const fx = (f: string): any => JSON.parse(readFileSync(join(__dirname, 'fixtures', 'elvanto-link', f), 'utf8'));
 const NOW = new Date('2026-10-23T01:00:00.000Z');
 const ADMIN = { id: '00000000-0000-4000-8000-000000000001', role: 'admin', displayName: 'admin', grade: null, quad: null, gender: null, leaderId: null } as Actor;
@@ -204,7 +204,7 @@ describe('HUB1: a bus-only location (Public consent form on, Intakes off) has a 
     const live = spa('admin', {}, NAMES);
     expect(live._busFormsHtml()).not.toContain(`go('link-intake')`); // live reaches it from More, as today
     expect(live._hubTitle()).toBe('New youth & consent');
-    expect(spa('director', BUS_ONLY, NAMES)._busFormsHtml()).not.toContain(`go('link-intake')`);
+    expect(spa('oversight', BUS_ONLY, NAMES)._busFormsHtml()).not.toContain(`go('link-intake')`);
     expect(spa('admin', HUB_OFF, NAMES)._hubModuleOn()).toBe(false);
   });
 });

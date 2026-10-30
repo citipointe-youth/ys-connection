@@ -26,8 +26,8 @@ describe('notices SPA', () => {
     expect(env('grade', 'on').moreItems().map((m: any) => m.id)).not.toContain('notices');
     expect(env('admin', 'off')._noticeHomeHtml([note()])).toBe('');
   });
-  it('module on: admin, director and quad get the More entry', () => {
-    for (const r of ['admin', 'director', 'quad']) expect(env(r, 'on').moreItems().map((m: any) => m.id)).toContain('notices');
+  it('module on: admin, oversight and quad get the More entry', () => {
+    for (const r of ['admin', 'oversight', 'quad']) expect(env(r, 'on').moreItems().map((m: any) => m.id)).toContain('notices');
   });
   it('Home card shows only the last 24 hours and has no dismiss control', () => {
     const e = env('quad', 'on');
@@ -43,8 +43,8 @@ describe('notices SPA', () => {
     expect(html).not.toContain('<img');
     expect(html).toContain('&lt;img');
   });
-  it('compose form, recipients and delete only for admin/director', () => {
-    const adm = env('director', 'on')._noticesHtml([note()]);
+  it('compose form, recipients and delete only for admin/oversight', () => {
+    const adm = env('oversight', 'on')._noticesHtml([note()]);
     expect(adm).toContain('nt-send');
     expect(adm).toContain('To: Junior Guys');
     expect(adm).toContain('deleteNotice');

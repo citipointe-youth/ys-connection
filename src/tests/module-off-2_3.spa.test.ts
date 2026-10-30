@@ -23,7 +23,7 @@ import LIVE_MODULES from './fixtures/live-modules.json';
 import OWNERS from './fixtures/module-owners.json';
 import type { Actor } from '../core/entities/user';
 
-const ROLES = ['admin', 'director', 'grade', 'quad', 'leader'];
+const ROLES = ['admin', 'oversight', 'grade', 'quad', 'leader'];
 const actor = (role: string): Actor => ({ id: `a-${role}`, role: role as Actor['role'], displayName: role, grade: null, quad: null, gender: null, leaderId: null }) as Actor;
 const ADMIN = actor('admin');
 // Connection Audit needs New person (module tree), so its nav entry goes with it.
@@ -34,7 +34,7 @@ describe('OFF-nav', () => {
     expect(OWNERS.newYouthForms).toEqual(['new-youth']);
     for (const role of ROLES) {
       const b = navWithModules(role), o = navWithModules(role, { newYouthForms: 'off' });
-      const caGone = b.nav.includes(CA_DEPENDENT);                        // admin and director only
+      const caGone = b.nav.includes(CA_DEPENDENT);                        // admin and oversight only
       expectSubtraction(b, o, ['new-youth', ...(role === 'admin' ? ['link-intake'] : []), ...(caGone ? [CA_DEPENDENT] : [])]);
     }
   });
@@ -47,7 +47,7 @@ describe('OFF-nav', () => {
   });
   it('New person Admin only: a non-admin login loses it, the admin keeps it', () => {
     expect(navWithModules('admin', { newYouthForms: 'admin' })).toEqual(navWithModules('admin'));
-    expectSubtraction(navWithModules('director'), navWithModules('director', { newYouthForms: 'admin' }), ['new-youth']);
+    expectSubtraction(navWithModules('oversight'), navWithModules('oversight', { newYouthForms: 'admin' }), ['new-youth']);
   });
 });
 

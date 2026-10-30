@@ -25,7 +25,7 @@ const HTML = loadIndexHtml();
 const GOLDEN = join(__dirname, 'fixtures', 'baseline-nav.json');
 // The five roles render the same for live: the harness takes the role as a parameter (live has the grade role off and
 // Junior/Senior logins on, but a later phase may turn either back on).
-const ROLES = ['admin', 'director', 'grade', 'quad', 'leader'] as const;
+const ROLES = ['admin', 'oversight', 'grade', 'quad', 'leader'] as const;
 const MINISTRY_CONFIG = () => MinistryConfigSchema.parse({ modules: LIVE_MODULES });
 
 // ---------- BL1a: nav ----------
@@ -123,7 +123,7 @@ async function homeFor(role: string) {
   const attn = await runIn(HOME_FNS, env, `await _attnLoad(true);
     const a = { role: S.user.role, errors: 1, unsent: 1, unclear: 1, waiting: 1, offlineAt: 'x', dnc: true, fix: ['a'], needsYou: 1 };
     return { slot: _attnSlot(S.user.role), lines: _attnLines(a).map((l) => l[1]) };`);
-  const boss = role === 'admin' || role === 'director';
+  const boss = role === 'admin' || role === 'oversight';
   return { body: keys(body), flows: keys(flowsHost.innerHTML), attn: boss ? { slot: !!attn.slot, lines: attn.lines, reads: paths } : null };
 }
 

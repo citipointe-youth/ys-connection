@@ -6,8 +6,8 @@ describe('A1 the Save confirm names what will be switched off', () => {
   const { _setupRiskyDiff } = loadFns(['_setupRiskyDiff']);
   it('flags each role that goes from on to off, after the older keys', () => {
     expect(_setupRiskyDiff({}, { roles: { enabled: { quad: false } } })).toEqual(['roles.quad']);
-    expect(_setupRiskyDiff({ roles: { enabled: { quad: true, director: true } } }, { roles: { enabled: { quad: false, director: false } } }))
-      .toEqual(['roles.director', 'roles.quad']);
+    expect(_setupRiskyDiff({ roles: { enabled: { quad: true, oversight: true } } }, { roles: { enabled: { quad: false, oversight: false } } }))
+      .toEqual(['roles.oversight', 'roles.quad']);
     expect(_setupRiskyDiff({}, { logins: { simple: true }, roles: { enabled: { leader: false } } })).toEqual(['logins.simple']);
     expect(_setupRiskyDiff({ roles: { enabled: { leader: true } } }, { roles: { enabled: { leader: false } } })).toEqual(['roles.leader']);
   });
@@ -19,7 +19,7 @@ describe('A1 the Save confirm names what will be switched off', () => {
   it('a role turned on, or unchanged, adds nothing', () => {
     expect(_setupRiskyDiff({ roles: { enabled: { quad: false } } }, { roles: { enabled: { quad: true } } })).toEqual([]);
     expect(_setupRiskyDiff({ roles: { enabled: { quad: false } } }, { roles: { enabled: { quad: false } } })).toEqual([]);
-    expect(_setupRiskyDiff({}, { roles: { enabled: { director: true, grade: true, quad: true, leader: false } } })).toEqual([]);
+    expect(_setupRiskyDiff({}, { roles: { enabled: { oversight: true, grade: true, quad: true, leader: false } } })).toEqual([]);
   });
   it('flags New youth & consent going from on to off only', () => {
     expect(_setupRiskyDiff({ modules: { intakeAdmin: 'on' } }, { modules: { intakeAdmin: 'off' } })).toEqual(['modules.intakeAdmin']);
@@ -31,15 +31,15 @@ describe('A1 the Save confirm names what will be switched off', () => {
     const f = loadFns(['_setupRiskyDiff', 'confirmSaveMinistrySetup'], `
       let _adminData = { settings: { ministryConfig: ${JSON.stringify(saved)} }, users: [
         { role: 'quad', status: 'active' }, { role: 'quad', status: 'active' }, { role: 'quad', status: 'active' }, { role: 'quad', status: 'active' },
-        { role: 'quad', status: 'inactive' }, { role: 'director', status: 'active' }, { role: 'leader', status: 'active' }] };
+        { role: 'quad', status: 'inactive' }, { role: 'oversight', status: 'active' }, { role: 'leader', status: 'active' }] };
       let _setupDraft = ${JSON.stringify(draft)};
       let html = ''; function modal(h) { html = h; } function __h() { return html; }`, ['confirmSaveMinistrySetup', '__h']);
     f.confirmSaveMinistrySetup();
     return f.__h() as string;
   };
-  it('names the Director and Junior/Senior logins and their counts', () => {
-    const h = confirm({}, { structure: { cohortModel: 'none' }, roles: { enabled: { director: false, quad: false } } });
-    expect(h).toContain('This switches off 1 Director login and 4 Junior/Senior logins. Turning the role back on does not switch them back on.');
+  it('names the Oversight and Junior/Senior logins and their counts', () => {
+    const h = confirm({}, { structure: { cohortModel: 'none' }, roles: { enabled: { oversight: false, quad: false } } });
+    expect(h).toContain('This switches off 1 Oversight login and 4 Junior/Senior logins. Turning the role back on does not switch them back on.');
   });
   it('a role with no active logins adds no line', () => {
     const h = confirm({ roles: { enabled: { grade: true } } }, { roles: { enabled: { grade: false } } });

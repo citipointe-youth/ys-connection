@@ -336,7 +336,7 @@ const HELPERS = ['esc', 'fmtDay', 'quadLabel', '_simpleLoginsOn', 'gradeBands', 
 function caWorld(audit: any, o: { role?: string; gradeMin?: number } = {}) {
   const env: any = { audit, app: '', posts: [] as any[], toasts: [] as string[], downloads: [] as any[], went: [] as string[], dom: {} as any, reply: null, X: loadXlsx() };
   const { CA, S } = new Function('env', `
-    var S = { user: { id: 'u1', role: ${JSON.stringify(o.role || 'director')} }, page: 'ca-week',
+    var S = { user: { id: 'u1', role: ${JSON.stringify(o.role || 'oversight')} }, page: 'ca-week',
       settings: { ministryConfig: { structure: { gradeMin: ${o.gradeMin || 7}, gradeMax: 12 }, logins: { simple: true } } } };
     ${QUAD_SRC}
     ${SITE_TIME_SRC}

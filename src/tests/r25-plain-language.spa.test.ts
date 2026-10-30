@@ -1,4 +1,4 @@
-// Leader plain-language pass (operator 2026-10-25): admin/director keep every technical word; leader, grade and quad
+// Leader plain-language pass (operator 2026-10-25): admin/oversight keep every technical word; leader, grade and quad
 // logins get plain lines. Real functions from public/index.html.
 import { describe, it, expect } from 'vitest';
 import { loadFns } from './helpers/extract-fn';
@@ -31,8 +31,8 @@ describe('door status lines', () => {
   it('a grade, quad or leader login reads the plain line', () => {
     for (const r of ['grade', 'quad', 'leader']) { as(r); for (const [row, , plain] of rows) expect(line(row), r + ' ' + row.status).toBe(plain); }
   });
-  it('admin and director keep the original line', () => {
-    for (const r of ['admin', 'director']) { as(r); for (const [row, boss] of rows) expect(line(row), r + ' ' + row.status).toBe(boss); }
+  it('admin and oversight keep the original line', () => {
+    for (const r of ['admin', 'oversight']) { as(r); for (const [row, boss] of rows) expect(line(row), r + ' ' + row.status).toBe(boss); }
   });
   it('a plain refusal message passes through; the over-15-min pending line says Still saving', () => {
     as('grade');
@@ -66,7 +66,7 @@ describe('pill', () => {
     f.LINK.red = false; f.setQ([]);
     f.LINK.people = { S: { people: [{ mine: true, action: { status: 'pending' } }], leaders: [] } };
     as('quad'); expect(f._lkPill()).toContain('Saving…');
-    as('director'); expect(f._lkPill()).toContain('Sent. Waiting for Elvanto.');
+    as('oversight'); expect(f._lkPill()).toContain('Sent. Waiting for Elvanto.');
     f.LINK.people = {};
   });
 });
@@ -98,7 +98,7 @@ describe('lifegroup / flow lines', () => {
   it('a lifegroup report line keeps its meaning without Elvanto for non-boss', () => {
     as('grade'); expect(line({ status: 'refused', reason: 'report-changed' })).toBe('This report changed. Reload and try again.');
     expect(line({ status: 'refused', reason: 'multi-service' })).toBe('Tell the admin.');
-    as('director'); expect(line({ status: 'refused', reason: 'report-changed' })).toBe('This report changed in Elvanto. Reload and try again.');
+    as('oversight'); expect(line({ status: 'refused', reason: 'report-changed' })).toBe('This report changed in Elvanto. Reload and try again.');
   });
   it('a batch toast: technical lines become plain, business lines stay', () => {
     expect(f._lkPlainToast('Still sending, try again in a minute.')).toBe('Still sending, try again in a minute.');

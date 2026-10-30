@@ -111,7 +111,7 @@ describe('S1.3 grade filter core', () => {
     expect(f._vgBar()).toContain('Pick who you are on Home to use your grades');
   });
   it('non-quad login: null and no bar', () => {
-    const f = load({ me: 'L1', role: 'director', leaders: [{ id: 'L1', grades: [8] }] });
+    const f = load({ me: 'L1', role: 'oversight', leaders: [{ id: 'L1', grades: [8] }] });
     expect(f._vgGrades()).toBeNull();
     expect(f._vgBar()).toBe('');
   });

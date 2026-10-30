@@ -72,12 +72,12 @@ describe('JS4 (2026-10-27): Youth Setup draws no Start-from row and no layout bu
       expect(h).not.toMatch(/Complex|Cohort model/);
     }
   });
-  it("Brisbane's live state (Junior/Senior on, Quad and Director on, Grade and Leader off) reads as Junior/Senior, Notices offered", () => {
-    const h = body([{ role: 'admin' }], { roles: { enabled: { director: true, grade: false, quad: true, leader: false } } });
+  it("Brisbane's live state (Junior/Senior on, Quad and Oversight on, Grade and Leader off) reads as Junior/Senior, Notices offered", () => {
+    const h = body([{ role: 'admin' }], { roles: { enabled: { oversight: true, grade: false, quad: true, leader: false } } });
     expect(h).toContain('<option value="junior-senior" selected>Junior/Senior</option>');
     expect(h).toContain('id="setup-notices"');
     const d = body([{ role: 'admin' }], { structure: { cohortModel: 'none' }, roles: { enabled: { quad: false, leader: true } } });
-    expect(d).toContain('<option value="director-leaders" selected>Director and leaders</option>');
+    expect(d).toContain('<option value="oversight-leaders" selected>Oversight and leaders</option>');
     expect(d).not.toContain('setup-notices');
   });
 });

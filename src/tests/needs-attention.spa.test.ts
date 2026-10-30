@@ -1,4 +1,4 @@
-// Y6b (multisite SPEC Y6): Home "Needs attention" for admin and director, the Admin tab badges, and the intake page's
+// Y6b (multisite SPEC Y6): Home "Needs attention" for admin and oversight, the Admin tab badges, and the intake page's
 // two new console branches ("No console connected yet." and "The console isn't set up for intake yet."). Extract-and-run:
 // the REAL functions from public/index.html run against stubbed route payloads. No server.
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -108,9 +108,9 @@ describe('Y6b Home "Needs attention"', () => {
     expect(t).toContain('1 first-timer has waited over 1 hour for Elvanto. See Admin > Elvanto link.');
     expect(t).toContain('1 family needs you in More > New youth & consent.');
   });
-  it('a director never reads /admin/unsent, System check or the error log (no admin:manage); the link lines stay', async () => {
+  it('an oversight never reads /admin/unsent, System check or the error log (no admin:manage); the link lines stay', async () => {
     at();
-    const { f, calls } = run('director', broken());
+    const { f, calls } = run('oversight', broken());
     await f._attnLoad(true);
     expect(calls.some((p) => p.startsWith('/admin/') || p.startsWith('/setup/') || p.startsWith('/link/intake'))).toBe(false);
     expect(calls).toContain('/link/status');
@@ -120,12 +120,12 @@ describe('Y6b Home "Needs attention"', () => {
       '2 first-timers have waited over 1 hour for Elvanto.',
       'The console is offline since 7:40 pm.',
     ]);
-    // A director cannot open Admin > Elvanto link: their lines are not links there.
+    // An oversight cannot open Admin > Elvanto link: their lines are not links there.
     expect(f._attnHtml(f.attn)).not.toContain('link-admin');
   });
-  it('a director with every link screen off reads nothing at all', async () => {
+  it('an oversight with every link screen off reads nothing at all', async () => {
     at();
-    const { f, calls } = run('director', broken(), { checkin: 'off' });
+    const { f, calls } = run('oversight', broken(), { checkin: 'off' });
     await f._attnLoad(true);
     expect(calls).toEqual([]);
     expect(f._attnHtml(f.attn)).toBe('');
@@ -194,7 +194,7 @@ describe('Y6b Home "Needs attention"', () => {
     expect(f._attnSlot('admin')).toBe('<div id="home-attn"></div>');
     expect(f._adminTabsHtml('import')).not.toContain('pill warn');
   });
-  it('Home draws the slot for admin and director and loads it after the paint', () => {
+  it('Home draws the slot for admin and oversight and loads it after the paint', () => {
     const src = extractFn(HTML, '_renderHomeInner');
     expect(src).toContain('_attnSlot(qu.role)');
     expect(src).toContain('_attnLoad()');

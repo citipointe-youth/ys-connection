@@ -94,7 +94,7 @@ afterEach(() => { vi.useRealTimers(); });
 // ── F1.1 shared parts ──
 describe('F1.1 switch and More entries', () => {
   it('_linkOn(): any link feature usable; a missing key inherits New person', () => {
-    for (const role of ['admin', 'director', 'quad', 'grade', 'leader']) {
+    for (const role of ['admin', 'oversight', 'quad', 'grade', 'leader']) {
       expect(makeEnv({ role, mode: 'off' }).fns._linkOn()).toBe(false);
       expect(makeEnv({ role, mode: 'admin' }).fns._linkOn()).toBe(role === 'admin');
       expect(makeEnv({ role, mode: 'on' }).fns._linkOn()).toBe(true);
@@ -117,19 +117,19 @@ describe('F1.1 switch and More entries', () => {
   it('_linkAdminOn: the admin login whatever the switches say, nobody else', () => {
     for (const mode of ['off', 'admin', 'on']) {
       expect(makeEnv({ role: 'admin', mode }).fns._linkAdminOn(), mode).toBe(true);
-      for (const role of ['director', 'quad', 'grade', 'leader']) expect(makeEnv({ role, mode }).fns._linkAdminOn(), role + mode).toBe(false);
+      for (const role of ['oversight', 'quad', 'grade', 'leader']) expect(makeEnv({ role, mode }).fns._linkAdminOn(), role + mode).toBe(false);
     }
   });
   it('moreItems per role and mode', () => {
     const ids = (role: string, mode: string, modules?: Record<string, string>) => makeEnv({ role, mode, modules }).fns.moreItems().map((m: any) => m.id).filter((id: string) => id.startsWith('link-'));
     expect(ids('admin', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']); // 2026-10-14: Elvanto link is an Admin tab, not a More entry
-    expect(ids('director', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
+    expect(ids('oversight', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
     expect(ids('quad', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
     expect(ids('grade', 'on')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
     expect(ids('leader', 'on')).toEqual(['link-checkin']);
     expect(ids('admin', 'admin')).toEqual(['link-checkin', 'link-groups', 'link-flows']);
-    for (const role of ['director', 'quad', 'grade', 'leader']) expect(ids(role, 'admin')).toEqual([]);
-    for (const role of ['director', 'quad', 'grade', 'leader']) expect(ids(role, 'off')).toEqual([]);
+    for (const role of ['oversight', 'quad', 'grade', 'leader']) expect(ids(role, 'admin')).toEqual([]);
+    for (const role of ['oversight', 'quad', 'grade', 'leader']) expect(ids(role, 'off')).toEqual([]);
     expect(ids('admin', 'off')).toEqual([]);
     // each entry by its own switch
     expect(ids('grade', 'off', { lifegroupReport: 'on' })).toEqual(['link-groups']);
@@ -144,7 +144,7 @@ describe('F1.1 switch and More entries', () => {
   it('D9: the admin-only state is "admin" ("Admin only"); a legacy "shadow" still reads as admin only', () => {
     expect(html).toContain("[['off', 'Off'], ['admin', 'Admin only'], ['on', 'On']]");
     expect(html).not.toContain("'Shadow (admin only)'");
-    for (const role of ['admin', 'director', 'grade']) {
+    for (const role of ['admin', 'oversight', 'grade']) {
       expect(makeEnv({ role, mode: 'shadow' }).fns._linkOn(), role).toBe(role === 'admin');
       expect(makeEnv({ role, mode: 'off', modules: { flows: 'shadow' } }).fns._linkOn('flows'), role).toBe(role === 'admin');
     }
@@ -260,7 +260,7 @@ describe('F1.1 _lkBanner', () => {
   });
   it('"2 consoles are running" for admin only', () => {
     expect(strip(makeEnv({ role: 'admin' }).fns._lkBanner(['checkIn'], st({ consoles: 2 })))).toContain('2 consoles are running');
-    expect(strip(makeEnv({ role: 'director' }).fns._lkBanner(['checkIn'], st({ consoles: 2 })))).not.toContain('consoles are running');
+    expect(strip(makeEnv({ role: 'oversight' }).fns._lkBanner(['checkIn'], st({ consoles: 2 })))).not.toContain('consoles are running');
   });
   it('nothing before the status has loaded', () => {
     expect(makeEnv().fns._lkBanner(['checkIn'], null)).toBe('');
@@ -509,7 +509,7 @@ describe('F1.2 queue', () => {
     const h = makeEnv({ post: (_p, b) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'cancel', outcome: 'too-late' }] }) });
     h.fns._lkQSet([{ kind: 'cancel', id: P(41), leaderId: null }]);
     await h.fns._lkFlush();
-    expect(h.calls.toasts).toContain('Already sent. Tell the admin.'); // B10: non admin/director get the F-35 rewrite
+    expect(h.calls.toasts).toContain('Already sent. Tell the admin.'); // B10: non admin/oversight get the F-35 rewrite
     const h2 = makeEnv({ post: (_p, b) => Promise.resolve({ results: [{ id: b.items[0].id, kind: 'cancel', outcome: 'refused', code: 'LINK_NOT_YOURS', message: 'Only the leader who sent this can undo it.' }] }) });
     h2.fns._lkQSet([{ kind: 'cancel', id: P(41), leaderId: null }]);
     await h2.fns._lkFlush();
@@ -785,7 +785,7 @@ describe('F1.3 door', () => {
   });
   it('R2-G1 G0: "Kiosk check-ins as of h:mm" from the services push; amber when over 10 min old on the service day', () => {
     const h = setup();
-    h.get().S.user.role = 'admin'; // plain pass 2026-10-25: the kiosk freshness chip is admin/director only
+    h.get().S.user.role = 'admin'; // plain pass 2026-10-25: the kiosk freshness chip is admin/oversight only
     const at = (minAgo: number) => ({ mirrors: { services: { takenAt: new Date(Date.now() - minAgo * 60000).toISOString(), ageSeconds: minAgo * 60 } } });
     expect(strip(h.fns._lkListHtml())).not.toContain('Kiosk check-ins');
     h.get().LINK.status = at(3);
@@ -1656,11 +1656,11 @@ describe('F3 flow steps', () => {
     expect(strip(none.calls.modals[0]!)).toContain("can't be assigned yet"); // plain pass: a grade login
     expect(none.calls.modals[0]).not.toContain('Assigned to');
   });
-  // 2026-10-24 flows reassign: admin/director pick from leaders who fit the person (no grades = anyone), Reassign or Complete.
+  // 2026-10-24 flows reassign: admin/oversight pick from leaders who fit the person (no grades = anyone), Reassign or Complete.
   const LDRS = () => [
     { id: 'L1', name: 'Cody <b>Codeman</b>', personId: P(70), gender: 'male', grades: [8] },
     { id: 'L2', name: 'Gina Girl', personId: P(71), gender: 'female', grades: [8] },
-    { id: 'L3', name: 'Dee Director', personId: P(72), gender: null, grades: [] },
+    { id: 'L3', name: 'Dee Oversight', personId: P(72), gender: null, grades: [] },
     { id: 'L4', name: 'Una Unlinked', personId: null, gender: 'male', grades: [8] },
     { id: 'L5', name: 'Ted Tenner', personId: P(74), gender: 'male', grades: [10] },
   ];
@@ -1685,7 +1685,7 @@ describe('F3 flow steps', () => {
     expect(fit({ active: false, grades: [], gender: null }, 8, 'male')).toBe(false);
   });
   it('flows reassign: the admin sheet has one Assigned to select (fitting leaders), the current one picked, and Cancel | Reassign | Complete', () => {
-    for (const role of ['admin', 'director']) {
+    for (const role of ['admin', 'oversight']) {
       const h = admin([boy()], undefined, role);
       h.fns._lkOpenStep(F(1));
       const sheet = h.calls.modals[0]!;
@@ -1695,7 +1695,7 @@ describe('F3 flow steps', () => {
       expect(sheet).toContain(`<option value="">Nobody (Elvanto's usual pick)</option>`);
       expect(sheet).toContain('<option value="L1" selected>Cody &lt;b&gt;Codeman&lt;/b&gt;</option>');
       expect(sheet).not.toContain('<b>Codeman');
-      expect(strip(sheet)).toContain('Dee Director');
+      expect(strip(sheet)).toContain('Dee Oversight');
       expect(strip(sheet)).toContain('Una Unlinked');
       expect(strip(sheet)).not.toContain('Gina Girl');
       expect(strip(sheet)).not.toContain('Ted Tenner');
@@ -1747,10 +1747,10 @@ describe('F3 flow steps', () => {
     L.fs.pick = pickOf(h, 'L3');
     await h.fns._lkReassign();
     expect(h.calls.posts[0]).toMatchObject({ p: '/link/flows/assign', b: { flowId: F(100), personId: P(1), leaderId: 'L3' } });
-    expect(L.flows.map((r: any) => [r.assignedLeaderId, r.assignedLeaderName, r.currentLeaderId])).toEqual([['L3', 'Dee Director', 'L3'], ['L3', 'Dee Director', 'L3']]);
+    expect(L.flows.map((r: any) => [r.assignedLeaderId, r.assignedLeaderName, r.currentLeaderId])).toEqual([['L3', 'Dee Oversight', 'L3'], ['L3', 'Dee Oversight', 'L3']]);
     expect(h.calls.closed).toBe(1);
     expect(L.fs).toBeNull();
-    expect(h.calls.toasts).toContain('Assigned to Dee Director');
+    expect(h.calls.toasts).toContain('Assigned to Dee Oversight');
     expect(h.fns._lkQGet()).toEqual([]); // not completed
     h.fns._lkOpenStep(F(1));
     L.fs.pick = null;
@@ -1993,7 +1993,7 @@ describe('F3 flow steps', () => {
   });
   it('R4 Remove: confirm view, optional note, queues removeFromFlowStep (no "I am" needed without a note)', () => {
     vi.useFakeTimers();
-    const h = makeEnv({ role: 'director', leaderId: null });
+    const h = makeEnv({ role: 'oversight', leaderId: null });
     h.get().LINK.flows = [row(1)];
     h.fns._lkOpenStep(F(1));
     h.fns._lkRemoveAsk();
@@ -2047,7 +2047,7 @@ describe('F3 flow steps', () => {
     expect(strip(h.calls.modals[0]!)).toContain('Do the consent check first');
     expect(h.calls.modals[0]).not.toContain('_lkStepConsents');
   });
-  it('R8 console offline: red line on the flows banner for admin/director only', () => {
+  it('R8 console offline: red line on the flows banner for admin/oversight only', () => {
     const st = { console: { lastSeenAt: new Date(Date.now() - 20 * 60000).toISOString(), online: false, capabilities: {} } };
     expect(strip(boss().fns._lkBanner(['completeStep'], st))).toContain('No link to Elvanto since'); // fix16 F-12 wording
     expect(boss().fns._lkBanner(['completeStep'], st)).toContain('lk-alert bad');

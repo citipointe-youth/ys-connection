@@ -313,9 +313,9 @@ const navFns = (S: any, modal: (h: string) => void = () => {}) => new Function('
 ) as NavFns;
 const ids = (xs: any[]) => xs.map((i) => i.id);
 // The Elvanto link entries share this switch (link.spa.test.ts covers them); these tests look at the rest.
-// r22 U1: a director's More also ends with Import (r22-u1-ui.spa.test.ts pins it); these tests are about the modules.
+// r22 U1: an oversight's More also ends with Import (r22-u1-ui.spa.test.ts pins it); these tests are about the modules.
 const noLink = (xs: string[]) => xs.filter((id) => !id.startsWith('link-') && id !== 'import');
-const ROLES = ['leader', 'grade', 'quad', 'director', 'admin'];
+const ROLES = ['leader', 'grade', 'quad', 'oversight', 'admin'];
 
 describe('_nyOn: who sees the New person screen', () => {
   it('off: nobody', () => {
@@ -325,7 +325,7 @@ describe('_nyOn: who sees the New person screen', () => {
     for (const r of ROLES) expect(nyOnFn(modeOf('on', r))()).toBe(true);
   });
   it('admin: the admin login only', () => {
-    for (const r of ['leader', 'grade', 'quad', 'director']) expect(nyOnFn(modeOf('admin', r))()).toBe(false);
+    for (const r of ['leader', 'grade', 'quad', 'oversight']) expect(nyOnFn(modeOf('admin', r))()).toBe(false);
     expect(nyOnFn(modeOf('admin', 'admin'))()).toBe(true);
   });
   it('a legacy boolean still works (true = on, false/missing = off)', () => {
@@ -351,11 +351,11 @@ describe('bottom nav order', () => {
     expect(g.find((i) => i.id === 'prayers')).toMatchObject({ ic: 'pray', label: 'Prayers', mbl: 'Prayers' });
     expect(g.find((i) => i.id === 'my-students')).toMatchObject({ ic: 'users', label: 'My Connections' });
   });
-  it('quad, director and admin keep their order', () => {
+  it('quad, oversight and admin keep their order', () => {
     // Junior/Senior (2026-10-14): the grade nav, with My Connections where Trends was.
     expect(ids(navFns(modeOf('off', 'quad')).bottomNavItems())).toEqual(ids(navFns(modeOf('off', 'grade')).bottomNavItems()));
-    // r22 U1 (operator): a director always gets More (it always holds Import).
-    expect(ids(navFns(modeOf('off', 'director')).bottomNavItems())).toEqual(['home', 'at-risk', 'more', 'trends', 'leaders']);
+    // r22 U1 (operator): an oversight always gets More (it always holds Import).
+    expect(ids(navFns(modeOf('off', 'oversight')).bottomNavItems())).toEqual(['home', 'at-risk', 'more', 'trends', 'leaders']);
     // 2026-10-14: Elvanto link moved to an Admin tab, so with every module off the admin's slot is plain Prayers again.
     expect(ids(navFns(modeOf('off', 'admin')).bottomNavItems())).toEqual(['home', 'at-risk', 'prayers', 'leaders', 'admin']);
   });
@@ -371,7 +371,7 @@ describe('the More menu (in the Prayers slot)', () => {
     for (const r of ROLES) {
       for (const mode of ['off', 'admin']) {
         if (r === 'admin') continue; // admin always has the Elvanto link entry: see the next test
-        if (r === 'director') continue; // r22 U1 (operator): a director always gets More (Import); r22-u1-ui.spa.test.ts
+        if (r === 'oversight') continue; // r22 U1 (operator): an oversight always gets More (Import); r22-u1-ui.spa.test.ts
         if (r === 'leader') continue; // Y5 (controller ruling): a junior leader always gets More (Change password); leader-friction.spa.test.ts
         const n = navFns(modeOf(mode, r));
         expect(ids(n.moreItems()), `${mode}/${r}`).toEqual(['prayers']);
@@ -384,7 +384,7 @@ describe('the More menu (in the Prayers slot)', () => {
   });
   it('Elvanto link is an Admin tab (2026-10-14): no role gets it in More', () => {
     for (const mode of ['off', 'admin', 'on']) {
-      for (const r of ['admin', 'leader', 'grade', 'quad', 'director']) expect(ids(navFns(modeOf(mode, r)).moreItems()), `${mode}/${r}`).not.toContain('link-admin');
+      for (const r of ['admin', 'leader', 'grade', 'quad', 'oversight']) expect(ids(navFns(modeOf(mode, r)).moreItems()), `${mode}/${r}`).not.toContain('link-admin');
     }
   });
   it('Bus on: every role gets More in the Prayers slot, same position', () => {
@@ -401,7 +401,7 @@ describe('the More menu (in the Prayers slot)', () => {
   it('admin: New person is in More for the admin only', () => {
     expect(noLink(ids(navFns(modeOf('admin', 'admin')).moreItems()))).toEqual(['prayers', 'new-youth']);
     expect(noLink(ids(navFns(modeOf('admin', 'admin', true)).moreItems()))).toEqual(['prayers', 'bus', 'new-youth']);
-    for (const r of ['leader', 'grade', 'quad', 'director']) expect(noLink(ids(navFns(modeOf('admin', r, true)).moreItems())), r).toEqual(['prayers', 'bus']);
+    for (const r of ['leader', 'grade', 'quad', 'oversight']) expect(noLink(ids(navFns(modeOf('admin', r, true)).moreItems())), r).toEqual(['prayers', 'bus']);
   });
   it('on: New person is in More for every role', () => {
     for (const r of ROLES) expect(noLink(ids(navFns(modeOf('on', r)).moreItems())), r).toEqual(['prayers', 'new-youth']);

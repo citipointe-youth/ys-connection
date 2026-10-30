@@ -28,7 +28,7 @@ describe('#2 step-0 Complete is off while this year\'s New People flow is missin
     f.set({ role: 'admin', flows: [r] });
     expect(f._lkTickable(r)).toBe(false);
     expect(f._lkStepBlock(r)).toMatch(/^This year's New People flow wasn't found, so step 0 can't be completed\. In Admin > Youth Setup/);
-    f.set({ role: 'director' });
+    f.set({ role: 'oversight' });
     expect(f._lkStepBlock(r)).toMatch(/Ask the admin\.$/);
     f.set({ role: 'admin' });
   });

@@ -202,7 +202,7 @@ describe('B10 leaders are told "Tell the admin", not "Do it in Elvanto"', () => 
     const t = results('quad');
     t.run([{ kind: 'undo', id: 'u1' }], [{ kind: 'undo', id: 'u1', outcome: 'too-late' }]);
     expect(t.toasts).toEqual(['Already sent. Tell the admin.']);
-    const a = results('director');
+    const a = results('oversight');
     a.run([{ kind: 'undo', id: 'u1' }], [{ kind: 'undo', id: 'u1', outcome: 'too-late' }]);
     expect(a.toasts).toEqual(['Already sent. Do it in Elvanto.']);
   });

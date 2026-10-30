@@ -108,13 +108,13 @@ describe('module gating', () => {
     expect(ids('admin', { intakeAdmin: 'on' })).toContain('link-intake');
     expect(ids('admin', { intakeAdmin: 'off' })).not.toContain('link-intake');
     expect(ids('admin', {})).not.toContain('link-intake'); // no key = off (no inheriting New person)
-    for (const role of ['director', 'quad', 'grade', 'leader']) expect(ids(role, { intakeAdmin: 'on' }), role).not.toContain('link-intake');
+    for (const role of ['oversight', 'quad', 'grade', 'leader']) expect(ids(role, { intakeAdmin: 'on' }), role).not.toContain('link-intake');
   });
   it('renderLink bounces a non-admin or module Off home; admin + On loads the dates', async () => {
     const off = makeEnv({ modules: { intakeAdmin: 'off' } });
     await off.fns.renderLink('link-intake');
     expect(off.calls.gos).toEqual(['home']);
-    const dir = makeEnv({ role: 'director' });
+    const dir = makeEnv({ role: 'oversight' });
     await dir.fns.renderLink('link-intake');
     expect(dir.calls.gos).toEqual(['home']);
     const on = makeEnv({ fresh: (p) => (p.includes('date=') ? LIST() : { ...ST(), dates: [{ date: '2026-10-09', takenAt: iso(1000), counts: { needsYou: 1 } }] }) });

@@ -10,7 +10,7 @@ import OWNERS from './fixtures/module-owners.json';
 const HTML = loadIndexHtml();
 const CORE: string[] = OWNERS.core;
 const MODULE_IDS = Object.fromEntries(Object.entries(OWNERS).filter(([k]) => k !== 'core')) as Record<string, string[]>;
-const ROLES = ['admin', 'director', 'grade', 'quad', 'leader'];
+const ROLES = ['admin', 'oversight', 'grade', 'quad', 'leader'];
 const MODULE_KEYS = new Set([...MODULE_TREE.map((n) => n.key), 'consentsHub']);
 
 // The shipped PAGE_MODULE: its declaration plus every Object.assign(PAGE_MODULE, …) line.

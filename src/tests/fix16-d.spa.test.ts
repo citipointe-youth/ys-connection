@@ -188,8 +188,8 @@ describe('F-35 refusals: "Tell the admin." for non-admin logins', () => {
       expect(h("Pick who gets the next step, or Elvanto's usual pick, then Complete again.")).toBe('Tell the admin.'); // r21 review #1
     }
   });
-  it('admin / director keep "Do it in Elvanto."', () => {
-    for (const r of ['admin', 'director']) {
+  it('admin / oversight keep "Do it in Elvanto."', () => {
+    for (const r of ['admin', 'oversight']) {
       f.role(r);
       expect(h('Too late to send. Do it in Elvanto.')).toBe('Too late to send. Do it in Elvanto.');
       expect(h("Pick who gets the next step, or Elvanto's usual pick, then Complete again.")).toBe("Pick who gets the next step, or Elvanto's usual pick, then Complete again.");

@@ -16,7 +16,7 @@ const PRELUDE = `
   const LK_FF = [['jg', 'Junior Guys', 'boy'], ['jf', 'Junior Girls', 'girl'], ['sg', 'Senior Guys', 'boy'], ['sf', 'Senior Girls', 'girl']];
   const document = { getElementById: () => null };
   function _lkQGet() { return []; }
-  function _lkBoss() { return ROLE === 'admin' || ROLE === 'director'; }
+  function _lkBoss() { return ROLE === 'admin' || ROLE === 'oversight'; }
   function _juniorMin() { return 7; } function gradeBands() { return { junior: [7, 8, 9], senior: [10, 11, 12] }; }
   function _lkToday() { return '2026-10-17'; }
   function _lkFlowDue() { return ''; }
@@ -148,9 +148,9 @@ describe('Y5 Flow steps: Updated X ago · Reload (admin only)', () => {
     expect(g.out().PAINT).toContain('id="lk-fref"');
     expect(g.out().PAINT).not.toContain('Updated');
   });
-  it('director and leader: no status line', () => {
+  it('oversight and leader: no status line', () => {
     withStatus();
-    for (const role of ['director', 'leader']) { g.set({ role }); withStatus(); g._lkPaintFlows(); expect(g.out().PAINT).not.toContain('lk-fref'); }
+    for (const role of ['oversight', 'leader']) { g.set({ role }); withStatus(); g._lkPaintFlows(); expect(g.out().PAINT).not.toContain('lk-fref'); }
   });
   it('a repaint of the view redraws #lk-fref on the flows page', () => {
     withStatus();
@@ -231,14 +231,14 @@ describe('Y2b Flow step kinds from config', () => {
     f.S.settings = null;
     try { expect(f._lkFlowKind({ flowName: PEOPLE })).toBe(''); expect(f._lkFlowsHtml()).toContain('Welcome'); } finally { f.S.settings = keep; }
   });
-  it('unknown New People flow: the admin sees the banner, a director and a leader do not', () => {
+  it('unknown New People flow: the admin sees the banner, an oversight and a leader do not', () => {
     const banner = (role: string) => { f.set({ role }); return f._lkFlowsHtml().includes(BANNER.replace(/>/g, '&gt;')); };
     named('Brisbane - Youth - New People 2026', 'Brisbane - Youth - Parent Consent 2026');
     expect(banner('admin')).toBe(false); // Brisbane prefix + this year's flow: known, no banner
     E.peopleFlowPrefix = ''; // blank
     expect(banner('admin')).toBe(true);
     expect(f._lkFlowsHtml()).toContain('class="lk-alert warn"');
-    expect(banner('director')).toBe(false);
+    expect(banner('oversight')).toBe(false);
     expect(banner('leader')).toBe(false);
     E.peopleFlowPrefix = 'Logan - Youth - New People'; // unmatched
     expect(banner('admin')).toBe(true);

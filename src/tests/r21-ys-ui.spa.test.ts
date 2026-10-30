@@ -82,7 +82,7 @@ describe('L1-3/L1-extra More, Change password and Check-in', () => {
   };
   const ids = (xs: any[]) => xs.map((i) => i.id);
   it('More has no Change password row except for a junior leader (Setup has it)', () => {
-    for (const r of ['admin', 'director', 'quad', 'grade']) {
+    for (const r of ['admin', 'oversight', 'quad', 'grade']) {
       const e = nav(r, { busMinistry: true });
       e.n.openMore();
       expect(e.shown(), r).toContain("go('bus')");
@@ -94,7 +94,7 @@ describe('L1-3/L1-extra More, Change password and Check-in', () => {
   });
   it('every login can reach Change password: a junior leader by More, the rest by Setup in the bottom bar', () => {
     expect(extractFn(HTML, 'renderConnectView')).toContain('onclick="showChangeOwnPassword()"');
-    for (const r of ['admin', 'director', 'quad', 'grade']) {
+    for (const r of ['admin', 'oversight', 'quad', 'grade']) {
       for (const modules of [{}, { prayers: false }, { busMinistry: true }]) expect(ids(nav(r, modules).n.bottomNavItems()), r).toContain('leaders');
     }
     for (const modules of [{}, { prayers: false }]) expect(ids(nav('leader', modules).n.bottomNavItems())).toContain('more');
@@ -106,9 +106,9 @@ describe('L1-3/L1-extra More, Change password and Check-in', () => {
       [{ prayers: false, flows: 'on' }, 'link-flows', "go('link-flows')"],
       [{ prayers: false, newYouthForms: 'on', checkin: 'off', lifegroupReport: 'off', flows: 'off' }, 'new-youth', 'nyOpen()'],
     ];
-    for (const [modules, id] of cases) { // r22 U1 (operator): a director always gets More, holding the screen and Import
-      expect(ids(nav('director', modules).n.moreItems())).toEqual([id, 'import']);
-      expect(ids(nav('director', modules).n.bottomNavItems())).toContain('more');
+    for (const [modules, id] of cases) { // r22 U1 (operator): an oversight always gets More, holding the screen and Import
+      expect(ids(nav('oversight', modules).n.moreItems())).toEqual([id, 'import']);
+      expect(ids(nav('oversight', modules).n.bottomNavItems())).toContain('more');
     }
     for (const r of ['grade', 'quad']) {
       for (const [modules, id, click] of cases) {
@@ -125,7 +125,7 @@ describe('L1-3/L1-extra More, Change password and Check-in', () => {
     expect(nav('grade', { prayers: false, lifegroupReport: 'on' }).n.bottomNavItems().find((i: any) => i.id === 'link-groups')).toMatchObject({ mbl: 'Report' });
   });
   it('Check-in on: every login reaches it (tab or More)', () => {
-    for (const r of ['admin', 'director', 'quad', 'grade', 'leader']) {
+    for (const r of ['admin', 'oversight', 'quad', 'grade', 'leader']) {
       for (const modules of [{ checkin: 'on' }, { checkin: 'on', prayers: false }, { checkin: 'on', busMinistry: true }]) {
         const n = nav(r, modules).n;
         const reach = ids(n.navItems()).includes('link-checkin') || (ids(n.navItems()).includes('more') && ids(n.moreItems()).includes('link-checkin'));

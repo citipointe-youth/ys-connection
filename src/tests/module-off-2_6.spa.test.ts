@@ -14,13 +14,13 @@ import type { AuditPushBody } from '../core/link-contract';
 import type { Actor } from '../core/entities/user';
 
 const OWNED_PAGES = ['ca-week', 'ca-follow', 'ca-term', 'ca-quality'];
-const ROLES = ['admin', 'director', 'grade', 'quad', 'leader'];
+const ROLES = ['admin', 'oversight', 'grade', 'quad', 'leader'];
 
 describe('2.6 OFF-nav: the Connection Audit nav item', () => {
-  it.each(ROLES)('%s: off removes exactly ca-week (admin and director had it)', (role) => {
+  it.each(ROLES)('%s: off removes exactly ca-week (admin and oversight had it)', (role) => {
     const base = navWithModules(role);
     const off = navWithModules(role, { connectionAudit: false });
-    if (role === 'admin' || role === 'director') expectSubtraction(base, off, ['ca-week']);
+    if (role === 'admin' || role === 'oversight') expectSubtraction(base, off, ['ca-week']);
     else expect(off).toEqual(base);
   });
   it('resolved off (Flows, Lifegroups or New person form off) hides it too', () => {

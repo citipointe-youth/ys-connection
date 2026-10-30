@@ -13,7 +13,7 @@ import OWNERS from './fixtures/module-owners.json';
 
 const HTML = loadIndexHtml();
 const owned = (key: 'prayers' | 'notices'): string[] => OWNERS[key];
-const ROLES = ['admin', 'director', 'grade', 'quad', 'leader'] as const;
+const ROLES = ['admin', 'oversight', 'grade', 'quad', 'leader'] as const;
 const actor = (role: string, quad: string | null = null): Actor =>
   ({ id: `${role}-${quad}`, role: role as any, displayName: role, grade: null as any, quad: quad as any, leaderId: null });
 const ADMIN = actor('admin');
@@ -44,7 +44,7 @@ describe('ON: with both modules on the nav is offered as before', () => {
     expect(new Set(Object.values(base).flat()).has('prayers')).toBe(true);
     expect(base.more).toContain('notices');
   });
-  it('a grade login never gets Notices (quad, admin and director only)', () => {
+  it('a grade login never gets Notices (quad, admin and oversight only)', () => {
     expect(navWithModules('grade', { notices: 'on' }).more).not.toContain('notices');
   });
 });

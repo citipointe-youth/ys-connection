@@ -84,7 +84,7 @@ describe('Import tile (RV2 B)', () => {
     ['moreItems', 'navItems', '_homeTiles']);
   const ids = (xs: any[]) => xs.map((x) => x.id);
 
-  for (const role of ['admin', 'director']) {
+  for (const role of ['admin', 'oversight']) {
     it(`${role}: no Import tile on Home, but navItems (the sidebar the console clicks) keeps Import`, () => {
       const n = nav(role, { prayers: true, bus: true });
       expect(ids(n._homeTiles({ role }))).not.toContain('import');
@@ -93,14 +93,14 @@ describe('Import tile (RV2 B)', () => {
     });
   }
 
-  it("director's More sheet always has Import, and a director always gets More; admin's has no Import", () => {
-    expect(nav('director', { prayers: true, bus: true }).moreItems().find((x: any) => x.id === 'import'))
+  it("oversight's More sheet always has Import, and an oversight always gets More; admin's has no Import", () => {
+    expect(nav('oversight', { prayers: true, bus: true }).moreItems().find((x: any) => x.id === 'import'))
       .toMatchObject({ label: 'Import', open: "go('import')" });
-    expect(ids(nav('director', { prayers: true, bus: false }).moreItems())).toEqual(['prayers', 'import']);
-    expect(ids(nav('director', { prayers: false, bus: false }).moreItems())).toEqual(['import']);
+    expect(ids(nav('oversight', { prayers: true, bus: false }).moreItems())).toEqual(['prayers', 'import']);
+    expect(ids(nav('oversight', { prayers: false, bus: false }).moreItems())).toEqual(['import']);
     for (const m of [{ prayers: false, bus: false }, { prayers: true, bus: false }, { prayers: false, bus: true }])
-      expect(nav('director', m).navItems().find((x: any) => x.id === 'more'), JSON.stringify(m)).toMatchObject({ action: 'openMore()' });
-    expect(nav('director', { prayers: false, bus: false }).navItems().filter((x: any) => x.id === 'import')).toHaveLength(1);
+      expect(nav('oversight', m).navItems().find((x: any) => x.id === 'more'), JSON.stringify(m)).toMatchObject({ action: 'openMore()' });
+    expect(nav('oversight', { prayers: false, bus: false }).navItems().filter((x: any) => x.id === 'import')).toHaveLength(1);
     expect(ids(nav('admin', { prayers: true, bus: true }).moreItems())).not.toContain('import');
   });
 

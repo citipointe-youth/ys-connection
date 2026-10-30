@@ -68,30 +68,30 @@ describe('hidden steps: a list per flow, old strings read as before', () => {
   });
 });
 
-describe('Login style: one control for Junior/Senior or Director and leaders', () => {
+describe('Login style: one control for Junior/Senior or Oversight and leaders', () => {
   const BRISBANE = { structure: { cohortModel: 'grades-quads' }, logins: { simple: true }, modules: { notices: 'off' },
-    roles: { enabled: { director: true, grade: false, quad: true, leader: false } } };
+    roles: { enabled: { oversight: true, grade: false, quad: true, leader: false } } };
   const f = loadFns(['_loginStyleOf', '_applyLoginStyle', '_setupNoticesHtml'],
     'let _setupDraft = null; function _setupRerender() {} function helpTip(t) { return ""; } function __d() { return _setupDraft; }',
     ['_loginStyleOf', '_applyLoginStyle', '_setupNoticesHtml', '__d']);
-  it("Brisbane's live state reads back as Junior/Senior; quad off reads as Director and leaders", () => {
+  it("Brisbane's live state reads back as Junior/Senior; quad off reads as Oversight and leaders", () => {
     expect(f._loginStyleOf(BRISBANE)).toBe('junior-senior');
     expect(f._loginStyleOf({})).toBe('junior-senior');
-    expect(f._loginStyleOf({ roles: { enabled: { quad: false } } })).toBe('director-leaders');
+    expect(f._loginStyleOf({ roles: { enabled: { quad: false } } })).toBe('oversight-leaders');
   });
-  it('Director and leaders writes the stored fields and turns Notices off; Junior/Senior never turns Notices on', () => {
-    const dl = f._applyLoginStyle(JSON.parse(JSON.stringify(BRISBANE)), 'director-leaders');
+  it('Oversight and leaders writes the stored fields and turns Notices off; Junior/Senior never turns Notices on', () => {
+    const dl = f._applyLoginStyle(JSON.parse(JSON.stringify(BRISBANE)), 'oversight-leaders');
     expect(dl).toMatchObject({ structure: { cohortModel: 'none' }, logins: { simple: true }, modules: { notices: 'off' },
-      roles: { enabled: { director: true, grade: false, quad: false, leader: true } } });
+      roles: { enabled: { oversight: true, grade: false, quad: false, leader: true } } });
     const js = f._applyLoginStyle(JSON.parse(JSON.stringify(dl)), 'junior-senior');
     expect(js).toMatchObject({ structure: { cohortModel: 'grades-quads' }, logins: { simple: true }, modules: { notices: 'off' },
-      roles: { enabled: { director: true, grade: false, quad: true } } });
+      roles: { enabled: { oversight: true, grade: false, quad: true } } });
     expect(f._applyLoginStyle(JSON.parse(JSON.stringify(BRISBANE)), 'junior-senior')).toEqual({ ...BRISBANE });
   });
   it('Notices is a checkbox, offered only for Junior/Senior', () => {
     expect(f._setupNoticesHtml({ notices: 'on' }, 'junior-senior')).toMatch(/type="checkbox" id="setup-notices" checked/);
     expect(f._setupNoticesHtml({}, 'junior-senior')).toMatch(/id="setup-notices"  onchange/);
-    expect(f._setupNoticesHtml({ notices: 'on' }, 'director-leaders')).toBe('');
+    expect(f._setupNoticesHtml({ notices: 'on' }, 'oversight-leaders')).toBe('');
   });
   it('the old controls are gone from Youth Setup', () => {
     const body = extractFn(loadIndexHtml(), '_youthSetupBody');
@@ -114,7 +114,7 @@ describe('Login style on the server', () => {
       mustChangePassword: false, createdAt: 'x', updatedAt: 'x' } as User);
     return { service, repo, users };
   }
-  it('Director and leaders saves with Junior/Senior logins kept on; the retired grade logins stay retired', async () => {
+  it('Oversight and leaders saves with Junior/Senior logins kept on; the retired grade logins stay retired', async () => {
     const { service, repo, users } = await svc();
     await service.update(ADMIN, { ministryConfig: { structure: { cohortModel: 'none' }, roles: { enabled: { quad: false, leader: true } } } });
     const mc = (await repo.getSettings()).ministryConfig;
@@ -125,7 +125,7 @@ describe('Login style on the server', () => {
   });
   it('a half-and-half state is refused with the Login style words', async () => {
     const { service } = await svc();
-    const MSG = 'Pick a Login style in Youth Setup: Junior/Senior, or Director and leaders.';
+    const MSG = 'Pick a Login style in Youth Setup: Junior/Senior, or Oversight and leaders.';
     await expect(service.update(ADMIN, { ministryConfig: { roles: { enabled: { quad: false } } } })).rejects.toThrow(MSG);
     await expect(service.update(ADMIN, { ministryConfig: { structure: { cohortModel: 'none' } } })).rejects.toThrow(MSG);
   });

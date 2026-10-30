@@ -15,7 +15,7 @@ import type { BusConsentForm } from '../core/entities/bus';
 import owners from './fixtures/module-owners.json';
 import LIVE_MODULES from './fixtures/live-modules.json';
 
-const ROLES = ['admin', 'director', 'grade', 'quad', 'leader'];
+const ROLES = ['admin', 'oversight', 'grade', 'quad', 'leader'];
 const HTML = loadIndexHtml();
 
 const form = (over: Partial<BusConsentForm> = {}): BusConsentForm => ({ id: 'f1', submissionId: 'b5c10000-0000-4000-8000-000000000001', childIndex: 0,

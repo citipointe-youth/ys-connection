@@ -172,14 +172,14 @@ describe('Y5 Change password for every role', () => {
     expect(e.shown()).toContain('id="cpw-new"');
   });
   it('r21 L1: only the junior leader gets the row (the other roles use Setup; r21-ys-ui.spa.test.ts)', () => {
-    for (const r of ['admin', 'director', 'quad', 'grade', 'leader']) {
+    for (const r of ['admin', 'oversight', 'quad', 'grade', 'leader']) {
       const e = pwEnv(r);
       e.fns.openMore();
       expect(e.shown().includes('showChangeOwnPassword()'), r).toBe(r === 'leader');
     }
   });
   it('the shared-login warning shows on a shared (grade or quad) login only, on both password screens', () => {
-    for (const [r, shared] of [['grade', true], ['quad', true], ['leader', false], ['admin', false], ['director', false]] as const) {
+    for (const [r, shared] of [['grade', true], ['quad', true], ['leader', false], ['admin', false], ['oversight', false]] as const) {
       const e = pwEnv(r);
       e.fns.showChangeOwnPassword();
       expect(e.shown().includes(WARN), r).toBe(shared);
@@ -209,8 +209,8 @@ describe('controller ruling: a junior leader always has the More button', () => 
   });
   it('the other roles keep their nav (Setup has Reset Password): plain Prayers tab with only Prayers', () => {
     for (const r of ['grade', 'quad', 'admin']) expect(nav(r, {}).n.navItems().map((i: any) => i.id), r).not.toContain('more');
-    // r22 U1 (operator): a director always gets More, which always holds Import.
-    expect(nav('director', {}).n.navItems().map((i: any) => i.id)).toContain('more');
+    // r22 U1 (operator): an oversight always gets More, which always holds Import.
+    expect(nav('oversight', {}).n.navItems().map((i: any) => i.id)).toContain('more');
   });
 });
 

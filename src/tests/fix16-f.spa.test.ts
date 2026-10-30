@@ -18,7 +18,7 @@ const PRELUDE = `
   const LK_FLOW_TYPES = ['completeStep', 'removeFromFlowStep'];
   function _lkQGet() { return QUEUE.slice(); }
   function _ikModuleOn() { return false; } // consent hub (Task 11): module off, Flow steps as before
-  function _lkBoss() { return ROLE === 'admin' || ROLE === 'director'; }
+  function _lkBoss() { return ROLE === 'admin' || ROLE === 'oversight'; }
   function _lkCapOff() { return false; }
   function _juniorMin() { return 7; } function gradeBands() { return { junior: [7, 8, 9], senior: [10, 11, 12] }; }
   function _lkToday() { return '2026-10-16'; }

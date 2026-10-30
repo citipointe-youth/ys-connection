@@ -19,7 +19,7 @@ const PRELUDE = `
   const LK_FF = [['jg', 'Junior Guys', 'boy'], ['jf', 'Junior Girls', 'girl'], ['sg', 'Senior Guys', 'boy'], ['sf', 'Senior Girls', 'girl']];
   const LK_OFFLINE_MS = 15 * 60000;
   function _lkQGet() { return QUEUE.slice(); }
-  function _lkBoss() { return ROLE === 'admin' || ROLE === 'director'; }
+  function _lkBoss() { return ROLE === 'admin' || ROLE === 'oversight'; }
   function _juniorMin() { return 7; } function gradeBands() { return { junior: [7, 8, 9], senior: [10, 11, 12] }; }
   function _lkToday() { return '2026-10-15'; }
   function _lkFlowDue() { return ''; }
@@ -76,7 +76,7 @@ describe('R4 filter persistence (localStorage in try/catch)', () => {
     reset({ throw: true });
     expect(f._lkFfGet()).toEqual(['jg', 'jf', 'sg', 'sf']);
   });
-  it('chips show for admin/director only; leaders see every row unfiltered', () => {
+  it('chips show for admin/oversight only; leaders see every row unfiltered', () => {
     reset({ store: { yap_lk_flowf: '[]' } });
     L.flows = [R({ rowId: 'a' }), R({ rowId: 'b', grade: null })];
     expect(f._lkFlowVisible().map((r: any) => r.rowId)).toEqual(['b']);
@@ -105,11 +105,11 @@ describe('R1 DNC on flow rows: no number, no Text, Complete blocked, Remove only
     expect(f._lkCanComplete(R({ consentStep: true, consent: 'ok' }))).toBe(true);
     expect(f._lkCanComplete(R({}))).toBe(true);
   });
-  it('Remove: admin/director only, allowed on DNC rows, not while an action is open', () => {
+  it('Remove: admin/oversight only, allowed on DNC rows, not while an action is open', () => {
     reset();
     const r = R({ dnc: true });
     expect(f._lkCanRemove(r)).toBe(true);
-    f.set({ role: 'director' }); expect(f._lkCanRemove(r)).toBe(true);
+    f.set({ role: 'oversight' }); expect(f._lkCanRemove(r)).toBe(true);
     f.set({ role: 'grade' }); expect(f._lkCanRemove(r)).toBe(false);
     f.set({ role: 'admin', queue: [{ kind: 'action', type: 'removeFromFlowStep', id: 'x', payload: { rowId: r.rowId } }] });
     expect(f._lkCanRemove(r)).toBe(false);
@@ -181,7 +181,7 @@ describe('Remove / consent refusal lines', () => {
   it('CONSENT_CHECK_FIRST shows "Do the consent check first"', () => {
     expect(f._lkStatusText({ status: 'refused', code: 'CONSENT_CHECK_FIRST', message: 'x', type: 'completeStep' })).toMatch(/^Do the consent check first/);
   });
-  it('the flows banner covers Remove only for admin/director', () => {
+  it('the flows banner covers Remove only for admin/oversight', () => {
     reset(); expect(f._lkFlowTypes()).toEqual(['completeStep', 'removeFromFlowStep']);
     f.set({ role: 'quad' }); expect(f._lkFlowTypes()).toEqual(['completeStep']);
   });
@@ -269,8 +269,8 @@ const st = (dncReady?: boolean) => ({ console: { online: true, lastSeenAt: new D
   ...(dncReady === undefined ? {} : { dncReady }) });
 
 describe('Y6c DNC banner on Flow steps', () => {
-  it('admin and director see it when DNC is not fully on', () => {
-    for (const role of ['admin', 'director']) {
+  it('admin and oversight see it when DNC is not fully on', () => {
+    for (const role of ['admin', 'oversight']) {
       const b = banner(role);
       expect(y6strip(b._lkBanner(b.LK_FLOW_TYPES, st(false)))).toContain(DNC);
       expect(y6strip(b._lkBanner(['completeStep'], st(false)))).toContain(DNC);
@@ -303,13 +303,13 @@ describe('Y6c DNC line on Home (Needs attention)', () => {
     const h = loadFns(['_attnCounts', '_attnLines', '_lkDncText', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], 'var S = {};');
     return h._attnLines(h._attnCounts({ uid: 'u', role, st: st(dncReady) }, Date.now())).map((l: [string, string]) => l);
   };
-  it('admin (opens Admin > Elvanto link) and director (plain text) see it when DNC is not fully on', () => {
+  it('admin (opens Admin > Elvanto link) and oversight (plain text) see it when DNC is not fully on', () => {
     expect(lines('admin', false)).toContainEqual([DNC, "go('link-admin')"]);
-    expect(lines('director', false)).toContainEqual([DNC, '']);
+    expect(lines('oversight', false)).toContainEqual([DNC, '']);
   });
   it('hidden when fully matched or unknown', () => {
     expect(lines('admin', true)).toEqual([]);
-    expect(lines('director')).toEqual([]);
+    expect(lines('oversight')).toEqual([]);
   });
   it('the words name no console (leader-friction rule)', () => { expect(DNC).not.toMatch(/console/i); });
   it('fix round: a System check fix row reads as one plain sentence (no second colon)', () => {

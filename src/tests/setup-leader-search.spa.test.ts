@@ -1,4 +1,4 @@
-// I3 (R2 2026-10-17): Connect Setup leader search box, admin/director only.
+// I3 (R2 2026-10-17): Connect Setup leader search box, admin/oversight only.
 import { describe, it, expect } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
@@ -20,11 +20,11 @@ const mk = (role: string, lq = '') => loadFns(['renderConnectView', '_csLeaderQ'
 ['renderConnectView', '_csLeaderQ', '__html', '__cards', '__aS']);
 
 describe('I3 Connect Setup leader search', () => {
-  it('the box is inside the director/admin (+ quad, r21 L1) gate, and cards carry data-name', () => {
+  it('the box is inside the oversight/admin (+ quad, r21 L1) gate, and cards carry data-name', () => {
     const src = extractFn(loadIndexHtml(), 'renderConnectView');
     expect(src).toMatch(/showSearch \? `<div class="sbar">[^`]*id="cs-lq"/);
     expect(src).toContain("const showSearch = showGender || u.role === 'quad';");
-    expect(src).toContain("const showGender = ['director','admin'].includes(u.role);");
+    expect(src).toContain("const showGender = ['oversight','admin'].includes(u.role);");
     expect(src).toContain('data-name="${esc(l.fullName.toLowerCase())}"');
     expect(src).toContain('oninput="_csLeaderQ(this.value)"');
   });
@@ -37,7 +37,7 @@ describe('I3 Connect Setup leader search', () => {
     expect(f.__cards().map((c: any) => c.style.display)).toEqual(['', '']);
   });
   it('a repaint with a search set keeps only matching leaders visible', () => {
-    const f = mk('director', 'ben');
+    const f = mk('oversight', 'ben');
     f.renderConnectView();
     const h = f.__html();
     expect(h).toContain('id="cs-lq"');

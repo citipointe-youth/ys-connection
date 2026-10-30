@@ -17,7 +17,7 @@ describe('MP1 _modOn', () => {
   });
   it('admin mode counts as on only for an admin login', () => {
     expect(modOn('leader', { checkin: 'admin' }, 'checkin')).toBe(false);
-    expect(modOn('director', { checkin: 'admin' }, 'checkin')).toBe(false);
+    expect(modOn('oversight', { checkin: 'admin' }, 'checkin')).toBe(false);
     expect(modOn(null, { checkin: 'admin' }, 'checkin')).toBe(false);
     expect(modOn('admin', { checkin: 'admin' }, 'checkin')).toBe(true);
     // legacy 'shadow' reads as admin, as _linkOn does
