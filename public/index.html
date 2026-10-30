@@ -12154,7 +12154,8 @@ function _lkStepHtml() {
     assign = `<div class="fg"><label class="fl" for="lk-assign">Assigned to</label><select class="fs" id="lk-assign" onchange="LINK.fs.pick=this.value||null;_lkStepDraw()"><option value="">Nobody (Elvanto's usual pick)</option>
       ${ls.map((x) => `<option value="${esc(x.id)}"${l && x.id === l.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
       <p class="lk-hint">Reassign changes who has this person. Complete gives them the next step.</p>
-      ${l && !l.personId ? '<p class="lk-hint">Not linked to an Elvanto person: Elvanto picks who gets the next step.</p>' : ''}</div>`;
+      ${l && !l.personId ? '<p class="lk-hint">Not linked to an Elvanto person: Elvanto picks who gets the next step.</p>'
+        : l && !_lkOffers(r, l.personId) ? `<p class="lk-hint">${esc("Elvanto doesn't offer them for the next step: Elvanto will pick who gets it.")}</p>` : ''}</div>`;
   } else if (r.personId) {
     // other logins see who has the person; Complete keeps them (the server sets it). No app leader known = Elvanto picks.
     assign = `<p class="lk-sub">Assigned to: ${esc(r.assignedLeaderName || r.assignedTo || 'Nobody')}</p>
@@ -12202,13 +12203,19 @@ function _lkStepBtns() {
 }
 // The admin/director pick, as a leader from _lkPickList(r) (null = Nobody).
 function _lkPickList(r) {
-  const ls = (LINK.fLeaders || []).filter((l) => _lkFits(l, r.grade, r.gender) || l.id === r.currentLeaderId);
+  // r30 (rev 21): with the step's offered known, only leaders Elvanto offers; the current one stays (Complete then sends no assignTo)
+  const ls = (LINK.fLeaders || []).filter((l) => (_lkFits(l, r.grade, r.gender) && _lkOffers(r, l.personId)) || l.id === r.currentLeaderId);
   // a current leader missing from a stale LINK.fLeaders: keep them listed so the sheet never unassigns by itself
   if (r.currentLeaderId && !ls.some((l) => l.id === r.currentLeaderId)) ls.push({ id: r.currentLeaderId, name: r.assignedLeaderName || r.assignedTo || 'A leader', personId: null });
   return ls;
 }
 // The sheet's pick (LINK.fs.pick = leader id), null = Nobody or no longer in the list.
 function _lkPicked(r) { const f = LINK.fs; return (f && f.pick && _lkPickList(r).find((l) => l.id === f.pick)) || null; }
+// r30 (rev 21): does Elvanto offer this person id for the row's next step? Unknown (no or empty offered) = yes. Case-blind.
+function _lkOffers(r, pid) {
+  const s = (LINK.fSteps || []).find((x) => x.stepId === r.stepId), o = (s && s.offered) || [];
+  return !o.length || (!!pid && o.some((x) => String(x).toLowerCase() === String(pid).toLowerCase()));
+}
 // Flows (2026-10-24, ruling Q1): mirrors the server's leaderFitsPerson. No grades = director/admin level (anyone, any gender);
 // else the person's grade, and the leader's gender unset or the person's.
 function _lkFits(l, grade, gender) {
@@ -12263,7 +12270,7 @@ function _lkStepSend() {
   LINK.fs = null;
   closeModal();
   _lkPush({ kind: 'action', id: _lkUuid(), type: 'completeStep',
-    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv, ...(l && l.personId ? { assignTo: l.personId } : {}) },
+    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv, ...(l && l.personId && _lkOffers(r, l.personId) ? { assignTo: l.personId } : {}) },
     note, leaderId: lid, _f: r.rowId }, true);
 }
 // Still on this phone: removed here (nothing sent).

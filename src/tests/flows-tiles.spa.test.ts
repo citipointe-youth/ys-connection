@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete',
-  '_lkTickable', '_lkSelIds', '_lkFfGet', '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkHubOwned', '_lkPickList', '_lkPicked', '_lkFits', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkMemOff', '_lkCanRemove', '_lkFlowRow', '_lkBulkOpen', '_lkBulkSend', '_lkStepHtml', '_lkStepBtns',
+  '_lkTickable', '_lkSelIds', '_lkFfGet', '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkHubOwned', '_lkPickList', '_lkPicked', '_lkOffers', '_lkFits', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkMemOff', '_lkCanRemove', '_lkFlowRow', '_lkBulkOpen', '_lkBulkSend', '_lkStepHtml', '_lkStepBtns',
   '_lkTextHref', '_lkSmsHref', '_lkFirstName'];
 const PRELUDE = `
   var ROLE = 'admin', MODALS = [], TOASTS = [], PUSHED = [];
