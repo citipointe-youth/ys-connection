@@ -276,6 +276,25 @@ export function describeLinkRepo(name: string, make: MakeLinkRepo) {
         // max 0 (a heartbeat) still hands nothing
         expect(await repo.claim({ ...mine, max: 0 })).toEqual([]);
       });
+      it('Y7 (round 2026-10-30): a max-0 heartbeat renews this console own LIVE leases (never shortens, never revives, never another console; attempts kept)', async () => {
+        const mine = claimArgs({ max: 3 }), other = claimArgs({ max: 3 });
+        const [a, b, x] = [await repo.insertAction(newRow()), await repo.insertAction(newRow()), await repo.insertAction(newRow())];
+        const c = await repo.insertAction(newRow());
+        await repo.claim(mine); // a, b, x leased to mine (180 s)
+        await repo.claim({ ...other, max: 1 }); // c leased to other
+        await h.backdate('link_outbox', a.id, 'lease_until', ahead(10_000)); // nearly ended: renewed
+        await h.backdate('link_outbox', b.id, 'lease_until', ahead(600_000)); // a longer (intake) lease: kept
+        await h.backdate('link_outbox', x.id, 'lease_until', ago(60_000)); // ended: stays sweepable
+        await h.backdate('link_outbox', c.id, 'lease_until', ahead(10_000)); // another console's: untouched
+        expect(await repo.claim({ ...mine, max: 0 })).toEqual([]);
+        const at = async (id: string) => { const r = (await repo.getAction(id))!; return { ms: Date.parse(r.leaseUntil!) - Date.now(), attempts: r.attempts }; };
+        const [ra, rb, rx, rc] = [await at(a.id), await at(b.id), await at(x.id), await at(c.id)];
+        expect(ra.ms).toBeGreaterThan(170_000); expect(ra.ms).toBeLessThan(190_000);
+        expect(rb.ms).toBeGreaterThan(590_000);
+        expect(rx.ms).toBeLessThan(0);
+        expect(rc.ms).toBeLessThan(15_000);
+        expect([ra, rb, rx, rc].map((r) => r.attempts)).toEqual([1, 1, 1, 1]);
+      });
       it('H1 (review 2026-10-18): a rev 12 console stuck own-leased rows never starve newer pending rows (max 1 and max 3)', async () => {
         for (const max of [1, 3]) {
           const mine = claimArgs({ max });

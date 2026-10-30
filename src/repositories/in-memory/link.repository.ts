@@ -129,6 +129,12 @@ export class InMemoryLinkRepository implements ILinkRepository {
       row.note = null;
       if (Date.parse(row.createdAt) < now - 14 * DAY) this.outbox.delete(id);
     }
+    // Y7 (round 2026-10-30): a heartbeat (max 0) renews this console's own LIVE leases (never shortens one, never revives one).
+    if (a.max <= 0) for (const { row } of this.outbox.values()) {
+      if (row.status === 'claimed' && row.leaseOwner === a.console.consoleId && row.leaseUntil && Date.parse(row.leaseUntil) >= now) {
+        Object.assign(row, { leaseUntil: new Date(Math.max(Date.parse(row.leaseUntil), now + a.leaseSeconds * 1000)).toISOString(), updatedAt: nowIso });
+      }
+    }
     // lease
     const caps = a.console.capabilities;
     // B4 / APP-3: a checkOut waits while an older checkIn for the same person and service is pending or claimed.
