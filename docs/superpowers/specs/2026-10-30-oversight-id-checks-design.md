@@ -1,7 +1,7 @@
 # Oversight role + ID Checks: design
 
 Date: 2026-10-30. Branch `feature/oversight-id-checks`, based on live `eb41ada` (ysc-v160, `LINK_REV` 21, latest migration `0051`).
-Status: design approved by the operator (decisions A-L below; I-L are rulings of 2026-10-30). Next step: an implementation plan (superpowers:writing-plans).
+Status: design approved by the operator (decisions A-M below; I-M are rulings of 2026-10-30). Next step: an implementation plan (superpowers:writing-plans).
 
 Labels used below: **Operator's decision** (fixed, do not re-open), **Orchestrator's call** and **Builder's call**
 (defaults chosen so the builder can plan without asking; change one only with a stated reason in the plan).
@@ -37,8 +37,9 @@ per-leader record of catch-ups, shared only with the accounts the admin ticks fo
 
 - No editing of the question bank in the app (code change only).
 - No reminders, emails, push alerts, digest lines or Home cards for due/overdue checks (the list is the reminder).
-- No reports, exports, CSV, charts or counts of ID checks anywhere, including the admin data export/backup. (One listed
-  exception, decision I: the admin's "Archived leaders' history" list shows name, entry count and last date, never notes.)
+- No reports, bulk exports, CSV, charts or counts of ID checks anywhere, including the admin data export/backup. (Two listed
+  exceptions: decision I, the admin's "Archived leaders' history" list shows name, entry count and last date, never notes;
+  decision M, the deliberate per-leader export by a ticked account.)
 - No read audit trail (same posture as prayers).
 - No per-leader custom rhythm; no per-quad rhythm.
 - No change to the Elvanto link contract (`LINK_REV` stays 21) and no console code change (docs + one fixture copy only, §8).
@@ -52,7 +53,8 @@ per-leader record of catch-ups, shared only with the accounts the admin ticks fo
 - **No role-based visibility of notes.** Admin or oversight role alone never reveals a note; only a tick does.
 - **No new framework, sheet system or editor component.** Reuse the SPA's page pattern, `.rc` rows, `fmtDay`, `esc()`,
   native `<input type="date">` and `<textarea>`.
-- **No leaking:** notes never reach exports, digests, emails, server logs, Error log rows, push payloads, test fixtures with
+- **No leaking:** notes never reach exports (meaning every existing bulk/ministry export, backup and the admin data
+  export; the per-leader export of decision M is the one deliberate exception), digests, emails, server logs, Error log rows, push payloads, test fixtures with
   real names, or `console.error` output. (Orchestrator's call, §6.)
 - No new tables beyond the two below; no per-question table.
 
@@ -150,13 +152,37 @@ logins only, and admins always see it (not only when ticked). There is no separa
 grid and the archived-history list from More → ID Checks, and every account (oversight or admin) sees its own ticked
 leaders there (§7.8).
 
+**M. Per-leader export (operator request, 2026-10-30).** An account ticked for a leader can export that leader's ID-check
+record. Rules:
+- **Per leader, explicit:** one **Export** button on the leader page (`idcheck-leader`); nothing exports in bulk, on a
+  timer or from the list/grid pages.
+- **Only ticked accounts:** the data comes from `GET /id-checks/leaders/:id`, which already answers 404 unless the caller
+  is ticked (7.4). The button re-fetches it fresh on tap (not from the SPA `Cache`), so the server tick check runs at
+  export time. No new route. An admin who is not ticked has no leader page, so no export.
+- **Contents:** every entry for the leader, newest first: all checks (each marked **Finished** or **In progress**) with
+  date, author, every question asked (section, question text, Asked, note) and "Notes for next time", and every random
+  note with date and author. Retired questions keep their text.
+- **Formats (builder's call, no new dependency):** **plain text (.txt)**, required, built in the SPA and saved with the
+  existing `_downloadText()` helper; and **Excel (.xlsx)**, because the SPA already lazy-loads the vendored SheetJS build
+  (`_ensureXlsx()`, `public/vendor/xlsx.full.min.js`) and writes .xlsx for Connect Setup, Trends and Bus history, so it
+  costs one small function. One sheet, one row per answered question / next-time note / random note (columns Date, Kind,
+  Status, Author, Section, Question, Asked, Note). No Word (.docx): nothing in the repo writes .docx and it would need a
+  new dependency. No CSV: .xlsx covers spreadsheet use and CSV would be a third format to keep in step.
+- **Never cached, never logged:** `/id-checks*` is network-only in `sw.js`; the file is a `Blob` download that the SW
+  never sees; no server log line, Error log row, `link_log` row or audit row is written for an export; the SPA keeps no
+  copy after the download.
+- The screen says, beside the button: "The file holds private notes. Keep it safe and delete it when done."
+
+This is the only path by which notes leave the app; orchestrator's call 5 and 7.9 apply to everything else.
+
 ### Orchestrator's calls
 
 1. **Autosave as you type** (no data loss on a flat battery).
 2. A check can be **reopened and edited later**.
 3. **Delete** allowed for the entry's author or any account ticked for that leader.
 4. **"Last time" for a question** = the most recent other check for this leader (finished or in progress, decision J) where that question had a note or a tick.
-5. Notes are sensitive: **never** in exports, digests, emails, logs, or Error log payloads.
+5. Notes are sensitive: **never** in exports (except the per-leader export, decision M), digests, emails, logs, or Error
+   log payloads.
 
 ## 7. Design (builder's calls marked)
 
@@ -327,6 +353,7 @@ row per `leader_name` group with name, entry count and last date (`fmtDay`), and
   (its "notes for next time" first); then history, newest first, each entry with date, author, kind and an "In progress"
   pill on an unfinished check ("In progress (name)" if it is someone else's); Edit (author) and
   Delete (two taps) on each. One line: "Worried about someone's safety? Follow the safeguarding policy, not this app."
+  An **Export** button (decision M) opens a two-choice sheet, Text file / Excel file, with the keep-safe line.
 - **Check page (`idcheck-edit`):** date field (defaults today); the six sections as collapsible groups with their
   sub-titles; each question row has a 44px "Asked" tick and opens a `<textarea>`; when opened it shows "Last time
   (date): ..." muted above the box (orchestrator's call 4, computed in the SPA from the leader's entries already fetched).
@@ -356,7 +383,8 @@ row per `leader_name` group with name, entry count and last date (`fmtDay`), and
 - No logging of request bodies on these routes; errors carry codes only. Check `VALIDATION_ERROR` `details` never echo a
   value (zod issue messages for these schemas carry limits, not text) and that `error-log.service` records only code/route.
 - `id_check_*` tables are excluded from every export, backup, digest and Connection Audit path (nothing reads them but
-  the new service; a test greps `src/services` for the table/repo names outside the module's own files).
+  the new service; a test greps `src/services` for the table/repo names outside the module's own files). The per-leader
+  export (decision M) is built in the SPA from the ticked-only leader route, so it adds no server reader.
 - No push, no Home card, no counts in `/batch`, overview or the console claim reply.
 - SPA `Cache` holds `/id-checks*` responses in memory only (never the `localStorage` theme cache); `sw.js` never caches them.
 
@@ -367,7 +395,8 @@ row per `leader_name` group with name, entry count and last date (`fmtDay`), and
   seed table.
 - **Tests:** the rename sweep; `id-check.service.test.ts` (tick-only access incl. admin not ticked = 404 and admin ticked
   = full read; author-only edit; delete rights; `finished` only false to true, and an unfinished check leaves `lastCheckOn` unchanged but still feeds "Last time"; deleting a leader (and `deleteAll`) keeps the entries as archived with their name, the ticks go, the admin list shows no text, delete-forever and re-attach work; More shows ID Checks to oversight and admin (admin unticked included) and to no other role; tick target must be oversight/admin; module off = 404; upsert idempotent);
-  the rhythm test (7.6); route registration/401 tests pick up `/id-checks` automatically; module-completeness fixtures.
+  the rhythm test (7.6); the export (decision M: the text and xlsx row builders cover finished, in-progress and note
+  entries and a retired question; an unticked caller gets 404 so no file); route registration/401 tests pick up `/id-checks` automatically; module-completeness fixtures.
 
 ## 8. Release outline
 
