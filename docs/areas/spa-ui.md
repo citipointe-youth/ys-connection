@@ -39,7 +39,7 @@ House rules: `docs/areas/spa-rules.md`.
 
 **Gendered tile labels** — `_loginGender(u)` (quad→quad gender; grade→username `…g`/`…b`) + `_gsfx(gender)` (" Girls"/" Boys") append the gender to grade/quad tiles whose numbers are gender-specific (e.g. "Grade 11 Boys").
 
-**Shared display helpers** (defined near `quadChip`): `termRow(...)` renders "This term … · Last term …" (student search, My Students, at-risk); `isRising(s)` / `_hasAttended(s)` / `attendQual(s)` classify students; `fmtPhone`/`callPhone`/`phoneLink` format numbers (space after the 4th & 7th digit) and tap-to-call. **`callPhone` (2026-07-03)** shows a Call / Message / Cancel action sheet via the shared `modal()` — iOS's native `tel:` confirmation can't be extended with a "Message" option, so this replaced the old bare `confirm('Call
+**Shared display helpers** (defined near `quadChip`): `termRow(...)` renders "This term … · Last term …" (student search, My Students, at-risk); `isRising(s)` / `_hasAttended(s)` / `attendQual(s)` classify students; `fmtPhone`/`callPhone`/`phoneLink` format numbers (space after the 4th & 7th digit) and tap-to-call. **`callPhone` (2026-07-03)** shows a Call / Message / Cancel action sheet via the shared `modal()` — iOS's native `tel:` confirmation can't be extended with a "Message" option, so this replaced the old bare `confirm()` call prompt.
 
 ### Icon system
 

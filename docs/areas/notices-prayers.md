@@ -7,4 +7,4 @@ The old push feature was removed 2026-07-11 (archived to `../Archive/push-notifi
 ### Prayers, Simple logins, All cars
 
 - **Prayers** can be turned off (Youth Setup → Modules; turning it on needs a reload). Prayer text is plaintext at rest (Security notes).
-- **Simple logins:** see Roles. **All cars** (Bus): a collapsed read-only section under Trip logging, suburb + name + grade only, `GET /bus/run/cars`, polled only while open.
+- **Simple logins:** see Roles. **All cars** (Bus): a collapsed read-only section under the My car tab, suburb + name + grade only, `GET /bus/run/cars`, polled only while open.

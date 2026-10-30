@@ -1,5 +1,7 @@
 # Bus Ministry
 
+
+Naming: the Bus tab's UI label is **My car** (internal id `mycar`); "Trip logging" below and in code comments (`BUS-1`) means that same tab.
 Drop-home car runs after the service night. Spec: `docs/superpowers/specs/2026-10-05-bus-ministry-design.md`; plans `…-bus-ministry-r1-core.md`, `…-bus-ministry-r2-r3-google-analysis.md`; past nights `docs/superpowers/specs/2026-10-09-bus-past-history.md`.
 - **Visible to every login since 2026-10-09** (owner decision; `visibility`/`regionCode` settings removed, address search always `au`). `ctxOf` rejects a `?now=` >36 h from the server clock. First real use Fri 2026-10-09.
 

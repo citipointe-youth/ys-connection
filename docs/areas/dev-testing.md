@@ -7,7 +7,7 @@ npm install
 npm run dev          # backend + frontend on http://localhost:4300 (tsx watch)
 npm run start        # same, no watch
 npm run typecheck    # tsc --noEmit (strict)
-npm run test         # vitest (406 tests as of 2026-07-30; check `npx vitest run` output for the current count)
+npm run test         # vitest; the count changes, see `npm test` output
 ```
 
 Default port: **4300**. Set `PORT=xxxx` to override.
