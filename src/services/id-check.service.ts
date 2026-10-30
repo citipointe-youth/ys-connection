@@ -1,6 +1,6 @@
 // ID Checks (spec 2026-10-30 §7.4-7.7a). Tick-only: a leader that is not ticked for the caller, missing or inactive
-// answers 404 the same way, so the API never confirms who has records. Notes never go to a log: no console.*, no
-// errorLog, and validation issues are rewritten so they never carry a submitted value.
+// answers 404 the same way, so the API never confirms who has records. Notes never go to any log (a privacy test pins
+// this file), and validation issues are rewritten so they never carry a submitted value.
 import { z } from 'zod';
 import { assertCan, can, canSeeIdChecks, isIdCheckTickTarget } from './access-control';
 import { dueOn, statusOf, sortRows, type IdCheckStatus } from './id-check-rhythm';

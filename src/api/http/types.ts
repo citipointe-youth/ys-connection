@@ -18,7 +18,7 @@ export class RawResponse {
 }
 
 interface RouteBase {
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   // If true, this route stays reachable for an actor with mustChangePassword set —
   // everything else 403s (MUST_CHANGE_PASSWORD) until the password is changed.

@@ -5,6 +5,7 @@ import { makeStudentController } from '../controllers/student.controller';
 import { makeLeaderController } from '../controllers/leader.controller';
 import { makePrayerController } from '../controllers/prayer.controller';
 import { makeNoticeController } from '../controllers/notice.controller';
+import { makeIdCheckController } from '../controllers/id-check.controller';
 import { makeNewYouthController } from '../controllers/new-youth.controller';
 import { makeConnectionController } from '../controllers/connection.controller';
 import { makeFollowupController } from '../controllers/followup.controller';
@@ -30,6 +31,7 @@ export function buildRoutes(services: Services): Route[] {
   const leader = makeLeaderController({ leader: services.leader });
   const prayer = makePrayerController({ prayer: services.prayer });
   const notice = makeNoticeController({ notice: services.notice });
+  const idCheck = makeIdCheckController({ idCheck: services.idCheck });
   const newYouth = makeNewYouthController({ newYouth: services.newYouth });
   const connection = makeConnectionController({ connection: services.connection });
   const followup = makeFollowupController({ followup: services.followup });
@@ -123,6 +125,18 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/notices/push',         auth: true, handler: (r) => notice.subscribe(r) },
     { method: 'POST',   path: '/notices/push/off',     auth: true, handler: (r) => notice.unsubscribe(r) },
     { method: 'DELETE', path: '/notices/:id',          auth: true, handler: (r) => notice.remove(r) },
+
+    // ----- ID Checks (spec 2026-10-30 §7.5; tick-only, network-only in sw.js) -----
+    // archived/delete and archived/attach are fixed paths, registered before any :id route.
+    { method: 'GET',    path: '/id-checks',                  auth: true, handler: (r) => idCheck.list(r) },
+    { method: 'GET',    path: '/id-checks/access',           auth: true, handler: (r) => idCheck.grid(r) },
+    { method: 'PUT',    path: '/id-checks/access',           auth: true, handler: (r) => idCheck.setAccess(r) },
+    { method: 'GET',    path: '/id-checks/archived',         auth: true, handler: (r) => idCheck.archived(r) },
+    { method: 'POST',   path: '/id-checks/archived/delete',  auth: true, handler: (r) => idCheck.archivedDelete(r) },
+    { method: 'POST',   path: '/id-checks/archived/attach',  auth: true, handler: (r) => idCheck.archivedAttach(r) },
+    { method: 'GET',    path: '/id-checks/leaders/:id',      auth: true, handler: (r) => idCheck.leader(r) },
+    { method: 'PUT',    path: '/id-checks/entries/:id',      auth: true, handler: (r) => idCheck.upsert(r) },
+    { method: 'DELETE', path: '/id-checks/entries/:id',      auth: true, handler: (r) => idCheck.remove(r) },
 
     // ----- Connections -----
     { method: 'GET',    path: '/connections',                          auth: true, handler: (r) => connection.listAll(r) },

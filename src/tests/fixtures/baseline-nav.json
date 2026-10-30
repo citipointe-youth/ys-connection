@@ -845,6 +845,7 @@
   "DELETE /bus/riders/:id/addresses/:addressId",
   "DELETE /bus/run/own-car",
   "DELETE /connections/:studentId/:leaderId",
+  "DELETE /id-checks/entries/:id",
   "DELETE /import/history",
   "DELETE /import/history/:id",
   "DELETE /leaders/:id",
@@ -885,6 +886,10 @@
   "GET /connections/leader/:leaderId/followup",
   "GET /connections/leader/:leaderId/summary",
   "GET /connections/student/:studentId",
+  "GET /id-checks",
+  "GET /id-checks/access",
+  "GET /id-checks/archived",
+  "GET /id-checks/leaders/:id",
   "GET /import/history",
   "GET /leaders",
   "GET /leaders/:id",
@@ -966,6 +971,8 @@
   "POST /bus/vehicles",
   "POST /connections",
   "POST /connections/allocations/import",
+  "POST /id-checks/archived/attach",
+  "POST /id-checks/archived/delete",
   "POST /import/csv",
   "POST /import/group-csv",
   "POST /intake/new-youth",
@@ -991,7 +998,9 @@
   "POST /sync/leaders",
   "POST /sync/push/:kind",
   "POST /sync/reconcile/latest",
-  "POST /sync/result"
+  "POST /sync/result",
+  "PUT /id-checks/access",
+  "PUT /id-checks/entries/:id"
  ],
  "BL3": {
   "connectionAudit": true,

@@ -99,7 +99,7 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
     if (!origin || env.CORS_ORIGINS.includes(origin) || env.CORS_ORIGINS.includes('*')) {
       res.setHeader('Access-Control-Allow-Origin', origin ?? '*');
     }
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
@@ -119,7 +119,7 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
   app.set('trust proxy', 1);
 
   for (const route of routes) {
-    const method = route.method.toLowerCase() as 'get' | 'post' | 'patch' | 'delete';
+    const method = route.method.toLowerCase() as 'get' | 'post' | 'put' | 'patch' | 'delete';
     app[method](route.path, async (req: Request, res: Response) => {
       // API + export responses can carry personal/medical-adjacent data — never let a browser
       // or proxy cache them. Static assets are served by express.static above and stay cacheable.

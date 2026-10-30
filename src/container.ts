@@ -20,7 +20,7 @@ import {
   InMemoryConnectionAuditRepository,
   InMemoryBusRepository,
   InMemoryLinkRepository,
-  InMemoryErrorLogRepository, InMemoryUnsentRepository,
+  InMemoryErrorLogRepository, InMemoryUnsentRepository, InMemoryIdCheckRepository,
 } from './repositories/in-memory';
 import {
   SupabaseUserRepository,
@@ -41,7 +41,7 @@ import {
   SupabaseConnectionAuditRepository,
   SupabaseBusRepository,
   SupabaseLinkRepository,
-  SupabaseErrorLogRepository, SupabaseUnsentRepository,
+  SupabaseErrorLogRepository, SupabaseUnsentRepository, SupabaseIdCheckRepository,
   getSqlClient,
 } from './repositories/supabase/index';
 
@@ -63,6 +63,7 @@ import type {
   IAuditRepository,
   IConnectionAuditRepository,
   IBusRepository,
+  IIdCheckRepository,
 } from './repositories/interfaces';
 import type { ILinkRepository } from './repositories/interfaces/link.repository';
 import type { IErrorLogRepository } from './repositories/interfaces/error-log.repository';
@@ -73,6 +74,7 @@ import { makeDnc } from './services/dnc';
 import { makeLeaderService, type LeaderService } from './services/leader.service';
 import { makePrayerService, type PrayerService } from './services/prayer.service';
 import { makeNoticeService, type NoticeService } from './services/notice.service';
+import { makeIdCheckService, type IdCheckService } from './services/id-check.service';
 import { makeConnectionService, type ConnectionService } from './services/connection.service';
 import { makeFollowupService, type FollowupService } from './services/followup.service';
 import { makeOverviewService, type OverviewService } from './services/overview.service';
@@ -123,6 +125,7 @@ export interface Repositories {
   bus: IBusRepository;
   link: ILinkRepository;
   errorLog: IErrorLogRepository;
+  idChecks: IIdCheckRepository;
 }
 
 export interface Services {
@@ -131,6 +134,8 @@ export interface Services {
   leader: LeaderService;
   prayer: PrayerService;
   notice: NoticeService;
+  /** ID Checks (spec 2026-10-30): tick-only, notes encrypted at rest; nothing else reads its tables. */
+  idCheck: IdCheckService;
   connection: ConnectionService;
   followup: FollowupService;
   overview: OverviewService;
@@ -223,6 +228,10 @@ export async function buildContainer(): Promise<Container> {
   const errorLogRepo: IErrorLogRepository = useSupabase ? new SupabaseErrorLogRepository(sql) : new InMemoryErrorLogRepository();
   const reconcileRuns: IReconcileRunRepository = useSupabase ? new SupabaseReconcileRunRepository(sql) : new InMemoryReconcileRunRepository();
   const intakeRepo: ILinkIntakeRepository = useSupabase ? new SupabaseLinkIntakeRepository(sql) : new InMemoryLinkIntakeRepository();
+  // Memory has no FK: an entry whose leader is gone reads as archived (Postgres: ON DELETE SET NULL).
+  const idChecks: IIdCheckRepository = useSupabase
+    ? new SupabaseIdCheckRepository(sql)
+    : new InMemoryIdCheckRepository(async (id) => !!(await leaders.findById(id)));
 
   // Home/Trends fan out to several endpoints in parallel that each independently
   // re-fetch the same full tables (e.g. studentRepo.findAll() runs 4x for one Home
@@ -247,7 +256,7 @@ export async function buildContainer(): Promise<Container> {
     users, students, leaders, prayers, notices, connections,
     serviceSessions, serviceAttendance,
     lifegroups, lifegroupWeeks, lifegroupAttendance,
-    imports, settings, audit, connectionAudits, bus, link, errorLog: errorLogRepo,
+    imports, settings, audit, connectionAudits, bus, link, errorLog: errorLogRepo, idChecks,
   };
 
   // Init all repos
@@ -255,7 +264,7 @@ export async function buildContainer(): Promise<Container> {
     users.init(), students.init(), leaders.init(), prayers.init(), notices.init(), noticePush.init(), connections.init(),
     serviceSessions.init(), serviceAttendance.init(),
     lifegroups.init(), lifegroupWeeks.init(), lifegroupAttendance.init(),
-    imports.init(), settings.init(), audit.init(), connectionAudits.init(), bus.init(),
+    imports.init(), settings.init(), audit.init(), connectionAudits.init(), bus.init(), idChecks.init(),
   ]);
 
   // ----- Services -----
@@ -296,6 +305,7 @@ export async function buildContainer(): Promise<Container> {
   const errorLog = makeErrorLogService({ repo: errorLogRepo, link, settings, auditFeed: () => connectionAudit.checkFeed() });
   const connectionAudit = makeConnectionAuditService(connectionAudits, settings, { link, errorLog,
     consentRows: () => intakeRepo.rows('consent') }); // consent audit B: get() reads a failed read as [] (link.service lets it throw)
+  const idCheck = makeIdCheckService({ repo: idChecks, leaders, users, connections, students, settings });
   const notice = makeNoticeService(notices, settings, undefined, { subs: noticePush, users, errorLog });
   // T10: failed or unconfirmed New person sends are kept (encrypted) for the admin to resend.
   const unsent = useSupabase ? new SupabaseUnsentRepository(sql) : new InMemoryUnsentRepository();
@@ -337,7 +347,7 @@ export async function buildContainer(): Promise<Container> {
   }, 30_000);
 
   const services: Services = {
-    auth, student, leader, prayer, notice, connection, followup, overview, atRisk, trends, lifegroupStats,
+    auth, student, leader, prayer, notice, idCheck, connection, followup, overview, atRisk, trends, lifegroupStats,
     importService, settings: settingsSvc, account, admin, connectionAudit,
     bus: busSvc,
     newYouth,

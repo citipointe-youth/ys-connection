@@ -94,8 +94,23 @@ export async function seedDemoData(repos: Repositories, password = randomBytes(1
     { id: generateId(), fullName: 'David Kim', gender: 'male', grades: [10, 11], active: true, createdByGrade: 10, smsTemplate: null, createdAt: now, updatedAt: now },
     { id: generateId(), fullName: 'Natasha Brown', gender: 'female', grades: [12], active: true, createdByGrade: 12, smsTemplate: null, createdAt: now, updatedAt: now },
     { id: generateId(), fullName: 'Chris Wilson', gender: 'male', grades: [12], active: true, createdByGrade: 12, smsTemplate: null, createdAt: now, updatedAt: now },
+    { id: generateId(), fullName: 'Sample Dummyton', gender: 'male', grades: [8], active: true, createdByGrade: 8, smsTemplate: null, createdAt: now, updatedAt: now },
   ];
   for (const l of leaders) await repos.leaders.save(l);
+
+  // ID Checks demo (module off until Setup turns it on): oversight ticked for two leaders, one shared with oversight2,
+  // and one finished fictional check for Sample Dummyton.
+  const byName = (n: string) => leaders.find((l) => l.fullName === n)!;
+  const ov = users.find((u) => u.email === 'oversight')!, ov2 = users.find((u) => u.email === 'oversight2')!;
+  const sample = byName('Sample Dummyton');
+  await repos.idChecks.setTicks(ov.id, [sample.id, byName('James Thompson').id], true);
+  await repos.idChecks.setTicks(ov2.id, [sample.id], true);
+  await repos.idChecks.upsert({
+    id: generateId(), leaderId: sample.id, leaderName: sample.fullName, kind: 'check', heldOn: now.slice(0, 10), finished: true,
+    authorId: ov.id, authorName: ov.displayName, createdAt: now, updatedAt: now,
+    content: { answers: { faith01: { asked: true, note: 'Reading a psalm most mornings.' }, general01: { asked: true, note: 'Plays touch football.' } },
+      nextTime: 'Ask how the new job is going.' },
+  });
 
   // Demo students
   const studentData = [
