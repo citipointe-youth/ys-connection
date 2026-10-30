@@ -1001,6 +1001,7 @@
   "newYouthForms": "on",
   "prayers": true,
   "notices": "off",
+  "idChecks": "off",
   "checkin": "admin",
   "lifegroupReport": "admin",
   "flows": "admin",

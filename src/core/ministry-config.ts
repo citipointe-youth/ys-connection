@@ -35,6 +35,8 @@ export type NewYouthMode = 'off' | 'admin' | 'on';
 const MODE = z.enum(['off', 'admin', 'on']);
 const unShadow = (v: unknown) => (v === 'shadow' ? 'admin' : v);
 const moduleMode = z.preprocess(unShadow, MODE);
+// A real calendar day, YYYY-MM-DD (2026-02-30 and 2026-13-01 both fail).
+const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((v) => { const t = Date.parse(`${v}T00:00:00Z`); return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v; },'must be a real date, YYYY-MM-DD');
 const uuidOrEmpty = z.union([z.literal(''), z.string().uuid()]);
 
 /** One flow's stored hidden-step value as a list: undefined for none saved ('' or missing), 'none' = [], an old step id = [id]. */
@@ -62,6 +64,8 @@ const ModulesSchema = z.object({
   prayers: z.boolean().default(true),
   // Notices (2026-10-15): admin/oversight messages to the four quad logins. Off by default; off = every /notices route answers 404.
   notices: z.enum(['off', 'on']).default('off'),
+  // ID Checks (2026-10-30): oversight's leader ID check records. A plain Off / On switch; off = every /id-checks route answers 404.
+  idChecks: z.enum(['off', 'on']).default('off'),
   // T10 (2026-10-12): the Elvanto link screens, each off / admin (admin only) / on. Missing = the newYouthForms
   // value, so a config stored before the split keeps behaving exactly as it did.
   checkin: moduleMode.optional(),
@@ -231,6 +235,14 @@ export const MinistryConfigSchema = z.object({
       options: z.record(z.string().max(40), z.string().max(64)).default({}), // key -> option id (Check forms)
       checkedAt: z.string().max(40).default(''),
       busConsentFormId: uuidOrEmpty.default(''), // bus consent form (spec 2026-10-22 bus consent)
+    })
+    .default({}),
+
+  // ID Checks rhythm (spec 2026-10-30 section 7.3). cycleStart '' = unset, else a real YYYY-MM-DD day. Not sensitive.
+  idChecks: z
+    .object({
+      cycleStart: z.union([z.literal(''), ymd]).default(''),
+      intervalMonths: z.number().int().min(1).max(12).default(6),
     })
     .default({}),
 });

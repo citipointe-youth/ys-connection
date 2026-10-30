@@ -12,6 +12,7 @@ export type ModuleNode = { key: string; label: string; parent?: string; needsLin
 export const MODULE_TREE: readonly ModuleNode[] = [
   { key: 'prayers', label: 'Prayer' },
   { key: 'notices', label: 'Notices' },
+  { key: 'idChecks', label: 'ID Checks' },
   { key: 'digest', label: 'Digest email' },
   { key: 'busMinistry', label: 'Bus' },
   { key: 'busConsentForm', label: 'Public consent form', parent: 'busMinistry', needsLink: true },

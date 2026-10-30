@@ -10,7 +10,8 @@ import type { Actor } from '../core/entities/user';
 import LIVE_MODULES from './fixtures/live-modules.json';
 
 const NEW_KEYS = { liveLink: true, digest: true, camp: true, busConsentForm: true };
-const LIVE = { ...LIVE_MODULES, ...NEW_KEYS } as any; // live, as it reads after the migration
+const ID_CHECKS_OFF = { idChecks: 'off' }; // ID Checks (2026-10-30): a new Off / On module, off by default
+const LIVE = { ...LIVE_MODULES, ...NEW_KEYS, ...ID_CHECKS_OFF } as any; // live, as it reads after the migration
 const ALL_ON = { ...LIVE, notices: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'on' };
 const mods = (m: Record<string, unknown>) => MinistryConfigSchema.parse({ modules: m }).modules;
 const RAW = MinistryConfigSchema.shape.modules.removeDefault().innerType(); // the schema before resolveModules
@@ -18,12 +19,12 @@ const RAW = MinistryConfigSchema.shape.modules.removeDefault().innerType(); // t
 describe('MC1: defaults', () => {
   it('every old key keeps its schema default; the four new keys default to true', () => {
     expect(RAW.parse({})).toEqual({ connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', busMinistry: false, newYouthForms: 'off',
-      prayers: true, notices: 'off', intakeAdmin: 'off', flowHiddenStep: {}, ...NEW_KEYS });
+      prayers: true, notices: 'off', intakeAdmin: 'off', flowHiddenStep: {}, ...NEW_KEYS, ...ID_CHECKS_OFF });
   });
   it('parse({}) resolves: the link screens follow New person (off), so Connection Audit and Public consent form (Bus off) read off', () => {
     expect(MinistryConfigSchema.parse({}).modules).toEqual({ connectionAudit: false, lifegroups: true, exportGuides: 'elvanto', busMinistry: false,
       newYouthForms: 'off', prayers: true, notices: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', intakeAdmin: 'off', flowHiddenStep: {},
-      liveLink: true, digest: true, camp: true, busConsentForm: false });
+      liveLink: true, digest: true, camp: true, busConsentForm: false, ...ID_CHECKS_OFF });
   });
 });
 
