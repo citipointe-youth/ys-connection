@@ -26,7 +26,7 @@ const FNS = ['esc', 'progBar', '_lkRcHtml', '_lkTime', '_lkDay', 'fmtDay', '_lkS
   // nav/save fix round 2026-10-16: C0 still-here guard (C-B1 _ikAnswersSave, C-B4 _ikSaveAllOpen)
   '_navSnap', '_navSame', '_here', '_still',
   // consent hub landing (2026-10-23)
-  '_ikMisRow', '_hubPage', '_hubBodyHtml', '_hubSaveTag', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays', '_hubM', '_hubRows', '_hubCheckedAt', '_hubLoad', '_hubSnapApply', '_hubFamRow', '_hubChip', '_hubRefresh', '_hubQ', '_hubToggle',
+  '_ikMisRow', '_hubPage', '_hubBodyHtml', '_hubSaveTag', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays', '_hubM', '_hubRows', '_hubNewest', '_hubCheckedAt', '_hubLoad', '_hubSnapApply', '_hubFamRow', '_hubChip', '_hubRefresh', '_hubQ', '_hubToggle',
   '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_hubNextHtml', '_hubMoreHtml', '_hubKidMore', '_hubUnlinkIdx', '_hubStripHtml'];
 const HTML = loadIndexHtml();
@@ -638,6 +638,23 @@ describe('Unlinked consent forms (L6)', () => {
 });
 
 // Task 11 fix round 1: the helpers the hub still uses, tested directly (their old cases went through the deleted Tidy up screens).
+describe('consent hub Checked label (Y2)', () => {
+  const setup = (consentTakenAt: string, fresh: string) => {
+    const e = makeEnv(); const I = e.fns._ik(); const mins = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+    I.hub = { lists: { 'consent|2026-10-09': { takenAt: mins(10_000) }, 'consent|2026-11-06': { takenAt: consentTakenAt }, 'intake|2026-10-30': { takenAt: fresh } } };
+    for (const k of ['unlinked', 'mismatches', 'forms']) e.fns._ikLk(k).res = { takenAt: fresh };
+    return e.fns;
+  };
+  it('older stored dates that Refresh no longer reads do not hold the label back', () => {
+    const fresh = new Date(Date.now() - 60_000).toISOString();
+    expect(setup(fresh, fresh)._hubCheckedAt()).toBe(fresh);
+  });
+  it('a stale newest consent list still pulls the label back', () => {
+    const fresh = new Date(Date.now() - 60_000).toISOString(), stale = new Date(Date.now() - 3 * 3600_000).toISOString();
+    expect(setup(stale, fresh)._hubCheckedAt()).toBe(stale);
+  });
+});
+
 describe('consent hub: mismatch rows and lookups, called directly', () => {
   const mis = { subId: P(3), personId: P(4), name: 'Ava Nguyen', submitted: '2026-10-09', diffs: ['consent date', 'opt-outs'],
     form: { consentDate: '09/10/2026', total: '', optOuts: ['Contact with my child'] }, profile: { consentDate: '', total: '', optOuts: [] } };

@@ -12506,7 +12506,7 @@ function _lkAdmLogListHtml() {
 function _lkAdmLogHtml() {
   const A = LINK.adm, today = _lkToday();
   const ev = [['', 'All events']].concat(Object.keys(_lkEvents()).map((k) => [k, _lkEvents()[k]]));
-  return `<div class="lk-sec">Activity ${helpTip("Every check-in, report and flow step sent from the app, newest first, with who did it.")}</div>
+  return `<p class="lk-sub">Every check-in, report and flow step sent from the app, newest first, with who did it.</p>
     <div class="lk-filters wrap"><input type="date" class="fi" value="${esc(A.from || _lkAddDays(today, -6))}" onchange="LINK.adm.from=this.value">
       <input type="date" class="fi" value="${esc(A.to || today)}" onchange="LINK.adm.to=this.value"></div>
     <div class="lk-filters"><input class="fi" placeholder="Login" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(A.login)}" oninput="LINK.adm.login=this.value">
@@ -12518,7 +12518,13 @@ function _lkAdmLogHtml() {
 function _lkAdminHtml() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
   return `<div class="card" id="lk-adm-status">${_lkAdmStatusHtml()}</div><div class="card" id="lk-adm-match">${_lkAdmMatchHtml()}</div>
-    <div class="card" id="lk-adm-log">${_lkAdmLogHtml()}</div>`;
+    <details class="card lk-mem" id="lk-adm-log"${LINK.adm.logOpen ? ' open' : ''} ontoggle="_lkAdmLogToggle(this.open)"><summary class="lk-sec">Activity</summary>${_lkAdmLogHtml()}</details>`;
+}
+// Y1: Activity loads when first opened. ontoggle also fires when a repaint inserts an open <details>: only a real change loads (never a retry loop).
+function _lkAdmLogToggle(open) {
+  const A = LINK.adm; if (!!A.logOpen === !!open) return;
+  A.logOpen = !!open;
+  if (open && !A.log && !A.lErr) _lkAdmLoadLog();
 }
 // L7 (LINK_REV 15): Check again on an unclear save. The console re-runs that save's own check in Elvanto (read only, never a
 // write) and the line says Saved / Not saved / Still unclear. Keyed by the unclear row's id; shown only while the console takes it.
@@ -12649,8 +12655,9 @@ async function _lkAdmLoadLog() {
 }
 async function renderLinkAdmin() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
+  LINK.adm.logOpen = false; // Y1: LINK.adm survives navigation; Activity is collapsed every time the page opens
   setApp(shell(`<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>${_adminTabsHtml('link')}<div id="lk-top">${_lkTop([])}</div>${_lkAdminHtml()}`));
-  _lkAdmLoadActs(); _lkAdmLoadRoster(); if (!LINK.adm.log) _lkAdmLoadLog();
+  _lkAdmLoadActs(); _lkAdmLoadRoster();
   _attnLoad();
 }
 // ── T4 Intake (spec 2026-10-13-intake-consent-app-spec.md §7, §9, §10, §11): youth intakes + parent consents, the
@@ -13709,8 +13716,10 @@ async function _hubLoad(quiet) {
   if (!quiet) _usLoad().then(() => { if (_ik() === I) _ikDraw(); });
   _ikDraw(); _ikSchedule();
 }
+// The newest stored list date for a mode ('intake' or 'consent'): the one Refresh re-reads, and so the one the Checked label counts.
+function _hubNewest(L, m) { return Object.keys(L || {}).filter((k) => k.startsWith(m + '|')).sort().pop(); }
 function _hubCheckedAt() {
-  const h = _ik().hub || {}, ts = Object.values(h.lists || {}).map((l) => l && l.takenAt)
+  const h = _ik().hub || {}, ts = ['intake', 'consent'].map((m) => { const l = (h.lists || {})[_hubNewest(h.lists, m)]; return l && l.takenAt; })
     .concat(['unlinked', 'mismatches', 'forms'].map((k) => { const x = _ikLk(k); return x.res && x.res.takenAt; })).filter(Boolean).map(Date.parse);
   return ts.length ? new Date(Math.min(...ts)).toISOString() : null;
 }
@@ -13719,7 +13728,7 @@ async function _hubRefresh() {
   const I = _ik();
   if (I.hubAsk) return;
   I.hubAsk = Date.now(); _ikDraw();
-  const h = I.hub || {}, newest = (m) => Object.keys(h.lists || {}).filter((k) => k.startsWith(m + '|')).map((k) => k.slice(m.length + 1)).sort().pop();
+  const h = I.hub || {}, newest = (m) => { const k = _hubNewest(h.lists, m); return k && k.slice(m.length + 1); };
   const asks = [API.post('/link/consents/refresh', {}).catch(() => null)];
   for (const m of ['intake', 'consent']) { const d = newest(m); if (d) asks.push(API.post('/link/intake/refresh', { mode: m, date: d }).catch(() => null)); }
   await Promise.all(asks);
