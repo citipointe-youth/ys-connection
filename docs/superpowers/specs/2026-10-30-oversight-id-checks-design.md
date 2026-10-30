@@ -238,6 +238,11 @@ cascade away. The archive list groups by `leader_name` (two deleted leaders with
 admin cannot tell them apart and does not need to). The memory repo has no FK, so it treats an entry whose `leader_id`
 is not found in the leaders repo as archived (same result).
 
+**Deactivated leaders (orchestrator ruling, 2026-10-30, known limit):** a leader who is deactivated (not deleted) keeps
+`leader_id`, so the entries are not archived; the service treats an inactive leader as not found everywhere (list, leader
+route, grid rows, re-attach target). Their ID-check history is hidden from everyone, ticked accounts included, until the
+leader is reactivated, when it reappears intact. No extra UI.
+
 **Decision J, why a column:** `finished` is a plain column, not a field in the encrypted `content`, because the due-date
 query (latest finished check per leader) must run in SQL without decrypting every row, and `finished` is not sensitive.
 Rule (server-enforced): `finished` only moves false to true. An upsert that sends `false` for an already finished row
