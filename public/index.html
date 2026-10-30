@@ -2228,7 +2228,7 @@ function _icSchedule(ed = _IC.ed) { if (!ed) return; clearTimeout(ed.timer); ed.
 function _icPaint(ed) { const el = _IC.ed === ed && document.getElementById('ic-status'); if (el) el.textContent = _icStatusText(ed); }
 // Send the newest state if the server does not have it yet. Autosave never finishes a check. true = the server has it.
 async function _icFlush(ed = _IC.ed, keep) {
-  if (!ed) return true;
+  if (!ed || ed.done) return true; // a finished-here check never gets an autosave after its Finish
   clearTimeout(ed.timer); ed.timer = null;
   if (!S.user || S.user.id !== ed.uid) return false; // signed out, or another login: never send under its token
   while (ed.inflight) await ed.inflight.catch(() => {});
@@ -2246,7 +2246,7 @@ async function _icFlush(ed = _IC.ed, keep) {
     if (e.status === 401) return false; // the session handler shows sign-in; the draft stays on this phone
     const again = !e.status || e.status >= 500 || e.status === 408 || e.status === 429;
     ed.status = again ? 'retry' : 'error'; ed.errMsg = e.message;
-    if (again && !ed.done) { const ms = _IC_BACKOFF[ed.retryN++] || 30000; ed.timer = setTimeout(() => _icFlush(ed), ms); }
+    if (again && !ed.done && !ed.noRetry) { const ms = _IC_BACKOFF[ed.retryN++] || 30000; ed.timer = setTimeout(() => _icFlush(ed), ms); }
     _icPaint(ed);
     return false;
   } finally { if (ed.inflight === p) ed.inflight = null; }
@@ -2293,7 +2293,7 @@ async function _icResendOrphans(leaderId, entries) {
     if (have.has(id) || (_IC.ed && _IC.ed.id === id)) continue;
     const d = _icDraftGet(pre + id);
     if (!d || d.leaderId !== leaderId) continue;
-    if (await _icFlush(_icEd({ id, leaderId, kind: d.kind, heldOn: d.heldOn, content: d.content, ver: 1, done: true }))) n++;
+    if (await _icFlush(_icEd({ id, leaderId, kind: d.kind, heldOn: d.heldOn, content: d.content, ver: 1, noRetry: true }))) n++;
   }
   return n;
 }

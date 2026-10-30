@@ -117,6 +117,7 @@ describe('Finish check', () => {
     const t = setup();
     t.f._icNew('check');
     t.f._icNote('faith01', 'note');
+    const ed = t.f._IC.ed;
     const done = t.f._icFinish();
     await vi.advanceTimersByTimeAsync(0);
     expect(t.puts.map((p) => p.body.finished)).toEqual([false]);
@@ -130,6 +131,11 @@ describe('Finish check', () => {
     await vi.advanceTimersByTimeAsync(120000);
     expect(t.puts.slice(1).every((p) => p.body.finished === true)).toBe(true);
     expect(t.puts).toHaveLength(2);
+    // even a flush that slips through (a leave-the-app event) sends nothing for a finished-here check
+    ed.ver++;
+    expect(await t.f._icFlush(ed)).toBe(true);
+    expect(t.puts).toHaveLength(2);
+    expect(t.store.get('ysc.ic.u1.e1')).toContain('typed during finish'); // the late text is kept on the phone, not lost
   });
   it('a pending retry is cleared by Finish', async () => {
     const t = setup();
