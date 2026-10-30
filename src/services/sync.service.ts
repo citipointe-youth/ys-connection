@@ -94,11 +94,11 @@ export function makeSyncService(d: SyncDeps) {
   // Rev 19: a Refresh asked in the last 10 min that no newer copy of every kind has answered yet.
   // Rev 21: the open ask also carries askedAt, so the console dedupes each Refresh by its value.
   const SNAP_REV = 19, ASK_AT_REV = 21, SNAP_ASK_MS = 10 * 60_000;
-  const snapAsk = async () => {
+  const snapAsk = async (withAt: boolean) => {
     const { askedAt, taken } = await d.link.consentSnapshotMeta();
     const a = askedAt ? Date.parse(askedAt) : NaN;
     const ask = now().getTime() - a <= SNAP_ASK_MS && (taken.length < CONSENT_LOOKUP_KINDS.length || taken.some((x) => Date.parse(x.takenAt) < a));
-    return { ask, askedAt };
+    return { ask, ...(withAt && ask && askedAt ? { askedAt } : {}) };
   };
   return {
     async claim(body: unknown): Promise<z.infer<typeof ClaimResponse>> {
@@ -179,8 +179,7 @@ export function makeSyncService(d: SyncDeps) {
         // Rev 17: resolved values only (checkin/lifegroupReport/flows already inherit newYouthForms in the config transform).
         modules: { checkin: m.checkin ?? m.newYouthForms, lifegroupReport: m.lifegroupReport ?? m.newYouthForms, flows: m.flows ?? m.newYouthForms, newYouthForms: m.newYouthForms,
           intakeAdmin: m.intakeAdmin, lifegroups: m.lifegroups, connectionAudit: m.connectionAudit },
-        ...(linkRev >= SNAP_REV && hub ? { consentSnap: await snapAsk().then(({ ask, askedAt }) =>
-          ({ ask, ...(linkRev >= ASK_AT_REV && ask && askedAt ? { askedAt } : {}) })) } : {}), // rev 19; rev 21 askedAt
+        ...(linkRev >= SNAP_REV && hub ? { consentSnap: await snapAsk(linkRev >= ASK_AT_REV) } : {}), // rev 19; rev 21 askedAt
       };
     },
 

@@ -788,7 +788,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-nm{font-weight:600;font-size:15px;flex:1;min-width:0}
 .lk-st{font-size:12px;margin-top:2px;font-weight:500}
 .lk-st .ic-s{width:12px;height:12px;vertical-align:-2px}
-.lk-st.wait{color:#b45309}.lk-st.ok{color:#047857}.lk-st.bad{color:#b91c1c}.lk-st.prac{color:var(--ink-mid)}
+.lk-st.wait{color:#92400e}.lk-st.ok{color:#047857}.lk-st.bad{color:#b91c1c}.lk-st.prac{color:var(--ink-mid)}
 .lk-done{margin-top:6px}
 .lk-done summary{list-style:none;cursor:pointer;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;min-height:40px;box-sizing:border-box}
 .lk-done summary::-webkit-details-marker{display:none}
@@ -12144,7 +12144,7 @@ function _lkStepConsents() {
 function _lkStepHtml() {
   const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
   if (!r) return '';
-  const today = _lkToday(), href = _lkTextHref(r);
+  const today = _lkToday(), href = _lkTextHref(r), q4 = (s) => `<div class="lk-alert warn">${icS('info')}<div>${esc(s)}</div></div>`; // Q4: the pick will not reach Elvanto
   if (f.rm) return _lkRemoveHtml(r);
   const text = r.dnc ? dncBanner(r) + (r.mobile ? `<p class="lk-sub">Number (admin only): ${esc(fmtPhone(r.mobile))}</p>` : '')
     : href ? `<a class="btn btn-secondary btn-full lk-mb" href="${esc(href)}">Text ${r.mobileIsParent ? 'Parent' : esc(_lkFirstName(r.name))} · ${esc(fmtPhone(r.mobile))}</a>` : '<p class="lk-sub">No mobile number for this person.</p>';
@@ -12157,13 +12157,12 @@ function _lkStepHtml() {
     const ls = _lkPickList(r), l = _lkPicked(r);
     assign = `<div class="fg"><label class="fl" for="lk-assign">Assigned to</label><select class="fs" id="lk-assign" onchange="LINK.fs.pick=this.value||null;_lkStepDraw()"><option value="">Nobody (Elvanto's usual pick)</option>
       ${ls.map((x) => `<option value="${esc(x.id)}"${l && x.id === l.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
-      <p class="lk-hint">Reassign changes who has this person. Complete gives them the next step.</p>
-      ${l && !l.personId ? '<p class="lk-hint">Not linked to an Elvanto person: Elvanto picks who gets the next step.</p>'
-        : l && !_lkOffers(r, l.personId) ? `<p class="lk-hint">${esc("Elvanto doesn't offer them for the next step: Elvanto will pick who gets it.")}</p>` : ''}</div>`;
+      <p class="lk-hint">Reassign changes who has this person. Complete gives them the next step.</p></div>${!_lkCanComplete(r) ? '' : l && !l.personId ? q4('Not linked to an Elvanto person: Elvanto picks who gets the next step.')
+        : l && !_lkOffers(r, l.personId) ? q4("Elvanto doesn't offer them for the next step. Complete will leave it to Elvanto to pick.") : ''}`;
   } else if (r.personId) {
     // other logins see who has the person; Complete keeps them (the server sets it). No app leader known = Elvanto picks.
     assign = `<p class="lk-sub">Assigned to: ${esc(r.assignedLeaderName || r.assignedTo || 'Nobody')}</p>
-      <p class="lk-hint">${r.currentLeaderId && r.currentLeaderLinked ? 'Complete gives the next step to them.' : _lkSys('Elvanto will pick who gets the next step.')} Ask the admin to change it.</p>`;
+      <p class="lk-hint">${r.currentLeaderId && r.currentLeaderLinked ? 'Complete gives the next step to them if Elvanto offers them.' : _lkSys('Elvanto will pick who gets the next step.')} Ask the admin to change it.</p>`;
   }
   const done = _lkCanComplete(r) ? (_lkFlowKind(r) === 'parent' ? `<p class="lk-sub">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` : '')
     + (_lkNotReceived(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(_lkNotReceivedText(r))}</div></div>` : '') + `<div class="fg"><label class="fl" for="fl-note-2">Note</label><textarea id="fl-note-2" class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
@@ -12302,10 +12301,9 @@ function _lkFlowsStl() {
 }
 async function _lkFlowsReload() {
   if (LINK.fRel) return;
-  const L = LINK;
-  L.fRel = 1; _lkRefreshView();
-  await Promise.all([_lkStatusLoad(), _lkLoadFlows(false)]);
-  L.fRel = 0; _lkFlowsDraw(); _lkRefreshView();
+  LINK.fRel = 1; _lkRefreshView();
+  await Promise.all([_lkStatusLoad(), _lkLoadFlows(false), new Promise((ok) => setTimeout(ok, 500))]); // 500 ms: a reload with nothing new is still seen
+  LINK.fRel = 0; _lkRefreshView();
 }
 function _lkPaintFlows() {
   setApp(shell(`<div class="ph"><h1>Flow steps</h1></div>${_lkFlowsStl()}<div id="lk-top">${_lkTop(_lkFlowTypes())}</div><div id="lk-flist">${_lkFlowsHtml()}</div>`));
@@ -12535,13 +12533,7 @@ function _lkAdmLogHtml() {
 function _lkAdminHtml() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
   return `<div class="card" id="lk-adm-status">${_lkAdmStatusHtml()}</div><div class="card" id="lk-adm-match">${_lkAdmMatchHtml()}</div>
-    <details class="card lk-mem" id="lk-adm-log"${LINK.adm.logOpen ? ' open' : ''} ontoggle="_lkAdmLogToggle(this.open)"><summary class="lk-sec">Activity</summary>${_lkAdmLogHtml()}</details>`;
-}
-// Y1: Activity loads when first opened. ontoggle also fires when a repaint inserts an open <details>: only a real change loads (never a retry loop).
-function _lkAdmLogToggle(open) {
-  const A = LINK.adm; if (!!A.logOpen === !!open) return;
-  A.logOpen = !!open;
-  if (open && !A.log && !A.lErr) _lkAdmLoadLog();
+    <details class="card lk-mem" id="lk-adm-log" ontoggle="if(this.open&&!LINK.adm.log&&!LINK.adm.lErr)_lkAdmLoadLog()"><summary class="lk-sec">Activity</summary>${_lkAdmLogHtml()}</details>`;
 }
 // L7 (LINK_REV 15): Check again on an unclear save. The console re-runs that save's own check in Elvanto (read only, never a
 // write) and the line says Saved / Not saved / Still unclear. Keyed by the unclear row's id; shown only while the console takes it.
@@ -12672,7 +12664,7 @@ async function _lkAdmLoadLog() {
 }
 async function renderLinkAdmin() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
-  LINK.adm.logOpen = false; // Y1: LINK.adm survives navigation; Activity is collapsed every time the page opens
+  LINK.adm.lErr = null; // Y1: LINK.adm survives navigation; Activity opens collapsed, and a failed load is retried on the next open
   setApp(shell(`<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>${_adminTabsHtml('link')}<div id="lk-top">${_lkTop([])}</div>${_lkAdminHtml()}`));
   _lkAdmLoadActs(); _lkAdmLoadRoster();
   _attnLoad();

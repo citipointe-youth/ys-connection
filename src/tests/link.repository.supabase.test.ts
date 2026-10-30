@@ -32,6 +32,9 @@ describe('SupabaseLinkRepository SQL text', () => {
     expect(sw).toMatch(/set status = 'refused', reason = 'too-old'.*where id in \( select id from link_outbox where status = 'pending' and created_at < now\(\) - make_interval\(days => \$\{[^}]+\}\) order by id for update skip locked\)/);
     expect(c).toMatch(/set status = 'unclear', reason = 'lease-lost'.*where id in \( select id from link_outbox where status = 'claimed' and lease_until < now\(\) - make_interval\(secs => \$\{[^}]+\}\) and lease_owner <> \$\{c\.consoleId\} order by id for update skip locked\)/);
   });
+  it('Y7 renew: locks the own live leases in id order with skip locked (no deadlock with applyResults)', () => {
+    expect(flat(method('claim'))).toContain("updated_at = now() where id in (select id from link_outbox where status = 'claimed' and lease_owner = ${c.consoleId} and lease_until >= now() order by id for update skip locked)");
+  });
   it('claim purge: roster after 90 days on updated_at, notes after 30 days on created_at, log after 400 days on at', () => {
     const c = flat(method('claim'));
     expect(c).toMatch(/delete from link_roster where active = false and match in \('none','ignored'\) and updated_at < now\(\) - interval '90 days'/);

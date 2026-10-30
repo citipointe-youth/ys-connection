@@ -17,7 +17,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkPicked', '_lkOffers', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
-  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkRcHtml', '_lkRcDone', '_lkRcType', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmCreate', '_lkAdmLoadRoster', '_lkAdmDraw', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml', 'renderLinkAdmin', '_lkAdmLoadLog', '_lkAdmLoadActs', '_lkAdmLogToggle',
+  '_lkLogExport', '_lkEvents', '_lkVerb', '_lkRcHtml', '_lkRcDone', '_lkRcType', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmCreate', '_lkAdmLoadRoster', '_lkAdmDraw', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml', 'renderLinkAdmin', '_lkAdmLoadLog', '_lkAdmLoadActs',
   '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
   // run 2026-10-15 lane B: DNC, flow filters, bulk Complete, Remove from step, console offline
   '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFfGet',
@@ -1633,7 +1633,7 @@ describe('F3 flow steps', () => {
     expect(sheet).not.toContain('_lkReassign');
     expect(sheet).not.toContain('_lkAssign');
     expect(sheet).toContain('Assigned to: Cody &lt;b&gt;Codeman&lt;/b&gt;');
-    expect(strip(sheet)).toContain('Complete gives the next step to them. Ask the admin to change it.');
+    expect(strip(sheet)).toContain('Complete gives the next step to them if Elvanto offers them. Ask the admin to change it.');
     expect(sheet).toContain('_lkStepSend()');
     expect(sheet).not.toContain('Elvanto will show');
     // Elvanto's own assignee name when no app leader is known; then Elvanto picks the next leader
@@ -1729,6 +1729,16 @@ describe('F3 flow steps', () => {
     expect(strip(h.fns._lkStepHtml())).not.toContain('Not linked to an Elvanto person');
     h.get().LINK.fs.pick = pickOf(h, 'L4');
     expect(strip(h.fns._lkStepHtml())).toContain('Not linked to an Elvanto person: Elvanto picks who gets the next step.');
+  });
+  it('r30 Q4: the not-offered hint is a warning, shown only while Complete is available', () => {
+    const h = admin([boy({ currentLeaderId: 'L1', assignedLeaderId: 'L1' })]);
+    h.get().LINK.fSteps = [{ flowId: F(100), stepId: F(200), offered: [P(99)] }];
+    h.fns._lkOpenStep(F(1));
+    const msg = "Elvanto doesn't offer them for the next step. Complete will leave it to Elvanto to pick.";
+    expect(h.fns._lkStepHtml()).toMatch(/<div class="lk-alert warn"><svg data-ic="info"><.svg><div>Elvanto doesn.{1,5}t offer them/);
+    expect(strip(h.fns._lkStepHtml())).toContain(msg);
+    h.get().LINK.flows[0].dnc = true; // Complete off: nothing to warn about
+    expect(strip(h.fns._lkStepHtml())).not.toContain(msg);
   });
   it('flows reassign: Reassign posts the pick (or null), updates every row of that person in the flow, closes and toasts', async () => {
     const h = admin([boy({ name: 'Sam' }), boy({ rowId: F(11), stepId: F(201), name: 'Sam' })]);
@@ -2138,14 +2148,31 @@ describe('F4.2 admin page', () => {
     const out = h.fns._lkAdminHtml();
     expect(out).toContain('<details class="card lk-mem" id="lk-adm-log"');
     expect(out).not.toMatch(/id="lk-adm-log"[^>]* open/);
-    h.get().LINK.adm.logOpen = true;
-    expect(h.fns._lkAdminHtml()).toMatch(/id="lk-adm-log" open/);
-    await h.fns.renderLinkAdmin(); // LINK.adm survives navigation: the page resets it to closed
-    expect(h.get().LINK.adm.logOpen).toBe(false);
+    await h.fns.renderLinkAdmin();
     expect(seen.some((p) => p.startsWith('/link/admin/log'))).toBe(false);
-    h.fns._lkAdmLogToggle(true);
-    h.fns._lkAdmLogToggle(true); // ontoggle also fires on a repaint: no second load
-    expect(seen.filter((p) => p.startsWith('/link/admin/log'))).toHaveLength(1);
+    // the inline ontoggle: a close loads nothing, the first open loads, an open with the log held (or a held error) does not load again
+    const ontoggle = out.match(/id="lk-adm-log" ontoggle="([^"]*)"/)![1]!;
+    const fire = (open: boolean) => new Function('LINK', '_lkAdmLoadLog', ontoggle).call({ open }, h.get().LINK, h.fns._lkAdmLoadLog);
+    const loads = () => seen.filter((p) => p.startsWith('/link/admin/log')).length;
+    fire(false); expect(loads()).toBe(0);
+    fire(true); await Promise.resolve(); expect(loads()).toBe(1);
+    await new Promise((r) => setTimeout(r, 0));
+    fire(true); expect(loads()).toBe(1);
+  });
+  it('Y1: a failed Activity load does not stick: opening the Admin page clears the error, so the next open loads again', async () => {
+    const seen: string[] = [];
+    const h = makeEnv({ role: 'admin', fresh: (p: string) => { seen.push(p); return Promise.reject(new Error('Network down')); } });
+    h.get().LINK.today = '2026-10-16';
+    await h.fns.renderLinkAdmin();
+    const ontoggle = h.fns._lkAdminHtml().match(/id="lk-adm-log" ontoggle="([^"]*)"/)![1]!;
+    const fire = () => new Function('LINK', '_lkAdmLoadLog', ontoggle).call({ open: true }, h.get().LINK, h.fns._lkAdmLoadLog);
+    fire(); await new Promise((r) => setTimeout(r, 0));
+    expect(h.get().LINK.adm.lErr).toBe('Network down');
+    fire(); expect(seen.filter((p) => p.startsWith('/link/admin/log'))).toHaveLength(1); // still the old error within a visit
+    await h.fns.renderLinkAdmin(); // next visit
+    expect(h.get().LINK.adm.lErr).toBeNull();
+    fire(); await new Promise((r) => setTimeout(r, 0));
+    expect(seen.filter((p) => p.startsWith('/link/admin/log'))).toHaveLength(2);
   });
   it('A4 / X17: the Status card says how to stop all data flow', () => {
     const h = makeEnv({ role: 'admin' });

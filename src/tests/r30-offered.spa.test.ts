@@ -33,21 +33,14 @@ describe('r30: the Assigned to picker follows the step\'s offered (rev 21)', () 
     L.fSteps = steps([]);
     expect(f._lkOffers(ROW, P(70))).toBe(true);
   });
-  it('fix 1: an unoffered pick (not the current one) is still saved by Complete as the app assignment, but sent with no assignTo', () => {
-    L.fSteps = steps([P(71)]);
-    L.fs = { rowId: 'r1', note: '', priv: false, pick: 'L1' };
-    f._lkStepSend();
-    expect('assignTo' in f.PUSHED[0].payload).toBe(false);
-    expect(f.ASSIGNED.map((l: any) => l.id)).toEqual(['L1']);
-  });
-  it('the current leader stays listed when not offered, and Complete then sends no assignTo (Elvanto picks)', () => {
-    L.flows = [{ ...ROW, currentLeaderId: 'L1' }];
+  it.each([['a new pick', null, ['L1']], ['the current leader', 'L1', []]])('fix 1: an unoffered pick (%s) is sent with no assignTo; only a new pick is saved as the app assignment', (_n, cur, saved) => {
+    L.flows = [{ ...ROW, currentLeaderId: cur }];
     L.fSteps = steps([P(71)]);
     expect(ids()).toEqual(['L1', 'L2', 'L3']);
     L.fs = { rowId: 'r1', note: '', priv: false, pick: 'L1' };
     f._lkStepSend();
     expect('assignTo' in f.PUSHED[0].payload).toBe(false);
-    expect(f.ASSIGNED).toEqual([]); // the current pick is never unassigned
+    expect(f.ASSIGNED.map((l: any) => l.id)).toEqual(saved); // the current pick is never unassigned
   });
   it('an offered pick is sent as assignTo', () => {
     L.fSteps = steps([P(71)]);

@@ -1,6 +1,6 @@
 // I7 (R2-G4) Flow steps; consent hub (2026-10-23, Task 11): the tiles are gone, step 0 and Parent Consent step 1 are read-only
 // here with New youth & consent on (_lkHubOwned); the bulk cap of 50 stays.
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete',
@@ -117,7 +117,7 @@ describe('Flow steps: no tiles; step 0 and Parent Consent step 1 are the hub\'s'
 describe('Y5 Flow steps: Updated X ago · Reload (admin only)', () => {
   const NOW = Date.parse('2026-10-30T10:06:00Z');
   const g = loadFns(['_lkFlowsStl', '_lkFlowsReload', '_lkPaintFlows', '_lkRefreshView', '_lkOnPage', '_lkStatusLoad', '_lkLoadFlows', '_laRelTime'], `
-    var ROLE = 'admin', FETCHED = [], HELD = null, DOM = {}, PAINT = '', DRAWS = 0, NOWMS = ${NOW};
+    var ROLE = 'admin', FETCHED = [], HELD = null, DOM = {}, PAINT = '', NOWMS = ${NOW};
     var S = { get user() { return { role: ROLE }; }, page: 'link-flows' };
     var LINK = { status: null, flows: [] };
     var API = { fresh: (u) => { FETCHED.push(u); return Promise.resolve(u === '/link/flows' ? { rows: [], steps: [] } : { mirrors: { flows: { takenAt: '2026-10-30T10:00:00Z' } } }); } };
@@ -125,10 +125,10 @@ describe('Y5 Flow steps: Updated X ago · Reload (admin only)', () => {
     var Date = Object.assign(function () { return new globalThis.Date(...arguments); }, { parse: globalThis.Date.parse, now: () => NOWMS });
     function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
     function _lkTop() { return 'TOP'; } function _lkFlowTypes() { return []; } function _lkFlowsHtml() { return 'LIST'; }
-    function _lkGroup() { return null; } function _lkEsPaint() {} function _lkCiPoll() {} function _lkFlowsDraw() { DRAWS++; }
+    function _lkGroup() { return null; } function _lkEsPaint() {} function _lkCiPoll() {} function _lkFlowsDraw() {}
     function shell(h) { return h; } function setApp(h) { PAINT = h; }
-    function set(o) { if ('role' in o) ROLE = o.role; FETCHED.length = 0; PAINT = ''; DRAWS = 0; DOM = {}; Object.keys(LINK).forEach((k) => delete LINK[k]); }
-    function out() { return { FETCHED, PAINT, DRAWS, DOM }; }
+    function set(o) { if ('role' in o) ROLE = o.role; FETCHED.length = 0; PAINT = ''; DOM = {}; Object.keys(LINK).forEach((k) => delete LINK[k]); }
+    function out() { return { FETCHED, PAINT, DOM }; }
     function dom(id, el) { DOM[id] = el; }
   `, ['_lkFlowsStl', '_lkFlowsReload', '_lkPaintFlows', '_lkRefreshView', 'LINK', 'set', 'out', 'dom']);
   beforeEach(() => g.set({ role: 'admin' }));
@@ -159,17 +159,31 @@ describe('Y5 Flow steps: Updated X ago · Reload (admin only)', () => {
     g._lkRefreshView();
     expect(el.outerHTML).toContain('Updated 6m ago');
   });
-  it('Reload fetches /link/status and /link/flows once each; a second call while busy fetches nothing', async () => {
-    const first = g._lkFlowsReload();
-    expect(g.LINK.fRel).toBe(1);
-    expect(g._lkFlowsStl()).toContain('disabled');
-    expect(g._lkFlowsStl()).toContain('Reloading…');
-    await g._lkFlowsReload();
-    await first;
-    expect(g.out().FETCHED.slice().sort()).toEqual(['/link/flows', '/link/status']);
-    expect(g.LINK.fRel).toBe(0);
-    expect(g.out().DRAWS).toBe(1);
-    expect(g._lkFlowsStl()).toContain('Updated 6m ago');
+  describe('Reload', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+    it('fetches /link/status and /link/flows once each; a second call while busy fetches nothing', async () => {
+      const first = g._lkFlowsReload();
+      expect(g.LINK.fRel).toBe(1);
+      expect(g._lkFlowsStl()).toContain('disabled');
+      expect(g._lkFlowsStl()).toContain('Reloading…');
+      await g._lkFlowsReload();
+      await vi.advanceTimersByTimeAsync(500);
+      await first;
+      expect(g.out().FETCHED.slice().sort()).toEqual(['/link/flows', '/link/status']);
+      expect(g.LINK.fRel).toBe(0);
+      expect(g._lkFlowsStl()).toContain('Updated 6m ago');
+    });
+    it('keeps "Reloading…" for at least 500 ms, so a reload with nothing new is still seen', async () => {
+      const done = g._lkFlowsReload();
+      await vi.advanceTimersByTimeAsync(499);
+      expect(g.LINK.fRel).toBe(1);
+      expect(g._lkFlowsStl()).toContain('Reloading…');
+      await vi.advanceTimersByTimeAsync(1);
+      await done;
+      expect(g.LINK.fRel).toBe(0);
+      expect(g._lkFlowsStl()).not.toContain('Reloading…');
+    });
   });
 });
 
