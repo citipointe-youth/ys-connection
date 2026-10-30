@@ -157,7 +157,7 @@ const MoveIn = z.object({ runVehicleId: z.string().nullable().optional(), unpin:
 const MyCarStopsIn = z.object({ riderIds: z.array(z.string()), removeIds: z.array(z.string()) });
 const LinkIn = z.object({ studentId: z.string().min(1) });
 const DroppedIn = z.object({ dropped: z.boolean(), at: z.string().datetime().optional() });
-// Past-night correction (director/admin): every field optional; only what actually changes is logged.
+// Past-night correction (oversight/admin): every field optional; only what actually changes is logged.
 const EditPastIn = z.object({
   runVehicleId: z.string().min(1).nullable().optional(), droppedAt: z.string().datetime().nullable().optional(),
   noShow: z.boolean().optional(), notRiding: z.boolean().optional(),
@@ -418,7 +418,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const year = Number(ctx.localNow.slice(0, 4)); // R4: localNow is the phone's local time in the site zone
     return (who, at) => {
       const v = consentView(forms, who, year, full);
-      if (v.details) v.details = mark(v.details, who.studentId); // DNC: parentPhone -> null for a non-admin/director login
+      if (v.details) v.details = mark(v.details, who.studentId); // DNC: parentPhone -> null for a non-admin/oversight login
       if (coord && v.details && at && !(at.runVehicleId && onBus.has(at.runVehicleId))) v.differs = !!at.snapAddress.trim() && !sameAddress(v.details.address, at.snapAddress); // M2: no address saved = no hint
       return v;
     };
@@ -1531,7 +1531,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       }
       return { canEdit, nights, rides };
     },
-    // Director/admin correction of a finished night: no routing, no lock; every change is logged.
+    // Oversight/admin correction of a finished night: no routing, no lock; every change is logged.
     async editPastRider(ctx, runId, riderId, input) {
       const c = await gate(ctx, 'bus:analysis');
       const v = parseIn(EditPastIn, input);

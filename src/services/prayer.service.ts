@@ -88,7 +88,7 @@ export function makePrayerService(
       // act on a general prayer outside their own domain that they can't even
       // see, by guessing/enumerating its id. A junior `leader` (H2, 2026-07-19)
       // can therefore only act on unscoped general prayers (own + admin/
-      // director's) — a stricter "only the ones THEY created" write restriction
+      // oversight's) — a stricter "only the ones THEY created" write restriction
       // isn't possible here since PrayerRequest stores a creator SCOPE, not a
       // creator id.
       if (!canAccessGeneralPrayer(actor, p.createdByGrades, p.createdByGender, structure)) {
@@ -116,9 +116,9 @@ export function makePrayerService(
       for (const p of all) {
         if (p.studentId == null) {
           // General/whole-group prayer — scoped by the creator's own grade+gender
-          // domain. admin/director always pass; a `leader` (H2, 2026-07-19) passes
+          // domain. admin/oversight always pass; a `leader` (H2, 2026-07-19) passes
           // only for an UNSCOPED (null/null) one — their own general prayers plus
-          // admin/director's — not another grade/quad's cohort-scoped ones (see
+          // admin/oversight's — not another grade/quad's cohort-scoped ones (see
           // canAccessGeneralPrayer).
           if (!canAccessGeneralPrayer(actor, p.createdByGrades, p.createdByGender, structure)) continue;
           out.push({ ...p, student: null });

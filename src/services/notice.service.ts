@@ -52,7 +52,7 @@ export function pushPayload(n: Pick<Notice, 'title'>): string {
 }
 
 export interface NoticeService {
-  /** Last 30 days, newest first. admin/director: all. A quad login: only those addressed to its quad. Anyone else: none. */
+  /** Last 30 days, newest first. admin/oversight: all. A quad login: only those addressed to its quad. Anyone else: none. */
   list(actor: Actor): Promise<Notice[]>;
   send(actor: Actor, input: unknown): Promise<Notice>;
   remove(actor: Actor, id: string): Promise<void>;

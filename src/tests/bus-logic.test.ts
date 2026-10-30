@@ -27,10 +27,10 @@ describe('bus config defaults', () => {
 
 describe('bus RBAC', () => {
   it('matches the spec matrix', () => {
-    expect(['leader', 'grade', 'quad', 'director', 'admin'].map((r) => can(A(r), 'bus:use'))).toEqual([true, true, true, true, true]);
-    expect(['leader', 'grade', 'quad', 'director', 'admin'].map((r) => can(A(r), 'bus:roster'))).toEqual([false, true, true, true, true]);
-    expect(['leader', 'grade', 'quad', 'director', 'admin'].map((r) => can(A(r), 'bus:coordinate'))).toEqual([false, false, true, true, true]);
-    expect(['leader', 'grade', 'quad', 'director', 'admin'].map((r) => can(A(r), 'bus:analysis'))).toEqual([false, false, false, true, true]);
+    expect(['leader', 'grade', 'quad', 'oversight', 'admin'].map((r) => can(A(r), 'bus:use'))).toEqual([true, true, true, true, true]);
+    expect(['leader', 'grade', 'quad', 'oversight', 'admin'].map((r) => can(A(r), 'bus:roster'))).toEqual([false, true, true, true, true]);
+    expect(['leader', 'grade', 'quad', 'oversight', 'admin'].map((r) => can(A(r), 'bus:coordinate'))).toEqual([false, false, true, true, true]);
+    expect(['leader', 'grade', 'quad', 'oversight', 'admin'].map((r) => can(A(r), 'bus:analysis'))).toEqual([false, false, false, true, true]);
   });
 });
 

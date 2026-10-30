@@ -21,7 +21,7 @@ const STREET = /\b(st|street|rd|road|ave|avenue|ct|court|dr|drive|pde|parade|pl|
 const PHONES = ['0412345678', '0499888777', '412345678', '499888777'];
 const ALLOWED_KEYS = new Set(['cars', 'name', 'colourIndex', 'leaderNames',
   'stops', 'stop', 'grade', 'suburb', 'dropped', 'unassigned']);
-const ROLES = ['admin', 'director', 'quad', 'grade', 'leader'] as const;
+const ROLES = ['admin', 'oversight', 'quad', 'grade', 'leader'] as const;
 
 async function world(mode: NewYouthMode) {
   const f = await busFixture();

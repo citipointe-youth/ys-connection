@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { busFixture } from './helpers/bus-fixtures';
 
 // Past history (spec 2026-10-09-bus-past-history): "not riding" soft-remove, leaderSnap, wasGuest,
-// GET /bus/history and the director/admin past-night edit.
+// GET /bus/history and the oversight/admin past-night edit.
 const WK1 = '2026-10-09T19:00', WK2 = '2026-10-16T19:00', WK3 = '2026-10-23T19:00';
 
 async function fixture() {
@@ -158,7 +158,7 @@ describe('editPastRider', () => {
     expect((await f.svc.history(f.at('admin', WK2))).nights[0]!.edits).toHaveLength(1);
   });
 
-  it('is director/admin only, past nights only, and the car must belong to that night', async () => {
+  it('is oversight/admin only, past nights only, and the car must belong to that night', async () => {
     const f = await fixture();
     const rv = await f.car('Bus', 8, ['L1']);
     const a = await f.rider('s1');

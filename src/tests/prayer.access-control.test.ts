@@ -8,25 +8,25 @@ const A = (role: string, opts: { grade?: number; gender?: string; quad?: string 
 
 describe('Prayer RBAC', () => {
   it('all five roles can read and write prayers', () => {
-    for (const r of ['leader', 'grade', 'quad', 'director', 'admin']) {
+    for (const r of ['leader', 'grade', 'quad', 'oversight', 'admin']) {
       expect(can(A(r), 'prayer:read')).toBe(true);
       expect(can(A(r), 'prayer:write')).toBe(true);
     }
   });
   it('only admin can import prayers', () => {
     expect(can(A('admin'), 'prayer:import')).toBe(true);
-    for (const r of ['leader', 'grade', 'quad', 'director']) {
+    for (const r of ['leader', 'grade', 'quad', 'oversight']) {
       expect(can(A(r), 'prayer:import')).toBe(false);
     }
   });
 });
 
 describe('generalPrayerCreatorScope', () => {
-  it('grade/quad creators get their own bracket+gender; admin/director/leader get no boundary', () => {
+  it('grade/quad creators get their own bracket+gender; admin/oversight/leader get no boundary', () => {
     expect(generalPrayerCreatorScope(A('grade', { grade: 9, gender: 'female' }))).toEqual({ grades: [9], gender: 'female' });
     expect(generalPrayerCreatorScope(A('quad', { quad: 'b79' }))).toEqual({ grades: [6, 7, 8, 9], gender: 'male' }) // T13: grade 6 is junior;
     expect(generalPrayerCreatorScope(A('admin'))).toEqual({ grades: null, gender: null });
-    expect(generalPrayerCreatorScope(A('director'))).toEqual({ grades: null, gender: null });
+    expect(generalPrayerCreatorScope(A('oversight'))).toEqual({ grades: null, gender: null });
     expect(generalPrayerCreatorScope(A('leader'))).toEqual({ grades: null, gender: null });
   });
 });
@@ -38,13 +38,13 @@ describe('canAccessGeneralPrayer', () => {
   const QB79 = A('quad', { quad: 'b79' });
   const QB1012 = A('quad', { quad: 'b1012' });
 
-  it('a wide-open (admin/director/leader) creator scope is visible to everyone', () => {
-    for (const viewer of [G9F, QB79, A('admin'), A('director'), A('leader')]) {
+  it('a wide-open (admin/oversight/leader) creator scope is visible to everyone', () => {
+    for (const viewer of [G9F, QB79, A('admin'), A('oversight'), A('leader')]) {
       expect(canAccessGeneralPrayer(viewer, null, null)).toBe(true);
     }
   });
-  it("admin/director viewers see everything regardless of the creator's scope", () => {
-    for (const viewer of [A('admin'), A('director')]) {
+  it("admin/oversight viewers see everything regardless of the creator's scope", () => {
+    for (const viewer of [A('admin'), A('oversight')]) {
       expect(canAccessGeneralPrayer(viewer, [9], 'female')).toBe(true);
     }
   });

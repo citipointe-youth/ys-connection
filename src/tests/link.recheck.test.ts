@@ -21,7 +21,7 @@ const ADMIN_ID = u(1), DIR_ID = u(2), L_DANA = u(301), CONSOLE = u(601);
 const P_OK = u(102), FLOW = u(511), STEP1 = u(521), FR_OK = u(502);
 const actor = (id: string, role: string): Actor =>
   ({ id, role: role as Actor['role'], displayName: `${role} login`, grade: null, quad: null, gender: null, leaderId: null });
-const ADMIN = actor(ADMIN_ID, 'admin'), DIRECTOR = actor(DIR_ID, 'director');
+const ADMIN = actor(ADMIN_ID, 'admin'), OVERSIGHT = actor(DIR_ID, 'oversight');
 let idn = 9000;
 const nid = () => u(++idn);
 const CAPS = { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live', firstTimerCheckIn: 'live',
@@ -35,7 +35,7 @@ async function setup() {
   for (const r of [settings, students, leaders, users, sessions, attendance]) await r.init();
   await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, elvanto: brisbaneElvanto(),
     modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, flows: 'on', intakeAdmin: 'on' } } } as never);
-  for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'director', 'director']] as const) {
+  for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'oversight', 'oversight']] as const) {
     await users.save({ id, email, displayName: `${email} name`, role, status: 'active', createdAt: T0, updatedAt: T0 } as never);
   }
   await leaders.save({ id: L_DANA, fullName: 'Dana Day', gender: 'female', grades: [8, 9], active: true, createdByGrade: null,
@@ -66,7 +66,7 @@ async function setup() {
 describe('L7: POST /link/admin/unclear/:id/recheck queues a recheck row', () => {
   it('admin only; the row must be unclear; one open re-check per row', async () => {
     const h = await setup();
-    await expect(h.svc.recheckUnclear(DIRECTOR, h.a.id)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(h.svc.recheckUnclear(OVERSIGHT, h.a.id)).rejects.toMatchObject({ statusCode: 403 });
     await expect(h.svc.recheckUnclear(ADMIN, u(8999))).rejects.toMatchObject({ statusCode: 404 });
     const { id } = await h.svc.recheckUnclear(ADMIN, h.a.id);
     expect((await h.svc.recheckUnclear(ADMIN, h.a.id)).id).toBe(id); // the open one again, not a second
@@ -162,7 +162,7 @@ describe('L7: the console answer', () => {
   it('recheckState: admin only, 404 for an unknown or non-recheck id', async () => {
     const h = await setup();
     const { id } = await h.svc.recheckUnclear(ADMIN, h.a.id);
-    await expect(h.svc.recheckState(DIRECTOR, id)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(h.svc.recheckState(OVERSIGHT, id)).rejects.toMatchObject({ statusCode: 403 });
     await expect(h.svc.recheckState(ADMIN, h.a.id)).rejects.toMatchObject({ statusCode: 404 });
     await expect(h.svc.recheckState(ADMIN, 'nope')).rejects.toMatchObject({ statusCode: 404 });
   });

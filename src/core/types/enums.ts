@@ -68,9 +68,9 @@ export function groupQuadOf(name: string): Quad | null {
 //            scope). Optional role, off by default (§5.2, roles.enabled.leader).
 //   grade  — login scoped to one grade level (e.g. Grade 9), or several (§5.1a)
 //   quad   — Junior/Senior login scoped to one group (e.g. Junior Girls). Optional (roles.enabled.quad)
-//   director — ministry-wide read/write. Optional (roles.enabled.director)
+//   oversight — ministry-wide read/write. Optional (roles.enabled.oversight)
 //   admin  — everything + back-office. Always available.
-export const USER_ROLES = ['leader', 'grade', 'quad', 'director', 'admin'] as const;
+export const USER_ROLES = ['leader', 'grade', 'quad', 'oversight', 'admin'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export const STUDENT_GENDERS = ['male', 'female'] as const;

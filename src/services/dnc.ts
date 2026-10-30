@@ -1,7 +1,7 @@
 // R1 (LINK_REV 6): DO NOT CONTACT. A student is DNC when a link_roster row matched to it (studentId) carries consent
 // 'contact' or 'all'. An inactive row counts too (resilience H3): a person dropped from one roster push keeps the last
 // known flag instead of getting their phones back. Every student-shaped response gets `dnc`, and a
-// non-admin/director login gets mobile / parentPhone stripped to null for a DNC student.
+// non-admin/oversight login gets mobile / parentPhone stripped to null for a DNC student.
 import { isDnc } from '../core/link-contract';
 import { canSeeDncPhones } from './access-control';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';

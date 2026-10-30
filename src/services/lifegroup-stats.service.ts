@@ -142,7 +142,7 @@ export function makeLifegroupStatsService(
         if (!lg) return false;
         if (lg.grade == null && lg.quad) return canAccessQuadGroup(actor, lg.quad, structure);
         if (!canAccessGrade(actor, lg.grade, structure)) return false;
-        // Gender-scope for grade AND quad logins (admin/director see all).
+        // Gender-scope for grade AND quad logins (admin/oversight see all).
         if (lg.gender && !canAccessGender(actor, lg.gender, structure)) return false;
         return true;
       };

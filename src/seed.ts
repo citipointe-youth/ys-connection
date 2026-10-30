@@ -22,8 +22,13 @@ export async function seedDemoData(repos: Repositories, password = randomBytes(1
       status: 'active', passwordHash: pw, createdAt: now, updatedAt: now,
     },
     {
-      id: generateId(), displayName: 'Director', email: 'director',
-      role: 'director', grade: null, quad: null,
+      id: generateId(), displayName: 'Oversight', email: 'oversight',
+      role: 'oversight', grade: null, quad: null,
+      status: 'active', passwordHash: pw, createdAt: now, updatedAt: now,
+    },
+    {
+      id: generateId(), displayName: 'Oversight Two', email: 'oversight2',
+      role: 'oversight', grade: null, quad: null,
       status: 'active', passwordHash: pw, createdAt: now, updatedAt: now,
     },
     {

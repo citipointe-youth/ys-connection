@@ -34,7 +34,7 @@ const ADMIN_ID = u(1), DIR_ID = u(2);
 const actor = (id: string, role: string): Actor =>
   ({ id, role: role as Actor['role'], displayName: `${role} login`, grade: null, quad: null, gender: null, leaderId: null });
 const ADMIN = actor(ADMIN_ID, 'admin');
-const DIRECTOR = actor(DIR_ID, 'director');
+const OVERSIGHT = actor(DIR_ID, 'oversight');
 const DEV = { id: 'dev-1', label: 'iPhone' };
 const BASE_CAPS: Capabilities = { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live',
   firstTimerCheckIn: 'live' };
@@ -63,7 +63,7 @@ async function setup(o: { intake?: 'off' | 'on'; push?: boolean; rev?: number; c
   for (const r of [settings, users, students, leaders, sessions, attendance]) await r.init();
   await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
     modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, intakeAdmin: o.intake ?? 'on' } } } as never);
-  for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'director', 'director']] as const) {
+  for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'oversight', 'oversight']] as const) {
     await users.save({ id, email, displayName: `${email} name`, role, status: 'active', createdAt: T0, updatedAt: T0 } as never);
   }
   const errorLog = { record: vi.fn(async () => {}) };
@@ -197,13 +197,13 @@ describe('link_outbox: intake expiry and purge', () => {
 // ---------------------------------------------------------------- service: routes
 
 describe('GET /link/intake*, POST /link/intake/refresh', () => {
-  it('module Off: 404 for everyone; On: admin only (director 403)', async () => {
+  it('module Off: 404 for everyone; On: admin only (oversight 403)', async () => {
     const off = await setup({ intake: 'off' });
     await expect(off.intake.list(ADMIN, { mode: 'intake' })).rejects.toMatchObject({ statusCode: 404, code: 'MODULE_DISABLED' });
     const h = await setup();
-    await expect(h.intake.list(DIRECTOR, { mode: 'intake' })).rejects.toMatchObject({ statusCode: 403 });
-    await expect(h.intake.row(DIRECTOR, { mode: 'intake', date: DATE, key: SUB_S })).rejects.toMatchObject({ statusCode: 403 });
-    await expect(h.intake.refresh(DIRECTOR, { mode: 'intake', date: DATE })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(h.intake.list(OVERSIGHT, { mode: 'intake' })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(h.intake.row(OVERSIGHT, { mode: 'intake', date: DATE, key: SUB_S })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(h.intake.refresh(OVERSIGHT, { mode: 'intake', date: DATE })).rejects.toMatchObject({ statusCode: 403 });
   });
   it('the dates list: counts, stale flag, inputs, the console; opening it marks the view (hurry hint)', async () => {
     const h = await setup();
@@ -286,11 +286,11 @@ describe('/link/batch intake items', () => {
     // one open row per family: a second save is a duplicate of the first
     expect((await one(h, act('intakeSave', saveP()))).outcome).toBe('duplicate');
   });
-  it('RBAC and module: a director is refused 403 (even with a link screen on); module off 404', async () => {
+  it('RBAC and module: an oversight login is refused 403 (even with a link screen on); module off 404', async () => {
     const h = await setup();
     await h.settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
       modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, intakeAdmin: 'on', checkin: 'on' } } } as never);
-    expect(await one(h, act('intakeSave', saveP()), DIRECTOR)).toMatchObject({ outcome: 'refused', code: 'FORBIDDEN' });
+    expect(await one(h, act('intakeSave', saveP()), OVERSIGHT)).toMatchObject({ outcome: 'refused', code: 'FORBIDDEN' });
     const off = await setup({ intake: 'off' });
     expect(await one(off, act('intakeSave', saveP()))).toMatchObject({ outcome: 'refused', code: 'MODULE_DISABLED' });
   });

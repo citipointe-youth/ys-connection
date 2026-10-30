@@ -15,7 +15,7 @@ import {
 import type { Actor } from '../core/entities/user';
 
 const ADMIN: Actor = { id: 'u-admin', role: 'admin', displayName: 'Admin', grade: null, quad: null };
-const DIR: Actor = { id: 'u-dir', role: 'director', displayName: 'Dir', grade: null, quad: null };
+const DIR: Actor = { id: 'u-dir', role: 'oversight', displayName: 'Dir', grade: null, quad: null };
 
 function makeRepos() {
   return {

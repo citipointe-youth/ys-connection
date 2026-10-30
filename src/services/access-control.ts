@@ -9,7 +9,7 @@ export type Action =
   | 'student:read:sensitive'  // view mobile/parent phone
   | 'student:write'           // create/update/delete students
   | 'leader:read'             // view leaders
-  | 'leader:write'            // create/update leaders (grade login, director, admin)
+  | 'leader:write'            // create/update leaders (grade login, oversight, admin)
   | 'connection:write'        // connect/disconnect students to leaders
   | 'overview:read'           // view ministry-wide overview stats
   | 'atrisk:read'             // view at-risk data
@@ -19,8 +19,8 @@ export type Action =
   | 'prayer:read'             // view prayer requests in scope
   | 'prayer:write'            // add/edit/mark/delete a prayer in scope
   | 'prayer:import'           // admin-only: bulk CSV import/export of prayers
-  | 'notice:write'            // admin + director: send and delete notices (quad logins only read theirs)
-  | 'notice:alerts'           // admin + director + quad: turn notice alerts (web push) on/off for this device
+  | 'notice:write'            // admin + oversight: send and delete notices (quad logins only read theirs)
+  | 'notice:alerts'           // admin + oversight + quad: turn notice alerts (web push) on/off for this device
   | 'bus:use'                 // open Bus Ministry, My car
   | 'bus:roster'              // add/edit/remove riders, New Person
   | 'bus:coordinate'          // route edits on Assign (Generate/Move/Undo), removing another's own car
@@ -28,8 +28,8 @@ export type Action =
   | 'intake:write'            // New youth screen: submit the Elvanto connect forms
   | 'link:use'                // Elvanto link: check-in, actions, batch, lifegroups, flows, status
   | 'link:admin'              // Elvanto link, admin only: matching, log, detail, cancel anyone's, settle unclear rows
-  | 'intake:admin'            // T4 (X19): youth intake + consents through the link, admin only (not director)
-  | 'link:flowRemove';        // rev 6 (R4): remove someone from an Elvanto flow step, bulk Complete (admin + director)
+  | 'intake:admin'            // T4 (X19): youth intake + consents through the link, admin only (not oversight)
+  | 'link:flowRemove';        // rev 6 (R4): remove someone from an Elvanto flow step, bulk Complete (admin + oversight)
 
 const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
   // leader (junior leader, §5.2) — read-only, scoped to their OWN connected
@@ -81,8 +81,8 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Action>> = {
     'link:use',
     'notice:alerts',
   ]),
-  // director — ministry-wide access; can import data
-  director: new Set<Action>([
+  // oversight — ministry-wide access; can import data
+  oversight: new Set<Action>([
     'student:read',
     'student:read:sensitive',
     'student:write',
@@ -138,10 +138,10 @@ export function can(actor: Actor, action: Action): boolean {
   return ROLE_PERMISSIONS[actor.role]?.has(action) ?? false;
 }
 
-/** Who a notice's alert goes to: active admin/director (every notice) and the active quad logins it is addressed to. */
+/** Who a notice's alert goes to: active admin/oversight (every notice) and the active quad logins it is addressed to. */
 export function receivesNoticePush(u: { role: UserRole; quad?: string | null; status: string }, recipients: readonly string[]): boolean {
   if (u.status !== 'active') return false;
-  if (u.role === 'admin' || u.role === 'director') return true;
+  if (u.role === 'admin' || u.role === 'oversight') return true;
   return u.role === 'quad' && !!u.quad && recipients.includes(u.quad);
 }
 
@@ -169,27 +169,27 @@ export function canUseNewYouth(actor: Actor, mode: NewYouthMode): boolean {
   return can(actor, 'intake:write') && modeAllows(actor, mode);
 }
 
-// Who may save a leader's Grades filter (PATCH /leaders/:id/view-grades): quad, director and
+// Who may save a leader's Grades filter (PATCH /leaders/:id/view-grades): quad, oversight and
 // admin any leader; a junior leader only its own record; grade never.
 export function canSetViewGrades(actor: Actor, leaderId: string): boolean {
-  if (actor.role === 'quad' || actor.role === 'director' || actor.role === 'admin') return true;
+  if (actor.role === 'quad' || actor.role === 'oversight' || actor.role === 'admin') return true;
   if (actor.role === 'leader') return !!actor.leaderId && actor.leaderId === leaderId;
   return false;
 }
 
-// T6 (2026-10-13): who may add or remove a lifegroup member through the Elvanto link: admin and director, or a link
+// T6 (2026-10-13): who may add or remove a lifegroup member through the Elvanto link: admin and oversight, or a link
 // login whose "I am" leader leads that group in Elvanto (the caller works out leadsGroup).
 export function canEditGroupMembers(actor: Actor, leadsGroup: boolean): boolean {
-  return actor.role === 'admin' || actor.role === 'director' || (leadsGroup && can(actor, 'link:use'));
+  return actor.role === 'admin' || actor.role === 'oversight' || (leadsGroup && can(actor, 'link:use'));
 }
 
-// R1 (LINK_REV 6): only admin and director still get a DO NOT CONTACT student's mobile / parent phone.
+// R1 (LINK_REV 6): only admin and oversight still get a DO NOT CONTACT student's mobile / parent phone.
 export function canSeeDncPhones(actor: Actor): boolean {
   return isAdminRole(actor);
 }
-// The ministry-wide logins (admin, director): the Elvanto link's flows, groups and youth pickers see everyone.
+// The ministry-wide logins (admin, oversight): the Elvanto link's flows, groups and youth pickers see everyone.
 export function isAdminRole(actor: Actor): boolean {
-  return actor.role === 'admin' || actor.role === 'director';
+  return actor.role === 'admin' || actor.role === 'oversight';
 }
 
 export function assertCan(actor: Actor, action: Action): void {
@@ -223,11 +223,11 @@ export function assertLeaderSelf(actor: Actor, leaderId: string): void {
 
 /**
  * F-01 (FX3): the strict "may this login see this leader's students" rule, used by the Home pickers
- * (`GET /leaders?pick=1`) and the leader-detail routes. Admin/director: any leader. Junior leader: itself only.
+ * (`GET /leaders?pick=1`) and the leader-detail routes. Admin/oversight: any leader. Junior leader: itself only.
  * Grade/quad: same gender (null fails) AND grades intersect the login's bracket ([] fails).
  */
 export function leaderInScope(actor: Actor, leader: { id: string; gender: string | null; grades: readonly number[] }, structure?: StructureScope): boolean {
-  if (actor.role === 'admin' || actor.role === 'director') return true;
+  if (actor.role === 'admin' || actor.role === 'oversight') return true;
   if (actor.role === 'leader') return !!actor.leaderId && actor.leaderId === leader.id;
   if (actor.role !== 'grade' && actor.role !== 'quad') return false;
   return leader.gender != null && canAccessGender(actor, leader.gender, structure) && leader.grades.some((g) => canAccessGrade(actor, g, structure));
@@ -250,7 +250,7 @@ export function leaderStudentVisible(actor: Actor, s: { grade: number | null; ge
  * on its bracket + gender. Junior leaders are decided by their own connections (the caller checks that).
  */
 export function studentRecordVisible(actor: Actor, s: { grade: number | null; gender: string }, structure?: StructureScope): boolean {
-  if (actor.role === 'admin' || actor.role === 'director') return true;
+  if (actor.role === 'admin' || actor.role === 'oversight') return true;
   if (actor.role === 'grade') return canAccessGender(actor, s.gender, structure);
   if (actor.role === 'quad') return canAccessStudent(actor, s.grade, s.gender, structure);
   return false;
@@ -280,14 +280,14 @@ export interface StructureScope {
  *   'none', which made Simple's per-bracket accounts purely cosmetic).
  * - quad: all grades within their quad (not used under a Simple layout, which
  *   has no quad accounts, but scoped the same way if one exists)
- * - director/admin: all grades
+ * - oversight/admin: all grades
  */
 // `structure` param kept (unused here) for call-site symmetry with
 // canAccessGender/genderScopeOf below, which do read it.
 export function canAccessGrade(actor: Actor, grade: number | null, structure?: StructureScope): boolean {
   switch (actor.role) {
     case 'admin':
-    case 'director':
+    case 'oversight':
       return true;
     case 'grade':
       // Multi-grade grade accounts (§5.1a): access any of the actor's grades.
@@ -354,7 +354,7 @@ export function genderScopeOf(actor: Actor, structure?: StructureScope): 'male' 
   if (structure && structure.genderPolicy && structure.genderPolicy !== 'strict') return null;
   if (actor.role === 'quad') return quadGenderOf(actor.quad);
   if (actor.role === 'grade') return actor.gender ?? null; // ungendered grade login = both
-  return null; // director/admin
+  return null; // oversight/admin
 }
 
 export function canAccessGender(actor: Actor, gender: string, structure?: StructureScope): boolean {
@@ -364,11 +364,11 @@ export function canAccessGender(actor: Actor, gender: string, structure?: Struct
 }
 
 /**
- * A Junior/Senior-named lifegroup (grade null, `quad` set): admin/director, the quad's own login, and (operator
+ * A Junior/Senior-named lifegroup (grade null, `quad` set): admin/oversight, the quad's own login, and (operator
  * ruling 2026-10-24) a grade login holding any grade in the quad's bracket; the gender scope must fit.
  */
 export function canAccessQuadGroup(actor: Actor, quad: string, structure?: StructureScope): boolean {
-  if (actor.role === 'admin' || actor.role === 'director') return true;
+  if (actor.role === 'admin' || actor.role === 'oversight') return true;
   return quadGradesOf(quad, structure).some((g) => canAccessGrade(actor, g, structure))
     && canAccessGender(actor, quadGenderOf(quad) ?? '', structure);
 }
@@ -382,7 +382,7 @@ export function canAccessStudent(actor: Actor, grade: number | null, gender: str
  * The grade+gender "domain" a general (no-student) prayer inherits from its
  * creator, captured at creation time (prayer.service.ts's `create()`) since we
  * don't keep a live reference to the creating user. `grades: null` + `gender:
- * null` together mean "no boundary" (admin/director, or a junior leader — see
+ * null` together mean "no boundary" (admin/oversight, or a junior leader — see
  * below) — a general prayer created by one of those is visible to everyone.
  */
 export function generalPrayerCreatorScope(
@@ -397,7 +397,7 @@ export function generalPrayerCreatorScope(
     const grades = quadGradesOf(actor.quad);
     return { grades: grades.length ? grades : null, gender: genderScopeOf(actor, structure) };
   }
-  // admin/director have no grade/gender boundary of their own (ministry-wide).
+  // admin/oversight have no grade/gender boundary of their own (ministry-wide).
   // A junior `leader` is bound to one Leader record, not a grade/gender cohort —
   // there's no meaningful boundary to derive, so it's left wide open too (same
   // as before this scoping existed; unchanged on purpose, not asked for).
@@ -406,7 +406,7 @@ export function generalPrayerCreatorScope(
 
 /**
  * Can `actor` see a general (no-student) prayer created by someone with the
- * given creator scope (from `generalPrayerCreatorScope`)? admin/director
+ * given creator scope (from `generalPrayerCreatorScope`)? admin/oversight
  * viewers always can. A grade/quad viewer can see it only if their own
  * grade+gender domain overlaps the creator's — e.g. a quad's general prayer is
  * visible to the grade logins within that quad's bracket+gender (and to other
@@ -414,12 +414,12 @@ export function generalPrayerCreatorScope(
  * non-overlapping grade bracket.
  *
  * A junior `leader` is deliberately NOT short-circuited to true here (H2,
- * 2026-07-19 — it used to be, alongside admin/director, so a leader saw every
+ * 2026-07-19 — it used to be, alongside admin/oversight, so a leader saw every
  * general prayer ministry-wide). A leader has no grade/gender domain of their
  * own, so falling through the normal logic below means they match ONLY the
  * "no boundary" (createdByGrades==null && createdByGender==null) case — their
  * own general prayers (a leader can only ever CREATE unscoped ones — see
- * generalPrayerCreatorScope) plus admin/director's, and NOT another grade or
+ * generalPrayerCreatorScope) plus admin/oversight's, and NOT another grade or
  * quad's cohort-scoped ones. prayer.service.ts's loadInScope uses this same
  * check for writes, so a leader can act on (edit/mark/delete) exactly the
  * general prayers they can see this way — a stricter "only the ones THIS
@@ -432,7 +432,7 @@ export function canAccessGeneralPrayer(
   createdByGender: 'male' | 'female' | null,
   structure?: StructureScope,
 ): boolean {
-  if (actor.role === 'admin' || actor.role === 'director') return true;
+  if (actor.role === 'admin' || actor.role === 'oversight') return true;
   if (createdByGrades == null && createdByGender == null) return true;
   const viewerGrades = actor.role === 'quad' ? quadGradesOf(actor.quad) : actorGrades(actor);
   // L2 (2026-07-19): only enforce grade overlap when createdByGrades is

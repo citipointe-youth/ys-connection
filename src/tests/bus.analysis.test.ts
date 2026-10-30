@@ -16,7 +16,7 @@ describe('route analysis', () => {
     const jess = await f.rider('s1'); const sam = await f.rider('s2');
     await f.svc.moveRider(f.admin, jess.id, { runVehicleId: van });
     await f.svc.moveRider(f.admin, sam.id, { runVehicleId: van });
-    const a = await f.svc.analysis(f.ctx('director'));
+    const a = await f.svc.analysis(f.ctx('oversight'));
     expect(a.cars).toHaveLength(1);
     expect(a.cars[0]).toMatchObject({ runVehicleId: van, name: 'Van', routeMin: 30 });
     expect(a.cars[0]!.riders.map((r) => [r.name, r.stop, r.detourMin, r.detourPct, r.flagged])).toEqual([
@@ -39,7 +39,7 @@ describe('route analysis', () => {
     await f.svc.moveRider(f.admin, sam.id, { runVehicleId: vanA });
     await f.svc.moveRider(f.admin, riley.id, { runVehicleId: vanB });
     await f.svc.moveRider(f.admin, mia.id, { runVehicleId: vanB });
-    const a = await f.svc.analysis(f.ctx('director'));
+    const a = await f.svc.analysis(f.ctx('oversight'));
     expect(a.cars).toHaveLength(2);
     // One call per car (not 1 combined call across both cars' pairs), each scoped to just that
     // car's own small set of skip pairs — never the whole run mixed together.
@@ -47,7 +47,7 @@ describe('route analysis', () => {
     for (const pairs of rec.calls.matrixCalls) expect(pairs.length).toBe(2);
     // Re-opening analysis at the same run version must not pay Google again.
     rec.calls.matrix = 0; rec.calls.matrixCalls = [];
-    await f.svc.analysis(f.ctx('director'));
+    await f.svc.analysis(f.ctx('oversight'));
     expect(rec.calls.matrix).toBe(0);
   });
 
@@ -61,13 +61,13 @@ describe('route analysis', () => {
     await f.svc.generate(f.admin, { mode: 'all' });
     rec.calls.solve.length = 0;
     const v0 = (await f.svc.getRun(f.admin)).run.version;
-    await f.svc.analysis(f.ctx('director'));
+    await f.svc.analysis(f.ctx('oversight'));
     expect(rec.calls.solve).toHaveLength(1);
     const s = await f.settings.getSettings();
     await f.settings.updateSettings({ ministryConfig: { ...s.ministryConfig,
       busMinistry: { ...s.ministryConfig.busMinistry, targetRouteMin: s.ministryConfig.busMinistry.targetRouteMin + 5 } } });
     expect((await f.svc.getRun(f.admin)).run.version).toBe(v0); // a settings change alone never touches the run
-    await f.svc.analysis(f.ctx('director'));
+    await f.svc.analysis(f.ctx('oversight'));
     expect(rec.calls.solve).toHaveLength(2); // re-solved, not served stale from the old key
   });
 
@@ -77,7 +77,7 @@ describe('route analysis', () => {
     const rec = recordingRouting();
     const f = await busFixture({ routing: rec.provider });
     await f.car('Van', 8, ['L1', 'L2']); // a running car but no riders placed into it
-    await expect(f.svc.analysisMap(f.ctx('director'))).rejects.toMatchObject({ statusCode: 400 });
+    await expect(f.svc.analysisMap(f.ctx('oversight'))).rejects.toMatchObject({ statusCode: 400 });
     expect(rec.calls.map).toHaveLength(0);
   });
 
@@ -96,12 +96,12 @@ describe('route analysis', () => {
     const vanWeek2 = (await f.svc.getRun(week2)).vehicles.find((v) => v.name === 'Van')!.id;
     await f.svc.moveRider(week2, sam.id, { runVehicleId: vanWeek2 });
 
-    await f.svc.analysis(f.ctx('director'));                                 // week 1 → solve #1
-    await f.svc.analysis({ ...f.ctx('director'), localNow: week2.localNow }); // week 2 → solve #2
+    await f.svc.analysis(f.ctx('oversight'));                                 // week 1 → solve #1
+    await f.svc.analysis({ ...f.ctx('oversight'), localNow: week2.localNow }); // week 2 → solve #2
     expect(rec.calls.solve).toHaveLength(2);
-    await f.svc.analysis(f.ctx('director')); // re-open week 1 — must be served from cache
+    await f.svc.analysis(f.ctx('oversight')); // re-open week 1 — must be served from cache
     expect(rec.calls.solve).toHaveLength(2);
-    await f.svc.analysis({ ...f.ctx('director'), localNow: week2.localNow }); // and week 2 again
+    await f.svc.analysis({ ...f.ctx('oversight'), localNow: week2.localNow }); // and week 2 again
     expect(rec.calls.solve).toHaveLength(2);
   });
 

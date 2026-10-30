@@ -10,7 +10,7 @@ function actor(role: string): Actor {
 describe('connection:import capability', () => {
   it('is granted to admin only', () => {
     expect(can(actor('admin'), 'connection:import')).toBe(true);
-    expect(can(actor('director'), 'connection:import')).toBe(false);
+    expect(can(actor('oversight'), 'connection:import')).toBe(false);
     expect(can(actor('quad'), 'connection:import')).toBe(false);
     expect(can(actor('grade'), 'connection:import')).toBe(false);
   });
@@ -179,7 +179,7 @@ import {
 import { ForbiddenError } from '../core/errors/app-error';
 
 const ADMIN: Actor = { id: 'admin', role: 'admin' as any, displayName: 'Admin', grade: null as any, quad: null as any };
-const DIRECTOR: Actor = { id: 'dir', role: 'director' as any, displayName: 'Dir', grade: null as any, quad: null as any };
+const OVERSIGHT: Actor = { id: 'dir', role: 'oversight' as any, displayName: 'Dir', grade: null as any, quad: null as any };
 
 async function buildAllocSvc() {
   const studentRepo = new InMemoryStudentRepository();
@@ -271,8 +271,8 @@ describe('ConnectionService allocations', () => {
 
   it('rejects non-admin callers', async () => {
     const { connSvc } = await buildAllocSvc();
-    await expect(connSvc.exportAllocations(DIRECTOR)).rejects.toThrow(ForbiddenError);
-    await expect(connSvc.importAllocations(DIRECTOR, [])).rejects.toThrow(ForbiddenError);
+    await expect(connSvc.exportAllocations(OVERSIGHT)).rejects.toThrow(ForbiddenError);
+    await expect(connSvc.importAllocations(OVERSIGHT, [])).rejects.toThrow(ForbiddenError);
   });
 
   it('autoCreateLeaders creates an unmatched leader and connects it, gender/grade derived from the matched student', async () => {

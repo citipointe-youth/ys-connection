@@ -10,7 +10,7 @@ async function seedUser(mustChangePassword: boolean) {
   await users.init();
   const now = new Date().toISOString();
   await users.save({
-    id: 'u-1', displayName: 'Director', email: 'director', role: 'director',
+    id: 'u-1', displayName: 'Oversight', email: 'oversight', role: 'oversight',
     grade: null, quad: null, status: 'active', passwordHash: await hashPassword('correcthorse1'),
     mustChangePassword, createdAt: now, updatedAt: now,
   });
@@ -20,21 +20,21 @@ async function seedUser(mustChangePassword: boolean) {
 describe('Auth Service — mustChangePassword in the session', () => {
   it('embeds mustChangePassword: true in the token for a flagged account', async () => {
     const { auth } = await seedUser(true);
-    const { token } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    const { token } = await auth.login({ email: 'oversight', password: 'correcthorse1' });
     const actor = await auth.resolveToken(token);
     expect(actor?.mustChangePassword).toBe(true);
   });
 
   it('embeds mustChangePassword: false for a normal account', async () => {
     const { auth } = await seedUser(false);
-    const { token } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    const { token } = await auth.login({ email: 'oversight', password: 'correcthorse1' });
     const actor = await auth.resolveToken(token);
     expect(actor?.mustChangePassword).toBe(false);
   });
 
   it('resolveToken re-reads the account: a cleared mustChangePassword is seen without a new token; issueTokenFor still mints a fresh one', async () => {
     const { users, auth } = await seedUser(true);
-    const { token: staleToken } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    const { token: staleToken } = await auth.login({ email: 'oversight', password: 'correcthorse1' });
     expect((await auth.resolveToken(staleToken))?.mustChangePassword).toBe(true);
     const existing = await users.findById('u-1');
     await users.save({ ...existing!, mustChangePassword: false });
@@ -80,7 +80,7 @@ describe('AuthService.login — login history tracking', () => {
   it('records a login timestamp on successful login', async () => {
     const { users, auth } = await seedUser(false);
     const before = Date.now();
-    await auth.login({ email: 'director', password: 'correcthorse1' });
+    await auth.login({ email: 'oversight', password: 'correcthorse1' });
     const saved = await users.findById('u-1');
     expect(saved?.loginHistory).toHaveLength(1);
     const recordedMs = Date.parse(saved!.loginHistory![0]!);
@@ -91,7 +91,7 @@ describe('AuthService.login — login history tracking', () => {
   it('keeps login history newest-first and caps it at MAX_LOGIN_HISTORY', async () => {
     const { users, auth } = await seedUser(false);
     for (let i = 0; i < MAX_LOGIN_HISTORY + 3; i++) {
-      await auth.login({ email: 'director', password: 'correcthorse1' });
+      await auth.login({ email: 'oversight', password: 'correcthorse1' });
     }
     const saved = await users.findById('u-1');
     expect(saved?.loginHistory).toHaveLength(MAX_LOGIN_HISTORY);
@@ -103,7 +103,7 @@ describe('AuthService.login — login history tracking', () => {
 
   it('does not record a login on a failed password attempt', async () => {
     const { users, auth } = await seedUser(false);
-    await expect(auth.login({ email: 'director', password: 'wrong-password' })).rejects.toThrow();
+    await expect(auth.login({ email: 'oversight', password: 'wrong-password' })).rejects.toThrow();
     const saved = await users.findById('u-1');
     expect(saved?.loginHistory ?? []).toHaveLength(0);
   });
@@ -116,7 +116,7 @@ describe('AuthService.login — login history tracking', () => {
       saveCalls++;
       throw new Error('simulated DB write failure');
     }) as typeof users.save;
-    const result = await auth.login({ email: 'director', password: 'correcthorse1' });
+    const result = await auth.login({ email: 'oversight', password: 'correcthorse1' });
     expect(result.token).toBeTruthy();
     expect(result.user.id).toBe('u-1');
     expect(saveCalls).toBe(1);
@@ -127,8 +127,8 @@ describe('AuthService.login — login history tracking', () => {
 describe('AuthService.login — device tracking', () => {
   it('records a new device with count 1, then bumps count (not a duplicate) on the same device', async () => {
     const { users, auth } = await seedUser(false);
-    await auth.login({ email: 'director', password: 'correcthorse1', deviceId: 'dev-A', deviceLabel: 'iPhone' });
-    await auth.login({ email: 'director', password: 'correcthorse1', deviceId: 'dev-A', deviceLabel: 'iPhone' });
+    await auth.login({ email: 'oversight', password: 'correcthorse1', deviceId: 'dev-A', deviceLabel: 'iPhone' });
+    await auth.login({ email: 'oversight', password: 'correcthorse1', deviceId: 'dev-A', deviceLabel: 'iPhone' });
     const saved = await users.findById('u-1');
     expect(saved?.loginDevices).toHaveLength(1);
     expect(saved?.loginDevices?.[0]).toMatchObject({ id: 'dev-A', label: 'iPhone', count: 2 });
@@ -136,15 +136,15 @@ describe('AuthService.login — device tracking', () => {
 
   it('tracks a second device separately, most recently seen first', async () => {
     const { users, auth } = await seedUser(false);
-    await auth.login({ email: 'director', password: 'correcthorse1', deviceId: 'dev-A', deviceLabel: 'iPhone' });
-    await auth.login({ email: 'director', password: 'correcthorse1', deviceId: 'dev-B', deviceLabel: 'Android' });
+    await auth.login({ email: 'oversight', password: 'correcthorse1', deviceId: 'dev-A', deviceLabel: 'iPhone' });
+    await auth.login({ email: 'oversight', password: 'correcthorse1', deviceId: 'dev-B', deviceLabel: 'Android' });
     const saved = await users.findById('u-1');
     expect(saved?.loginDevices?.map((d) => d.id)).toEqual(['dev-B', 'dev-A']);
   });
 
   it('still logs in and records history when no device id is sent (old cached client)', async () => {
     const { users, auth } = await seedUser(false);
-    await auth.login({ email: 'director', password: 'correcthorse1' });
+    await auth.login({ email: 'oversight', password: 'correcthorse1' });
     const saved = await users.findById('u-1');
     expect(saved?.loginHistory).toHaveLength(1);
     expect(saved?.loginDevices ?? []).toHaveLength(0);
@@ -166,7 +166,7 @@ describe('AuthService.login — a retire during the password check is not undone
     // The retire lands after login read the row (simulated: findByEmail hands back the stale active copy).
     await users.save({ ...stale, status: 'inactive', updatedAt: 'retired' });
     users.findByEmail = async () => stale;
-    await expect(auth.login({ email: 'director', password: 'correcthorse1' })).rejects.toMatchObject({ statusCode: 401 });
+    await expect(auth.login({ email: 'oversight', password: 'correcthorse1' })).rejects.toMatchObject({ statusCode: 401 });
     const now = (await users.findById('u-1'))!;
     expect(now.status).toBe('inactive');
     expect(now.updatedAt).toBe('retired');
@@ -176,20 +176,20 @@ describe('AuthService.login — a retire during the password check is not undone
 describe('F5 (review 2026-10-16): session revocation', () => {
   it("a deactivated account's token stops resolving", async () => {
     const { users, auth } = await seedUser(false);
-    const { token } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    const { token } = await auth.login({ email: 'oversight', password: 'correcthorse1' });
     expect(await auth.resolveToken(token)).not.toBeNull();
     await users.save({ ...(await users.findById('u-1'))!, status: 'inactive' });
     expect(await auth.resolveToken(token)).toBeNull();
   });
   it("a demoted account's token carries the new role and scope", async () => {
     const { users, auth } = await seedUser(false);
-    const { token } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    const { token } = await auth.login({ email: 'oversight', password: 'correcthorse1' });
     await users.save({ ...(await users.findById('u-1'))!, role: 'leader', leaderId: 'L9' });
     expect(await auth.resolveToken(token)).toMatchObject({ role: 'leader', leaderId: 'L9' });
   });
   it('an admin password reset revokes outstanding tokens; a token minted after the reset works', async () => {
     const { users, auth } = await seedUser(false);
-    const { token } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    const { token } = await auth.login({ email: 'oversight', password: 'correcthorse1' });
     await users.save({ ...(await users.findById('u-1'))!, passwordHash: await hashPassword('newpassword1') });
     expect(await auth.resolveToken(token)).toBeNull();
     const fresh = await auth.issueTokenFor('u-1');
@@ -198,10 +198,10 @@ describe('F5 (review 2026-10-16): session revocation', () => {
   it('the fresh token from a self password change resolves even while the user cache is warm', async () => {
     const users = new InMemoryUserRepository(); await users.init();
     const now = new Date().toISOString();
-    await users.save({ id: 'u-1', displayName: 'D', email: 'director', role: 'director', grade: null, quad: null, status: 'active',
+    await users.save({ id: 'u-1', displayName: 'D', email: 'oversight', role: 'oversight', grade: null, quad: null, status: 'active',
       passwordHash: await hashPassword('correcthorse1'), mustChangePassword: false, createdAt: now, updatedAt: now });
     const auth = makeAuthService(users, { userTtlMs: 60_000 });
-    const { token } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    const { token } = await auth.login({ email: 'oversight', password: 'correcthorse1' });
     expect(await auth.resolveToken(token)).not.toBeNull(); // cache warm with the old hash
     await users.save({ ...(await users.findById('u-1'))!, passwordHash: await hashPassword('newpassword1') });
     const fresh = await auth.issueTokenFor('u-1');
@@ -211,11 +211,11 @@ describe('F5 (review 2026-10-16): session revocation', () => {
   it('a sign-in after a reactivation works at once although the cache still held the inactive row', async () => {
     const { users } = await seedUser(false);
     const after = makeAuthService(users, { userTtlMs: 60_000 });
-    const { token } = await after.login({ email: 'director', password: 'correcthorse1' });
+    const { token } = await after.login({ email: 'oversight', password: 'correcthorse1' });
     await users.save({ ...(await users.findById('u-1'))!, status: 'inactive' });
     expect(await after.resolveToken(token)).toBeNull(); // caches the inactive row
     await users.save({ ...(await users.findById('u-1'))!, status: 'active' });
-    const { token: again } = await after.login({ email: 'director', password: 'correcthorse1' });
+    const { token: again } = await after.login({ email: 'oversight', password: 'correcthorse1' });
     expect(await after.resolveToken(again)).toMatchObject({ id: 'u-1' });
   });
   it('a preview token keeps mustChangePassword:false although the DB row says true', async () => {
@@ -226,7 +226,7 @@ describe('F5 (review 2026-10-16): session revocation', () => {
   it('the per-instance cache serves repeat resolves without hitting the repo (60 s)', async () => {
     const { users } = await seedUser(false);
     const auth = makeAuthService(users, { userTtlMs: 60_000 });
-    const { token } = await auth.login({ email: 'director', password: 'correcthorse1' });
+    const { token } = await auth.login({ email: 'oversight', password: 'correcthorse1' });
     const spy = vi.spyOn(users, 'findById');
     await auth.resolveToken(token); await auth.resolveToken(token); await auth.resolveToken(token);
     expect(spy).toHaveBeenCalledTimes(1);
@@ -244,11 +244,11 @@ describe('Y5: one login error for every cause, with the next step', () => {
   it('a bad username, a bad password, an inactive or password-less account all give the same exact message', async () => {
     const { users, auth } = await seedUser(false);
     expect(await rejectMessage(auth.login({ email: 'nobody', password: 'correcthorse1' }))).toBe(MSG);
-    expect(await rejectMessage(auth.login({ email: 'director', password: 'wronghorse1' }))).toBe(MSG);
+    expect(await rejectMessage(auth.login({ email: 'oversight', password: 'wronghorse1' }))).toBe(MSG);
     const existing = await users.findById('u-1');
     await users.save({ ...existing!, passwordHash: '' });
-    expect(await rejectMessage(auth.login({ email: 'director', password: 'correcthorse1' }))).toBe(MSG);
+    expect(await rejectMessage(auth.login({ email: 'oversight', password: 'correcthorse1' }))).toBe(MSG);
     await users.save({ ...existing!, status: 'inactive' });
-    expect(await rejectMessage(auth.login({ email: 'director', password: 'correcthorse1' }))).toBe(MSG);
+    expect(await rejectMessage(auth.login({ email: 'oversight', password: 'correcthorse1' }))).toBe(MSG);
   });
 });

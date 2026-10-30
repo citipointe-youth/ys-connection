@@ -202,10 +202,10 @@ describe('SettingsService', () => {
       expect((await users.findById(g1.id))!.status).toBe('active');
     });
 
-    it('covers all four optional roles (director/grade/quad/leader), never admin', async () => {
+    it('covers all four optional roles (oversight/grade/quad/leader), never admin', async () => {
       const { service, users } = await makeService();
       const admin1 = await users.save(makeUser({ id: 'admin1', role: 'admin' }));
-      const dir1 = await users.save(makeUser({ id: 'dir1', role: 'director' }));
+      const dir1 = await users.save(makeUser({ id: 'dir1', role: 'oversight' }));
       const lead1 = await users.save(makeUser({ id: 'lead1', role: 'leader' }));
 
       // leader defaults to disabled — enable it first so disabling it below is a
@@ -213,7 +213,7 @@ describe('SettingsService', () => {
       await service.update(ADMIN, { ministryConfig: { roles: { enabled: { leader: true } } } });
 
       await service.update(ADMIN, {
-        ministryConfig: { roles: { enabled: { director: false, leader: false } } },
+        ministryConfig: { roles: { enabled: { oversight: false, leader: false } } },
       });
 
       expect((await users.findById(dir1.id))!.status).toBe('inactive');
@@ -257,7 +257,7 @@ describe('SettingsService', () => {
 describe('SettingsService — Simple (Junior/Senior) logins', () => {
   const ON = { ministryConfig: { logins: { simple: true } } };
   const OFF = { ministryConfig: { logins: { simple: false } } };
-  const MSG = 'Pick a Login style in Youth Setup: Junior/Senior, or Director and leaders.';
+  const MSG = 'Pick a Login style in Youth Setup: Junior/Senior, or Oversight and leaders.';
 
   async function fixture() {
     const f = await makeService();

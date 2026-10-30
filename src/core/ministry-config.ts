@@ -60,7 +60,7 @@ const ModulesSchema = z.object({
   newYouthForms: z.preprocess((v) => (v === true ? 'on' : v === false ? 'off' : unShadow(v)), MODE).default('off'),
   // Prayers module (October rework). On by default; when off every prayer route answers 404 and the data is kept.
   prayers: z.boolean().default(true),
-  // Notices (2026-10-15): admin/director messages to the four quad logins. Off by default; off = every /notices route answers 404.
+  // Notices (2026-10-15): admin/oversight messages to the four quad logins. Off by default; off = every /notices route answers 404.
   notices: z.enum(['off', 'on']).default('off'),
   // T10 (2026-10-12): the Elvanto link screens, each off / admin (admin only) / on. Missing = the newYouthForms
   // value, so a config stored before the split keeps behaving exactly as it did.
@@ -143,18 +143,28 @@ export const MinistryConfigSchema = z.object({
     })
     .default({}),
 
-  // Role names are fixed (Admin, Director, Grade, Quad, Leader) — not
+  // Role names are fixed (Admin, Oversight, Grade, Quad, Leader) — not
   // per-deployment relabelable. `enabled` picks which OPTIONAL roles this
   // ministry uses; Admin always exists and isn't toggleable.
   roles: z
     .object({
       enabled: z
-        .object({
-          director: z.boolean().default(true),
-          grade: z.boolean().default(true),
-          quad: z.boolean().default(true),
-          leader: z.boolean().default(false),
-        })
+        .preprocess(
+          (v) => {
+            // An old tab may still save the old key; read it as oversight (oversight wins when both are set).
+            if (v && typeof v === 'object' && 'director' in v) { // legacy key
+              const { director: legacy, ...rest } = v as Record<string, unknown>; // legacy key
+              return { oversight: legacy, ...rest };
+            }
+            return v;
+          },
+          z.object({
+            oversight: z.boolean().default(true),
+            grade: z.boolean().default(true),
+            quad: z.boolean().default(true),
+            leader: z.boolean().default(false),
+          }),
+        )
         .default({}),
     })
     .default({}),

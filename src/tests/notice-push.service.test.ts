@@ -11,7 +11,7 @@ const VAPID = { VAPID_PUBLIC_KEY: 'pub', VAPID_PRIVATE_KEY: 'priv', VAPID_SUBJEC
 const NOW = new Date('2026-10-15T10:00:00Z');
 const sub = (n: string) => ({ endpoint: `https://push.example.com/${n}`, keys: { p256dh: 'p', auth: 'a' } });
 
-const ADMIN = A('admin'), DIR = A('director'), JG = A('quad', 'b79'), SG = A('quad', 'b1012'), GR = A('grade'), LD = A('leader');
+const ADMIN = A('admin'), DIR = A('oversight'), JG = A('quad', 'b79'), SG = A('quad', 'b1012'), GR = A('grade'), LD = A('leader');
 
 function make(o: { notices?: 'on' | 'off'; env?: Record<string, string>; sender?: PushSender; users?: any[] } = {}) {
   const subs = new InMemoryNoticePushRepository();
@@ -28,7 +28,7 @@ function make(o: { notices?: 'on' | 'off'; env?: Record<string, string>; sender?
 }
 
 describe('notice push: subscribe / unsubscribe / RBAC / module', () => {
-  it('quad, admin and director may subscribe; grade and leader are refused', async () => {
+  it('quad, admin and oversight may subscribe; grade and leader are refused', async () => {
     const { svc, subs } = make();
     for (const [a, n] of [[ADMIN, 'a'], [DIR, 'd'], [JG, 'j']] as const) await expect(svc.subscribe(a, sub(n))).resolves.toEqual({ ok: true });
     for (const a of [GR, LD]) await expect(svc.subscribe(a, sub('x'))).rejects.toThrow();
@@ -73,7 +73,7 @@ describe('notice push: subscribe / unsubscribe / RBAC / module', () => {
 });
 
 describe('notice push: sending', () => {
-  it('goes to the addressed quad logins plus every subscribed admin/director, never others', async () => {
+  it('goes to the addressed quad logins plus every subscribed admin/oversight, never others', async () => {
     const { svc, sent } = make();
     await svc.subscribe(ADMIN, sub('admin'));
     await svc.subscribe(DIR, sub('dir'));

@@ -46,8 +46,8 @@ describe('Student Service', () => {
     expect(results).toHaveLength(3);
   });
 
-  // TC34 — grade login can create student (director required)
-  it('TC34: grade cannot create student (director+ required)', async () => {
+  // TC34 — grade login can create student (oversight required)
+  it('TC34: grade cannot create student (oversight+ required)', async () => {
     const { svc } = await makeService();
     await expect(svc.create(actor('grade', { grade: 9 }), { firstName: 'X', lastName: 'Y', gender: 'male', grade: 9 }))
       .rejects.toThrow(ForbiddenError);

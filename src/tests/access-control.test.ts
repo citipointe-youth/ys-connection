@@ -68,14 +68,14 @@ describe('RBAC — can()', () => {
     expect(can(actor('quad', { quad: 'g79' }), 'connection:write')).toBe(true);
   });
 
-  // TC07 — director can import
-  it('TC07: director can import', () => {
-    expect(can(actor('director'), 'import:run')).toBe(true);
+  // TC07 — oversight can import
+  it('TC07: oversight can import', () => {
+    expect(can(actor('oversight'), 'import:run')).toBe(true);
   });
 
-  // TC08 — director cannot admin:manage
-  it('TC08: director cannot admin:manage', () => {
-    expect(can(actor('director'), 'admin:manage')).toBe(false);
+  // TC08 — oversight cannot admin:manage
+  it('TC08: oversight cannot admin:manage', () => {
+    expect(can(actor('oversight'), 'admin:manage')).toBe(false);
   });
 
   // TC09 — admin can do everything
@@ -119,10 +119,10 @@ describe('canAccessGrade()', () => {
     expect(canAccessGrade(actor('quad', { quad: 'b1012' }), 11)).toBe(true);
   });
 
-  // TC16 — director accesses any grade
-  it('TC16: director accesses any grade', () => {
-    expect(canAccessGrade(actor('director'), 7)).toBe(true);
-    expect(canAccessGrade(actor('director'), 12)).toBe(true);
+  // TC16 — oversight accesses any grade
+  it('TC16: oversight accesses any grade', () => {
+    expect(canAccessGrade(actor('oversight'), 7)).toBe(true);
+    expect(canAccessGrade(actor('oversight'), 12)).toBe(true);
   });
 
   // TC17 — grade login with null grade returns false
@@ -153,21 +153,21 @@ describe('canAccessGender()', () => {
     expect(canAccessGender(actor('grade', { grade: 8 }), 'female')).toBe(true);
   });
 
-  // TC22 — director can access any gender
-  it('TC22: director can access any gender', () => {
-    expect(canAccessGender(actor('director'), 'female')).toBe(true);
-    expect(canAccessGender(actor('director'), 'male')).toBe(true);
+  // TC22 — oversight can access any gender
+  it('TC22: oversight can access any gender', () => {
+    expect(canAccessGender(actor('oversight'), 'female')).toBe(true);
+    expect(canAccessGender(actor('oversight'), 'male')).toBe(true);
   });
 });
 
 describe('RBAC — intake:write (New youth forms)', () => {
-  it.each(['leader', 'grade', 'quad', 'director', 'admin'])('%s can send new youth forms', (role) => {
+  it.each(['leader', 'grade', 'quad', 'oversight', 'admin'])('%s can send new youth forms', (role) => {
     expect(can(actor(role), 'intake:write')).toBe(true);
   });
 });
 
 describe('RBAC — canUseNewYouth (off / admin / on)', () => {
-  const roles = ['leader', 'grade', 'quad', 'director', 'admin'];
+  const roles = ['leader', 'grade', 'quad', 'oversight', 'admin'];
   it.each(roles)('off: %s cannot', (role) => {
     expect(canUseNewYouth(actor(role), 'off')).toBe(false);
   });
@@ -180,16 +180,16 @@ describe('RBAC — canUseNewYouth (off / admin / on)', () => {
 });
 
 describe('RBAC — Elvanto link (link:use / link:admin)', () => {
-  const roles = ['leader', 'grade', 'quad', 'director', 'admin'];
+  const roles = ['leader', 'grade', 'quad', 'oversight', 'admin'];
   it.each(roles)('link:use: %s can', (role) => {
     expect(can(actor(role), 'link:use')).toBe(true);
   });
-  it.each(roles)('link:admin: admin only, directors lose it too (T9) (%s)', (role) => {
+  it.each(roles)('link:admin: admin only, oversights lose it too (T9) (%s)', (role) => {
     expect(can(actor(role), 'link:admin')).toBe(role === 'admin');
   });
-  it.each(roles)('T4 intake:admin and canUseIntakeAdmin: admin only (not director), and only while the module is on (%s)', (role) => {
+  it.each(roles)('T4 intake:admin and canUseIntakeAdmin: admin only (not oversight), and only while the module is on (%s)', (role) => {
     expect(can(actor(role), 'intake:admin')).toBe(role === 'admin');
-    expect(can(actor(role), 'link:flowRemove')).toBe(role === 'admin' || role === 'director'); // rev 6 (R4)
+    expect(can(actor(role), 'link:flowRemove')).toBe(role === 'admin' || role === 'oversight'); // rev 6 (R4)
     expect(canUseIntakeAdmin(actor(role), 'on')).toBe(role === 'admin');
     expect(canUseIntakeAdmin(actor(role), 'off')).toBe(false);
   });
@@ -210,7 +210,7 @@ const ALL_ACTIONS = [
 type _MissingAction = Exclude<Action, (typeof ALL_ACTIONS)[number]>;
 const _allActionsListed: [_MissingAction] extends [never] ? true : never = true;
 void _allActionsListed;
-const ALL_ROLES = ['leader', 'grade', 'quad', 'director', 'admin'] as const;
+const ALL_ROLES = ['leader', 'grade', 'quad', 'oversight', 'admin'] as const;
 const simpleCfg = (simple: boolean) => ({ logins: { simple, retiredGradeIds: [], gradeRoleWasOn: true } });
 
 describe('RBAC — canWithConfig (Simple logins)', () => {
@@ -255,7 +255,7 @@ describe('RBAC — canUseNewYouth full table', () => {
 });
 
 describe('RBAC — canSetViewGrades', () => {
-  it.each(['quad', 'director', 'admin'])('%s may write any leader', (role) => {
+  it.each(['quad', 'oversight', 'admin'])('%s may write any leader', (role) => {
     expect(canSetViewGrades(actor(role, { quad: role === 'quad' ? 'g79' : undefined }), 'L1')).toBe(true);
     expect(canSetViewGrades(actor(role, { quad: role === 'quad' ? 'g79' : undefined }), 'L2')).toBe(true);
   });

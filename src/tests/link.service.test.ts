@@ -29,7 +29,7 @@ const ST = u(201), ST_SUN = u(202), ST_OLD = u(203), SVC = u(211), SVC_SUN = u(2
 const L_CODY = u(301), L_DANA = u(302), L_EVE = u(303), L_FAY = u(304);
 const G9F = u(401), G10M = u(402), GX = u(403), R1 = u(411), R2 = u(412);
 const FR1 = u(501), FR2 = u(502), FR3 = u(503), FLOW_A = u(511), FLOW_B = u(512), STEP1 = u(521), STEP2 = u(522), STEP3 = u(523);
-// T4: each flow's lowest step is "step 0" (admin/director only), so each flow gets one ahead of the steps tested here.
+// T4: each flow's lowest step is "step 0" (admin/oversight only), so each flow gets one ahead of the steps tested here.
 const FR0B = u(504), FR0A = u(505), STEP0B = u(524), STEP0A = u(525);
 const CONSOLE = u(601), CONSOLE2 = u(602);
 const S_AMY = u(701), S_BEN = u(702), S_TOM = u(703);
@@ -37,7 +37,7 @@ const S_AMY = u(701), S_BEN = u(702), S_TOM = u(703);
 const actor = (id: string, role: string, o: Partial<Actor> = {}): Actor =>
   ({ id, role: role as Actor['role'], displayName: `${role} login`, grade: null, quad: null, gender: null, leaderId: null, ...o });
 const ADMIN = actor(ADMIN_ID, 'admin');
-const DIRECTOR = actor(DIR_ID, 'director');
+const OVERSIGHT = actor(DIR_ID, 'oversight');
 const QUAD = actor(QUAD_ID, 'quad', { quad: 'g79' });
 const QUAD_B = actor(QB_ID, 'quad', { quad: 'b1012' });
 const GRADE = actor(GRADE_ID, 'grade', { grade: 9, gender: 'female' });
@@ -86,7 +86,7 @@ async function setup(mode: Mode | Modes = 'on', o: { console?: boolean; caps?: P
   for (const r of [settings, students, leaders, users, sessions, attendance]) await r.init();
   await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
     modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, ...modes } } } as never);
-  for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'director', 'director'], [QUAD_ID, 'g79', 'quad'],
+  for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'oversight', 'oversight'], [QUAD_ID, 'g79', 'quad'],
     [GRADE_ID, 'grade9g', 'grade'], [LEAD_ID, 'cody', 'leader'], [GRADE2_ID, 'grade9b', 'grade'], [QB_ID, 'b1012', 'quad']] as const) {
     await users.save({ id, email, displayName: `${email} name`, role, status: 'active', createdAt: T0, updatedAt: T0 } as never);
   }
@@ -201,7 +201,7 @@ describe('D1 the switch (every public method)', () => {
     ['setMatch', (s, a) => s.setMatch(a, P_BEN, { studentId: null })],
     ['log', (s, a) => s.log(a, {})],
   ];
-  const everyone = [ADMIN, DIRECTOR, QUAD, GRADE, LEADER];
+  const everyone = [ADMIN, OVERSIGHT, QUAD, GRADE, LEADER];
 
   // T9: the admin page (status, listActions, cancel via batch, the admin routes) works for the admin in every module state.
   const adminNotlisteds = new Set(['status', 'listActions', 'enqueue', 'cancel', 'undo', 'batch']);
@@ -222,16 +222,16 @@ describe('D1 the switch (every public method)', () => {
     for (const [name, f] of [...use, ...adm]) {
       expect(`${name}:${await code(f(h.svc, ADMIN))}`).toBe(`${name}:ok`);
       const want = adm.some(([n]) => n === name) ? 'FORBIDDEN' : 'MODULE_DISABLED';
-      for (const a of [DIRECTOR, QUAD, GRADE, LEADER]) expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:${want}`);
+      for (const a of [OVERSIGHT, QUAD, GRADE, LEADER]) expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:${want}`);
     }
   });
 
-  it('on: link:use for every role; link:admin 403 for everyone but the admin (T9: directors too)', async () => {
+  it('on: link:use for every role; link:admin 403 for everyone but the admin (T9: oversights too)', async () => {
     const h = await setup('on');
     for (const [name, f] of use) for (const a of everyone) expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:ok`);
     for (const [name, f] of adm) {
       expect(`${name}:admin:${await code(f(h.svc, ADMIN))}`).toBe(`${name}:admin:ok`);
-      for (const a of [DIRECTOR, QUAD, GRADE, LEADER]) expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:FORBIDDEN`);
+      for (const a of [OVERSIGHT, QUAD, GRADE, LEADER]) expect(`${name}:${a.role}:${await code(f(h.svc, a))}`).toBe(`${name}:${a.role}:FORBIDDEN`);
     }
   });
 
@@ -435,7 +435,7 @@ describe('D2 enqueue', () => {
 
   it('report type checks: date window, attendees ⊆ members, didNotMeet, serviceTimeId in link_services', async () => {
     const h = await setup();
-    const st = async (it: object) => oc(await enq(h.svc, DIRECTOR, it, DEV));
+    const st = async (it: object) => oc(await enq(h.svc, OVERSIGHT, it, DEV));
     expect(await st(report({ date: '2026-10-17' }))).toBe('BAD_REQUEST');                   // > today
     expect(await st(report({ date: '2026-08-20' }))).toBe('BAD_REQUEST');                   // < today − 56 (T3, 2026-10-21)
     expect(await st(report({ date: '2026-08-21' }))).toBe('saved');                   // = today − 56
@@ -454,8 +454,8 @@ describe('D2 enqueue', () => {
 
   it('flow step checks: unknown row, step moved, out of scope', async () => {
     const h = await setup();
-    expect((await enq(h.svc, DIRECTOR, step({ rowId: u(996) }), DEV)).code).toBe('BAD_REQUEST');
-    expect((await enq(h.svc, DIRECTOR, step({ stepId: STEP2 }), DEV)).code).toBe('BAD_REQUEST');
+    expect((await enq(h.svc, OVERSIGHT, step({ rowId: u(996) }), DEV)).code).toBe('BAD_REQUEST');
+    expect((await enq(h.svc, OVERSIGHT, step({ stepId: STEP2 }), DEV)).code).toBe('BAD_REQUEST');
     expect((await enq(h.svc, GRADE2, step({}, { leaderId: L_CODY }), DEV)).code).toBe('FORBIDDEN'); // F1: an in-scope "I am" for the boys login
     expect((await enq(h.svc, GRADE, step({ rowId: FR2, stepId: STEP2, personId: null }), DEV)).code).toBe('FORBIDDEN');
     const ok = step();
@@ -499,7 +499,7 @@ describe('D2 enqueue', () => {
   it('"I am" is required for reports and flow steps', async () => {
     const h = await setup();
     for (const it of [report({}, { leaderId: null }), edit({}, { leaderId: u(995) }), step({}, { leaderId: undefined })]) {
-      expect(await enq(h.svc, DIRECTOR, it, DEV)).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST', message: 'Pick who you are first.' });
+      expect(await enq(h.svc, OVERSIGHT, it, DEV)).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST', message: 'Pick who you are first.' });
     }
   });
 
@@ -559,13 +559,13 @@ describe('D2 enqueue', () => {
   it('report duplicate by key → duplicate + existingId', async () => {
     const h = await setup();
     const a = report({ date: '2026-10-14' });
-    await enq(h.svc, DIRECTOR, a, DEV);
+    await enq(h.svc, OVERSIGHT, a, DEV);
     expect(await enq(h.svc, GRADE, report({ date: '2026-10-14' }), DEV)).toMatchObject({ outcome: 'duplicate', existingId: a.id });
   });
 
   it('editReport: last report, editable, base, date', async () => {
     const h = await setup();
-    const st = async (it: object, a: Actor = DIRECTOR) => enq(h.svc, a, it, DEV);
+    const st = async (it: object, a: Actor = OVERSIGHT) => enq(h.svc, a, it, DEV);
     expect((await st(edit({ reportId: u(994) }))).code).toBe('BAD_REQUEST');
     expect(await st(edit({ groupId: G10M, reportId: R2, date: '2026-10-14', attendees: [P_TOM],
       base: { date: '2026-10-14', didNotMeet: false, attendees: [P_TOM], guests: 0, serviceTimeId: null } })))
@@ -578,11 +578,11 @@ describe('D2 enqueue', () => {
   it('editReport: the overlay (newest sent submit with report_id after the groups push) is the last report', async () => {
     const h = await setup();
     const sub = report({ date: '2026-10-15' });
-    await enq(h.svc, DIRECTOR, sub, DEV);
+    await enq(h.svc, OVERSIGHT, sub, DEV);
     const NEW_R = u(413);
     setRow(h.link, sub.id, { status: 'sent', result_at: '2026-10-16T08:45:00.000Z', report_id: NEW_R });
-    expect((await enq(h.svc, DIRECTOR, edit({ reportId: u(998) }), DEV)).code).toBe('BAD_REQUEST'); // not in the group at all
-    expect((await enq(h.svc, DIRECTOR, edit({ reportId: NEW_R, date: '2026-10-15',
+    expect((await enq(h.svc, OVERSIGHT, edit({ reportId: u(998) }), DEV)).code).toBe('BAD_REQUEST'); // not in the group at all
+    expect((await enq(h.svc, OVERSIGHT, edit({ reportId: NEW_R, date: '2026-10-15',
       base: { date: '2026-10-15', didNotMeet: false, attendees: [P_AMY], guests: 0, serviceTimeId: null } }), DEV)).outcome).toBe('saved');
   });
 });
@@ -850,11 +850,11 @@ describe('D3 cancel, undo, listActions', () => {
     expect((await cancel(h.svc, GRADE, b.id, null, DEV)).outcome).toBe('cancelled');
   });
 
-  it('admin (On) can cancel anyone\'s, a director no longer can (T9); not pending → too-late', async () => {
+  it('admin (On) can cancel anyone\'s, an oversight login no longer can (T9); not pending → too-late', async () => {
     const h = await setup();
     const a = checkIn(P_AMY, { leaderId: L_DANA });
     await enq(h.svc, GRADE, a, DEV);
-    expect(await cancel(h.svc, DIRECTOR, a.id, null, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS' });
+    expect(await cancel(h.svc, OVERSIGHT, a.id, null, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS' });
     expect((await cancel(h.svc, ADMIN, a.id, null, DEV)).outcome).toBe('cancelled');
     const b = report();
     await enq(h.svc, GRADE, b, DEV);
@@ -894,7 +894,7 @@ describe('D3 cancel, undo, listActions', () => {
       'status', 'type']);
     expect(mine[0]).toMatchObject({ login: 'grade9g', leaderName: 'Dana Day', hasNote: true });
     expect(JSON.stringify(mine)).not.toContain('private words');
-    expect(await h.svc.listActions(DIRECTOR, { ids })).toEqual([]); // T9: a director sees its own rows only
+    expect(await h.svc.listActions(OVERSIGHT, { ids })).toEqual([]); // T9: an oversight login sees its own rows only
     const all = await h.svc.listActions(ADMIN, { ids });
     expect(all.map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
     expect(all.find((r) => r.id === b.id)).toMatchObject({ detail: 'console sentence', login: 'g79', hasNote: false });
@@ -1111,14 +1111,14 @@ describe('D4 batch and the action log', () => {
 
 // =====================================================================================================================
 describe('D5 lifegroups and flows', () => {
-  it('scope: grade sees its grade+gender, quad its bracket+gender, ungraded for director/admin, junior leader none', async () => {
+  it('scope: grade sees its grade+gender, quad its bracket+gender, ungraded for oversight/admin, junior leader none', async () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.lifegroups(a)).groups.map((g) => g.groupId);
     expect(await ids(GRADE)).toEqual([G9F]);
     expect(await ids(GRADE2)).toEqual([]);
     expect(await ids(QUAD)).toEqual([G9F]);
     expect(await ids(QUAD_B)).toEqual([G10M]);
-    expect((await ids(DIRECTOR)).sort()).toEqual([G9F, G10M, GX].sort());
+    expect((await ids(OVERSIGHT)).sort()).toEqual([G9F, G10M, GX].sort());
     expect(await ids(LEADER)).toEqual([]);
   });
 
@@ -1175,19 +1175,19 @@ describe('D5 lifegroups and flows', () => {
     // an edit of D1 is sent: its values are the last report (same reportId), not the submit's
     const e1 = edit({ reportId: R_S1, date: '2026-10-15', guests: 5,
       base: { date: '2026-10-15', didNotMeet: false, attendees: [P_AMY], guests: 3, serviceTimeId: null } });
-    expect((await enq(h.svc, DIRECTOR, e1, DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, OVERSIGHT, e1, DEV)).outcome).toBe('saved');
     setRow(h.link, e1.id, { status: 'sent', result_at: '2026-10-16T08:55:00.000Z' });
     g = (await h.svc.lifegroups(GRADE)).groups[0]!;
     expect(g.lastReport).toMatchObject({ reportId: R_S1, date: '2026-10-15', guests: 5, attendees: [P_AMY, P_EVE1], editable: true });
     // a second edit is checked against the first edit's values
     const e2base = { date: '2026-10-15', didNotMeet: false, attendees: [P_AMY, P_EVE1], guests: 5, serviceTimeId: null };
-    expect((await enq(h.svc, DIRECTOR, edit({ reportId: R_S1, date: '2026-10-15', guests: 6, base: e2base }), DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, OVERSIGHT, edit({ reportId: R_S1, date: '2026-10-15', guests: 6, base: e2base }), DEV)).outcome).toBe('saved');
   });
 
-  it('flows: scoped by the roster grade/gender, unknown person for director/admin, ordered by flow then step', async () => {
+  it('flows: scoped by the roster grade/gender, unknown person for oversight/admin, ordered by flow then step', async () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);
-    expect((await ids(DIRECTOR)).filter((x) => x !== FR0A && x !== FR0B)).toEqual([FR3, FR1, FR2]); // admin/director also see step 0 (T11)
+    expect((await ids(OVERSIGHT)).filter((x) => x !== FR0A && x !== FR0B)).toEqual([FR3, FR1, FR2]); // admin/oversight also see step 0 (T11)
     expect(await ids(GRADE2)).not.toContain(FR0B);        // a leader never does
     expect(await ids(GRADE)).toEqual([FR1]);
     expect(await ids(QUAD_B)).toEqual([FR3]);
@@ -1285,7 +1285,7 @@ describe('D6 admin: matching, log', () => {
     // One row: only that row; a row that is already linked is skipped.
     expect(await h.svc.createStudents(ADMIN, { personIds: [P_NIA] })).toEqual({ created: 0, skipped: { notUnmatched: 1 } });
     expect(await h.svc.createStudents(ADMIN, { personIds: [P_BEN] })).toEqual({ created: 0, skipped: { candidate: 1 } });
-    await expect(h.svc.createStudents(DIRECTOR, { personIds: [P_NIA] })).rejects.toThrow();
+    await expect(h.svc.createStudents(OVERSIGHT, { personIds: [P_NIA] })).rejects.toThrow();
     await expect(h.svc.createStudents(ADMIN, {})).rejects.toThrow(); // ids are required (the SPA sends batches)
     // Check-in still finds them (the roster lists them, as before).
     expect((await h.svc.checkin(ADMIN, ST)).people!.some((p) => p.personId === P_NIA)).toBe(true);
@@ -1392,16 +1392,16 @@ describe('D6 admin: matching, log', () => {
 });
 
 // =====================================================================================================================
-describe('Y6c status dncReady (admin and director only)', () => {
+describe('Y6c status dncReady (admin and oversight only)', () => {
   it('false while active students are unmatched, true once each is matched or marked Not in YS; leaders never get it', async () => {
     const h = await setup();
     expect((await h.svc.status(ADMIN)).dncReady).toBe(false); // Ben and both Eves are unmatched
-    expect((await h.svc.status(DIRECTOR)).dncReady).toBe(false);
+    expect((await h.svc.status(OVERSIGHT)).dncReady).toBe(false);
     expect(await h.svc.status(GRADE)).not.toHaveProperty('dncReady');
     await h.link.setMatches([{ personId: P_BEN, studentId: S_BEN, match: 'manual' }, { personId: P_EVE1, studentId: null, match: 'ignored' },
       { personId: P_EVE2, studentId: null, match: 'ignored' }]);
     expect((await h.svc.status(ADMIN)).dncReady).toBe(true);
-    expect((await h.svc.status(DIRECTOR)).dncReady).toBe(true);
+    expect((await h.svc.status(OVERSIGHT)).dncReady).toBe(true);
   });
   it('fix round: not sent while every link screen is off (a site that does not use the link yet), and no roster read', async () => {
     const h = await setup('off');
@@ -1465,12 +1465,12 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     (await h.link.flows()).map((f) => ({ ...f, ...tweak[f.rowId] })), { takenAt: `2026-10-16T08:${++pushN}:00.000Z`, consoleId: CONSOLE });
   const tom = (p: Record<string, unknown> = {}) => step({ rowId: FR3, flowId: FLOW_A, stepId: STEP3, personId: P_TOM, ...p });
 
-  it('2026-10-24: ADMIN/DIRECTOR get leaders (active, by name, personId or null); others get none; nobody gets assignees', async () => {
+  it('2026-10-24: ADMIN/OVERSIGHT get leaders (active, by name, personId or null); others get none; nobody gets assignees', async () => {
     const h = await setup();
     const want = [{ id: L_CODY, name: 'Cody  Codeman', personId: P_CODY, gender: 'male', grades: [9, 10] },
       { id: L_DANA, name: 'Dana Day', personId: null, gender: 'female', grades: [9, 10] },
       { id: L_EVE, name: 'Eve Evans', personId: null, gender: 'female', grades: [9, 10] }]; // Fay: inactive
-    for (const a of [ADMIN, DIRECTOR]) {
+    for (const a of [ADMIN, OVERSIGHT]) {
       const v = await h.svc.flows(a);
       expect(v.leaders).toEqual(want);
       expect(v).not.toHaveProperty('assignees');
@@ -1515,7 +1515,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     const fit = tom({ assignTo: P_CODY }); // Tom: grade 10 boy; Cody: grades 9-10, male
     expect((await enq(h.svc, ADMIN, fit, DEV)).outcome).toBe('saved');
     expect((await h.link.getAction(fit.id))!.payload).toMatchObject({ assignTo: P_CODY });
-    const bad = await enq(h.svc, DIRECTOR, step({ assignTo: P_CODY }), DEV); // Amy: grade 9 girl
+    const bad = await enq(h.svc, OVERSIGHT, step({ assignTo: P_CODY }), DEV); // Amy: grade 9 girl
     expect(bad).toMatchObject({ code: 'BAD_REQUEST', message: 'Pick a leader from the list.' });
     const g = await setup();
     await repush(g, { [FR1]: { assignedTo: 'Cody Codeman' } });
@@ -1580,7 +1580,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     expect(await h.svc.assignFlow(ADMIN, { flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA })).toEqual({ ok: true }); // Dana: not offered, no Elvanto person
     expect(await h.svc.assignFlow(ADMIN, { flowId: FLOW_A, personId: P_TOM, leaderId: L_CODY })).toEqual({ ok: true }); // Cody: linked, not offered
   });
-  it('r30: GET /link/flows steps carry a known offered for admin/director only', async () => {
+  it('r30: GET /link/flows steps carry a known offered for admin/oversight only', async () => {
     const h = await setup();
     await offer(h, [P_CODY]);
     expect((await h.svc.flows(ADMIN)).steps.every((s: any) => s.offered?.[0] === P_CODY)).toBe(true);
@@ -1612,8 +1612,8 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.flows(a)).rows.map((r) => r.rowId);
     expect(await ids(GRADE2)).toEqual([]);                    // Ben (9 boy) sits in the step 0 of Bravo
-    expect(await ids(ADMIN)).toContain(FR0B);                 // T11: admin/director still see step 0 on Flow Steps
-    expect(await ids(DIRECTOR)).toContain(FR0B);
+    expect(await ids(ADMIN)).toContain(FR0B);                 // T11: admin/oversight still see step 0 on Flow Steps
+    expect(await ids(OVERSIGHT)).toContain(FR0B);
     const flows = await h.link.flows();
     const P_UNK = u(160);
     await h.link.replaceMirror('flows', [
@@ -1653,11 +1653,11 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     };
     expect(await ids(GRADE2)).not.toContain(FR0B);
     await pick('none');
-    expect(await ids(DIRECTOR)).toContain(FR0B);
-    expect((await enq(h.svc, DIRECTOR, step({ rowId: FR0B, flowId: FLOW_B, stepId: STEP0B, personId: P_BEN }), DEV)).outcome).toBe('saved');
+    expect(await ids(OVERSIGHT)).toContain(FR0B);
+    expect((await enq(h.svc, OVERSIGHT, step({ rowId: FR0B, flowId: FLOW_B, stepId: STEP0B, personId: P_BEN }), DEV)).outcome).toBe('saved');
     await pick(other.stepId);
-    expect(await ids(DIRECTOR)).toContain(FR0B);
-    expect(await ids(DIRECTOR)).toContain(other.rowId); // admin/director are never hidden from (T11); leaders: see the stepHidden tests
+    expect(await ids(OVERSIGHT)).toContain(FR0B);
+    expect(await ids(OVERSIGHT)).toContain(other.rowId); // admin/oversight are never hidden from (T11); leaders: see the stepHidden tests
   });
 
   it('T6: assign, reassign and unassign a flow person; rows carry the leader id and name', async () => {
@@ -1666,7 +1666,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
     expect(await h.svc.assignFlow(ADMIN, { flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA })).toEqual({ ok: true });
     expect(await row(GRADE)).toMatchObject({ assignedLeaderId: L_DANA, assignedLeaderName: 'Dana Day', currentLeaderId: L_DANA });
     expect((await h.link.flowAssignments())[0]).toMatchObject({ assignedBy: 'admin' });
-    await h.svc.assignFlow(DIRECTOR, { flowId: FLOW_B, personId: P_AMY, leaderId: L_EVE });
+    await h.svc.assignFlow(OVERSIGHT, { flowId: FLOW_B, personId: P_AMY, leaderId: L_EVE });
     expect(await row(ADMIN)).toMatchObject({ assignedLeaderId: L_EVE, assignedLeaderName: 'Eve Evans' });
     await h.svc.assignFlow(ADMIN, { flowId: FLOW_B, personId: P_AMY, leaderId: null });
     expect(await row(GRADE)).toMatchObject({ assignedLeaderId: null, assignedLeaderName: null });
@@ -1675,7 +1675,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
   it('T6: 404 module off, 403 outside scope or step 0, 400 unknown/inactive leader or no such person', async () => {
     const h = await setup();
     const a = (actor: Actor, b: object) => code(h.svc.assignFlow(actor, { flowId: FLOW_B, personId: P_AMY, leaderId: L_DANA, ...b }));
-    expect(await a(GRADE, {})).toBe('FORBIDDEN');                             // 2026-10-24 (Q4): only admin/director reassign
+    expect(await a(GRADE, {})).toBe('FORBIDDEN');                             // 2026-10-24 (Q4): only admin/oversight reassign
     expect(await a(GRADE2, {})).toBe('FORBIDDEN');
     expect(await a(ADMIN, { leaderId: u(399) })).toBe('BAD_REQUEST');         // unknown leader
     expect(await a(ADMIN, { leaderId: L_FAY })).toBe('BAD_REQUEST');          // inactive leader
@@ -1696,7 +1696,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
       group({ groupId: u(433), name: 'Grade 6 Boys', meets: '', members: [], thisWeek: 'none', lastReport: null }),
       group({ groupId: u(434), name: 'Grade 6 Girls', meets: '', members: [], thisWeek: 'none', lastReport: null }),
     ], META('2026-10-16T08:30:00.000Z'));
-    const r = await h.svc.lifegroups(DIRECTOR);
+    const r = await h.svc.lifegroups(OVERSIGHT);
     expect(r.groups.map((g) => g.name)).toEqual(['Grade 6 Girls', 'Grade 6 Boys', 'Grade 7 Girls', 'Grade 9 Girls', 'Grade 9 Boys',
       'Grade 10 Boys', 'Connect group']);
     const g9 = r.groups.find((g) => g.groupId === G9F)!;
@@ -1718,7 +1718,7 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
       group({ groupId: u(443), name: 'Grade 8 Girls Mon', meets: 'Mon 6:30 PM', members: [], thisWeek: 'none', lastReport: null }),
       group({ groupId: u(444), name: 'Grade 8 Girls Sun', meets: 'Sunday', members: [], thisWeek: 'none', lastReport: null }),
     ], { takenAt: '2026-10-16T08:30:00.000Z', consoleId: CONSOLE });
-    const names = (await h.svc.lifegroups(DIRECTOR)).groups.filter((g) => g.grade === 8 && g.gender === 'female').map((g) => g.name);
+    const names = (await h.svc.lifegroups(OVERSIGHT)).groups.filter((g) => g.grade === 8 && g.gender === 'female').map((g) => g.name);
     expect(names).toEqual(['Grade 8 Girls Mon', 'Grade 8 Girls Thu', 'Grade 8 Girls Sun', 'Grade 8 Girls none']);
   });
 });
@@ -1737,11 +1737,11 @@ describe('RFIX (review of the UX batch)', () => {
       ? { ...g, history: [g.lastReport!, { ...oldRep, reportId: NEWER, date: '2026-10-06' }, oldRep] } : g)), META('2026-10-16T08:59:00.000Z'));
     const oldEdit = edit({ reportId: OLD, date: '2026-09-22', attendees: [P_AMY, P_EVE1], guests: 0,
       base: { date: '2026-09-22', didNotMeet: false, attendees: [P_AMY], guests: 0, serviceTimeId: null } });
-    expect((await enq(h.svc, DIRECTOR, oldEdit, DEV)).outcome).toBe('saved');
-    expect((await enq(h.svc, DIRECTOR, report({ date: '2026-08-20' }), DEV)).code).toBe('BAD_REQUEST'); // submit: past 8 weeks
-    expect((await enq(h.svc, DIRECTOR, report({ date: '2026-09-01' }), DEV)).outcome).toBe('saved'); // 6 weeks back: now allowed
+    expect((await enq(h.svc, OVERSIGHT, oldEdit, DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, OVERSIGHT, report({ date: '2026-08-20' }), DEV)).code).toBe('BAD_REQUEST'); // submit: past 8 weeks
+    expect((await enq(h.svc, OVERSIGHT, report({ date: '2026-09-01' }), DEV)).outcome).toBe('saved'); // 6 weeks back: now allowed
     // a report that is nowhere in the group is still refused
-    expect((await enq(h.svc, DIRECTOR, edit({ reportId: u(999) }), DEV)).code).toBe('BAD_REQUEST');
+    expect((await enq(h.svc, OVERSIGHT, edit({ reportId: u(999) }), DEV)).code).toBe('BAD_REQUEST');
   });
 
   it('T8: an older report whose base differs is refused as changed', async () => {
@@ -1751,7 +1751,7 @@ describe('RFIX (review of the UX batch)', () => {
     await h.link.replaceMirror('groups', gs.map((g) => (g.groupId === G9F ? { ...g, history: [g.lastReport!, { ...g.lastReport!, reportId: OLD, date: '2026-10-06' }] } : g)),
       META('2026-10-16T08:59:00.000Z'));
     const bad = edit({ reportId: OLD, date: '2026-10-06', base: { date: '2026-10-06', didNotMeet: false, attendees: [P_AMY], guests: 5, serviceTimeId: null } });
-    expect((await enq(h.svc, DIRECTOR, bad, DEV)).code).toBe('BAD_REQUEST');
+    expect((await enq(h.svc, OVERSIGHT, bad, DEV)).code).toBe('BAD_REQUEST');
   });
 
   it('T3: a checked-in person with no roster row can be checked out, never checked in; strangers are refused', async () => {
@@ -1773,9 +1773,9 @@ describe('RFIX (review of the UX batch)', () => {
     const a = (actor: Actor, leaderId: string | null, personId = P_AMY, flowId = FLOW_B) => code(h.svc.assignFlow(actor, { flowId, personId, leaderId }));
     expect(await a(ADMIN, L_CODY)).toBe('BAD_REQUEST');   // Amy is a grade 9 girl; Cody is male
     expect(await a(ADMIN, L_DANA)).toBe('ok');
-    expect(await a(DIRECTOR, L_CODY, P_TOM, FLOW_A)).toBe('ok'); // Tom: grade 10 boy
+    expect(await a(OVERSIGHT, L_CODY, P_TOM, FLOW_A)).toBe('ok'); // Tom: grade 10 boy
     expect(await a(ADMIN, null)).toBe('ok');
-    await h.leaders.save({ ...leader(u(306), 'Nora None', null), grades: [] } as never); // no grades = director level (Q1)
+    await h.leaders.save({ ...leader(u(306), 'Nora None', null), grades: [] } as never); // no grades = oversight level (Q1)
     expect(await a(ADMIN, u(306))).toBe('ok');
     expect(await a(ADMIN, null)).toBe('ok'); // no app assignee, so Elvanto's assignedTo names the current one
     await h.link.replaceMirror('flows', (await h.link.flows()).map((f) => (f.rowId === FR1 ? { ...f, assignedTo: 'Cody Codeman' } : f)),
@@ -1786,7 +1786,7 @@ describe('RFIX (review of the UX batch)', () => {
   it('2026-10-24: leaderFitsPerson (ruling Q1)', () => {
     const L = (grades: number[], gender: string | null, active = true) => ({ active, grades, gender });
     for (const [g, s] of [[8, 'male'], [8, 'female'], [null, null], [12, null]] as const) expect(leaderFitsPerson(L([], null), g, s)).toBe(true);
-    expect(leaderFitsPerson(L([], 'female'), 8, 'male')).toBe(true); // no grades = director/admin level, any gender
+    expect(leaderFitsPerson(L([], 'female'), 8, 'male')).toBe(true); // no grades = oversight/admin level, any gender
     const m8 = L([8], 'male');
     expect(leaderFitsPerson(m8, 8, 'male')).toBe(true);
     expect(leaderFitsPerson(m8, 8, 'female')).toBe(false);
@@ -1801,11 +1801,11 @@ describe('RFIX (review of the UX batch)', () => {
 
 describe('stepHidden is actor-aware (T11)', () => {
   const row = (stepId: string, stepOrder: number) => ({ flowId: 'f1', stepId, stepOrder });
-  it('hides the first step from leaders by default, never from admin/director', () => {
+  it('hides the first step from leaders by default, never from admin/oversight', () => {
     expect(stepHidden(actor('l', 'quad'), row('s1', 1), undefined)).toBe(true);
     expect(stepHidden(actor('l', 'quad'), row('s2', 2), {})).toBe(false);
     expect(stepHidden(actor('a', 'admin'), row('s1', 1), undefined)).toBe(false);
-    expect(stepHidden(actor('d', 'director'), row('s1', 1), {})).toBe(false);
+    expect(stepHidden(actor('d', 'oversight'), row('s1', 1), {})).toBe(false);
   });
   it('none hides nothing; a step id hides that step for leaders only', () => {
     expect(stepHidden(actor('l', 'grade'), row('s1', 1), { f1: 'none' })).toBe(false);
@@ -1831,7 +1831,7 @@ describe('UX batch 2026-10-14b (T8, T12)', () => {
       .concat([{ flowId: FLOW_B, flowName: 'Bravo', stepId: EMPTY, stepName: 'Done', stepOrder: 4 }]);
     await h.link.replaceMirror('flows', await h.link.flows(), { takenAt: '2026-10-16T09:00:00.000Z', consoleId: CONSOLE, steps });
     expect((await h.svc.flows(QUAD)).steps.map((x) => x.stepId)).toEqual([STEP3, STEP1, STEP2, EMPTY]);
-    expect((await h.svc.flows(DIRECTOR)).steps.map((x) => x.stepId)).toEqual([STEP0A, STEP3, STEP0B, STEP1, STEP2, EMPTY]); // T11: director sees the hidden step
+    expect((await h.svc.flows(OVERSIGHT)).steps.map((x) => x.stepId)).toEqual([STEP0A, STEP3, STEP0B, STEP1, STEP2, EMPTY]); // T11: oversight sees the hidden step
     expect((await h.svc.flows(ADMIN)).steps.map((x) => x.stepId)).toEqual([STEP0A, STEP3, STEP0B, STEP1, STEP2, EMPTY]);
   });
 });
@@ -1860,13 +1860,13 @@ describe('F1 (review 2026-10-16): "I am" is limited to leaders in scope', () => 
     await enq(h.svc, ADMIN, b, DEV);
     expect(await h.link.getAction(b.id)).toMatchObject({ leaderId: noGrades, leaderName: 'Gail Grades' });
   });
-  it('an out-of-scope "I am" never owns a pending row (cancel refused); director may act as any leader', async () => {
+  it('an out-of-scope "I am" never owns a pending row (cancel refused); oversight may act as any leader', async () => {
     const h = await setup();
     const a = checkIn(P_AMY, { leaderId: L_DANA });
     await enq(h.svc, GRADE, a, DEV);
     expect(await cancel(h.svc, GRADE, a.id, L_CODY, DEV)).toMatchObject({ outcome: 'refused', code: 'LINK_NOT_YOURS' });
     const d = checkIn(P_BEN, { leaderId: L_CODY });
-    await enq(h.svc, DIRECTOR, d, DEV);
+    await enq(h.svc, OVERSIGHT, d, DEV);
     expect(await h.link.getAction(d.id)).toMatchObject({ leaderId: L_CODY, leaderName: 'Cody  Codeman' });
   });
   it('a junior leader login still resolves to its bound leader whatever id it sends', async () => {

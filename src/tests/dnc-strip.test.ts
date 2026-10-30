@@ -40,7 +40,7 @@ const actor = (role: string): Actor => ({
   gender: 'female', leaderId: role === 'leader' ? 'L1' : null,
 } as Actor);
 const STRIPPED = ['leader', 'grade', 'quad'];
-const KEEP = ['admin', 'director'];
+const KEEP = ['admin', 'oversight'];
 
 /** Every DNC student has dnc true and (non-admin) no phones; every other student is untouched. */
 function expectStrip(role: string, items: { id: string; dnc: boolean; mobile?: string | null; parentPhone?: string | null }[], phones: ('mobile' | 'parentPhone')[] = ['mobile', 'parentPhone']) {
@@ -123,7 +123,7 @@ describe('R1 DNC strip: atrisk.service (Health)', () => {
 });
 
 describe('R1 DNC strip: bus My car', () => {
-  it('stop mobiles are stripped for non-admin, kept for admin/director', async () => {
+  it('stop mobiles are stripped for non-admin, kept for admin/oversight', async () => {
     const w = await world();
     const bus = new InMemoryBusRepository(); await bus.init();
     await w.settings.updateSettings({ ministryConfig: mergeMinistryConfig(MINISTRY_CONFIG_DEFAULTS, { modules: { busMinistry: true } }) });
@@ -167,7 +167,7 @@ describe('R1 makeDnc cache', () => {
 });
 
 describe('R1 review H1: the unused PATCH /students/:id/at-risk is gone', () => {
-  it('no route writes a student except the admin/director student:write ones', async () => {
+  it('no route writes a student except the admin/oversight student:write ones', async () => {
     const { buildContainer } = await import('../container');
     const { buildRoutes } = await import('../api/http/router');
     const { services } = await buildContainer();

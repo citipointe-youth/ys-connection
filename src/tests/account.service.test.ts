@@ -294,12 +294,12 @@ describe('Account Service — previewAccount()', () => {
     const gradeUser = await mk({ id: 'u-grade', displayName: 'Grade 9', email: 'grade9g', role: 'grade', grade: 9 });
     const quadUser = await mk({ id: 'u-quad', displayName: 'Girls Yr 7-9', email: 'g79', role: 'quad', quad: 'g79' });
     const inactiveGrade = await mk({ id: 'u-inactive', displayName: 'Grade 10', email: 'grade10g', role: 'grade', grade: 10, status: 'inactive' });
-    const directorUser = await mk({ id: 'u-director', displayName: 'Director', email: 'director', role: 'director' });
+    const oversightUser = await mk({ id: 'u-oversight', displayName: 'Oversight', email: 'oversight', role: 'oversight' });
     const leaderUser = await mk({ id: 'u-leader', displayName: 'Leader', email: 'leader1', role: 'leader' });
     const settings = new InMemorySettingsRepository();
     await settings.init();
     const svc = makeAccountService(users, settings);
-    return { svc, gradeUser, quadUser, inactiveGrade, directorUser, leaderUser };
+    return { svc, gradeUser, quadUser, inactiveGrade, oversightUser, leaderUser };
   }
 
   it('rejects a non-admin actor', async () => {
@@ -323,10 +323,10 @@ describe('Account Service — previewAccount()', () => {
     ).rejects.toBeInstanceOf(BadRequestError);
   });
 
-  it('rejects a director account', async () => {
-    const { svc, directorUser } = await buildPreviewFixtures();
+  it('rejects an oversight login account', async () => {
+    const { svc, oversightUser } = await buildPreviewFixtures();
     await expect(
-      svc.previewAccount(actorFor('u-admin', 'admin'), directorUser.id),
+      svc.previewAccount(actorFor('u-admin', 'admin'), oversightUser.id),
     ).rejects.toBeInstanceOf(BadRequestError);
   });
 
@@ -404,10 +404,10 @@ describe('Account Service — guard while Simple logins is on', () => {
     const { svc, grade } = await build(true);
     expect((await svc.toggleStatus(admin, grade.id)).status).toBe('inactive');
   });
-  it('on: creating a quad or director account is allowed', async () => {
+  it('on: creating a quad or oversight account is allowed', async () => {
     const { svc } = await build(true);
     await expect(svc.create(admin, { displayName: 'Q', email: 'b79', password: 'longenough', role: 'quad', quad: 'b79' })).resolves.toMatchObject({ role: 'quad' });
-    await expect(svc.create(admin, { displayName: 'D', email: 'dir', password: 'longenough', role: 'director' })).resolves.toMatchObject({ role: 'director' });
+    await expect(svc.create(admin, { displayName: 'D', email: 'dir', password: 'longenough', role: 'oversight' })).resolves.toMatchObject({ role: 'oversight' });
   });
   it('off: all of the above are allowed', async () => {
     const { svc, inactive } = await build(false);

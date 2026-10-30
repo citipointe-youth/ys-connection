@@ -198,7 +198,7 @@ describe('F3 (review 2026-10-16): listByStudent is scoped like GET /students/:id
     expect(await connSvc.listByStudent(GRADE9F, student2.id)).toHaveLength(1);
     await expect(connSvc.listByStudent(GRADE9F, student3.id)).rejects.toBeInstanceOf(ForbiddenError);
   });
-  it('quad login: other bracket 403, own bracket ok; director any', async () => {
+  it('quad login: other bracket 403, own bracket ok; oversight any', async () => {
     const { connSvc, studentSvc, leaderSvc, student } = await buildServices();
     const senior = await studentSvc.create(ADMIN, { firstName: 'Sen', lastName: 'Ior', gender: 'female', grade: 11 });
     const lead = await leaderSvc.create(ADMIN, { fullName: 'Any', gender: 'female', grades: [9, 11] });
@@ -206,6 +206,6 @@ describe('F3 (review 2026-10-16): listByStudent is scoped like GET /students/:id
     await connSvc.assign(ADMIN, { studentId: student.id, leaderId: lead.id });
     await expect(connSvc.listByStudent(G79, senior.id)).rejects.toBeInstanceOf(ForbiddenError);
     expect(await connSvc.listByStudent(G79, student.id)).toHaveLength(1);
-    expect(await connSvc.listByStudent(actor('director'), senior.id)).toHaveLength(1);
+    expect(await connSvc.listByStudent(actor('oversight'), senior.id)).toHaveLength(1);
   });
 });

@@ -27,7 +27,7 @@ const FLOW = u(511), NP = u(512), STEP1 = u(521), STEP0 = u(522);
 const FR_DNC = u(501), FR_OK = u(502), FR_C_OK = u(503), FR_C_UNK = u(504), FR_C_OK2 = u(505);
 const actor = (id: string, role: string, o: Partial<Actor> = {}): Actor =>
   ({ id, role: role as Actor['role'], displayName: `${role} login`, grade: null, quad: null, gender: null, leaderId: null, ...o });
-const ADMIN = actor(ADMIN_ID, 'admin'), DIRECTOR = actor(DIR_ID, 'director'), QUAD = actor(QUAD_ID, 'quad', { quad: 'g79' });
+const ADMIN = actor(ADMIN_ID, 'admin'), OVERSIGHT = actor(DIR_ID, 'oversight'), QUAD = actor(QUAD_ID, 'quad', { quad: 'g79' });
 const DEV = { id: 'dev-1', label: 'test' };
 let idn = 9000;
 const nid = () => u(++idn);
@@ -42,7 +42,7 @@ async function setup(o: { intakeAdmin?: 'on' | 'off'; elvanto?: object } = {}) {
   for (const r of [settings, students, leaders, users, sessions, attendance]) await r.init();
   await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS, elvanto: o.elvanto ?? brisbaneElvanto(), // Y2a: Brisbane's flow prefixes, injected
     modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, flows: 'on', intakeAdmin: o.intakeAdmin ?? 'on' } } } as never);
-  for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'director', 'director'], [QUAD_ID, 'g79', 'quad']] as const) {
+  for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'oversight', 'oversight'], [QUAD_ID, 'g79', 'quad']] as const) {
     await users.save({ id, email, displayName: `${email} name`, role, status: 'active', createdAt: T0, updatedAt: T0 } as never);
   }
   await leaders.save({ id: L_DANA, fullName: 'Dana Day', gender: 'female', grades: [8, 9], active: true, createdByGrade: null,
@@ -76,11 +76,11 @@ const consentRow = (key: string, status: 'needs-you' | 'ready' | 'done') => ({ k
   fromApp: false, hasText: false, outcome: '', detail: status === 'done' ? null : { key } });
 
 describe('rev 6: flow rows carry consent; DNC strips the number for non-admins (R1)', () => {
-  it('quad gets no number on a DNC row, admin/director keep it; flags on every row', async () => {
+  it('quad gets no number on a DNC row, admin/oversight keep it; flags on every row', async () => {
     const h = await setup();
     const byQuad = (await h.svc.flows(QUAD)).rows.find((r) => r.rowId === FR_DNC)!;
     expect(byQuad).toMatchObject({ consent: 'contact', dnc: true, mobile: null, consentStep: false });
-    for (const a of [ADMIN, DIRECTOR]) expect((await h.svc.flows(a)).rows.find((r) => r.rowId === FR_DNC)!.mobile).toBe('0400000001');
+    for (const a of [ADMIN, OVERSIGHT]) expect((await h.svc.flows(a)).rows.find((r) => r.rowId === FR_DNC)!.mobile).toBe('0400000001');
     expect((await h.svc.flows(QUAD)).rows.find((r) => r.rowId === FR_OK)).toMatchObject({ dnc: false, mobile: '0400000001' });
     expect((await h.svc.flows(ADMIN)).rows.find((r) => r.rowId === FR_C_OK)!.consentStep).toBe(true);
   });
@@ -149,7 +149,7 @@ describe('CY-A1: the admin settles an unclear row (POST /link/admin/unclear/:id)
   });
   it('landed: sent; 404 unknown id, 409 once it is no longer unclear, 403 for anyone but the admin, 400 without landed', async () => {
     const { h, a } = await unclearRow();
-    await expect(h.svc.resolveUnclear(DIRECTOR, a.id, { landed: true })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(h.svc.resolveUnclear(OVERSIGHT, a.id, { landed: true })).rejects.toMatchObject({ statusCode: 403 });
     await expect(h.svc.resolveUnclear(ADMIN, a.id, {})).rejects.toMatchObject({ statusCode: 400 });
     expect(await h.svc.resolveUnclear(ADMIN, a.id, { landed: true })).toEqual({ ok: true, status: 'sent' });
     expect(await h.link.getAction(a.id)).toMatchObject({ status: 'sent', reason: null });
@@ -218,11 +218,11 @@ describe('Y2a: step-0 Complete fails closed while the New People flow is unknown
 });
 
 describe('rev 6: removeFromFlowStep (R4)', () => {
-  it('admin/director only; I am needed only with a note; allowed on a DNC row; blocks a Complete of the same row', async () => {
+  it('admin/oversight only; I am needed only with a note; allowed on a DNC row; blocks a Complete of the same row', async () => {
     const h = await setup();
     expect(h.oc(await h.one(QUAD, remove(FR_OK, P_OK)))).toBe('FORBIDDEN');
     expect(h.oc(await h.one(ADMIN, remove(FR_OK, P_OK, { note: 'Asked not to be contacted.' })))).toBe('BAD_REQUEST');
-    expect(h.oc(await h.one(DIRECTOR, remove(FR_DNC, P_DNC)))).toBe('saved');
+    expect(h.oc(await h.one(OVERSIGHT, remove(FR_DNC, P_DNC)))).toBe('saved');
     expect(h.oc(await h.one(ADMIN, remove(FR_OK, P_OK, { note: 'Moved away.', leaderId: L_DANA })))).toBe('saved');
     expect(h.oc(await h.one(ADMIN, complete(FR_OK, FLOW, STEP1, P_OK)))).toBe('LINK_BUSY_ROW');
     expect((await h.svc.flows(ADMIN)).rows.find((r) => r.rowId === FR_OK)!.openAction).toMatchObject({ type: 'removeFromFlowStep' });
@@ -246,7 +246,7 @@ describe('rev 6: consentLookup + push + GET, consentFix (R2 b/c)', () => {
   it('admin only, intakeAdmin on, ref = its own id, search up to 60 characters', async () => {
     const h = await setup();
     const id = nid();
-    expect(h.oc(await h.one(DIRECTOR, lookup(id)))).toBe('FORBIDDEN');
+    expect(h.oc(await h.one(OVERSIGHT, lookup(id)))).toBe('FORBIDDEN');
     expect(h.oc(await h.one(ADMIN, { ...lookup(id), payload: { kind: 'forms', page: 1, ref: nid() } }))).toBe('BAD_REQUEST');
     expect(h.oc(await h.one(ADMIN, lookup(id, 'x'.repeat(61))))).toBe('BAD_REQUEST');
     expect(h.oc(await h.one(ADMIN, lookup(id)))).toBe('saved');
@@ -258,7 +258,7 @@ describe('rev 6: consentLookup + push + GET, consentFix (R2 b/c)', () => {
     const p = formsPush(), id = p.requestId as string;
     await h.one(ADMIN, lookup(id));
     expect((await h.svc.consentLookup(ADMIN, { id })).status).toBe('waiting');
-    await expect(h.svc.consentLookup(DIRECTOR, { id })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(h.svc.consentLookup(OVERSIGHT, { id })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     expect(await h.sync.push('consentLookup', { ...p, consoleId: CONSOLE })).toEqual({ applied: false }); // not leased yet
     const claimed = (await h.claim()).rows.find((r) => r.id === id)!;
     expect(claimed.note).toBe('sample'); // the search text, never signed
@@ -279,14 +279,14 @@ describe('rev 6: consentLookup + push + GET, consentFix (R2 b/c)', () => {
     await h.sync.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id, outcome: 'refused', reason: 'too-old' }] });
     expect(await h.svc.consentLookup(ADMIN, { id })).toMatchObject({ status: 'failed', reason: 'too-old', rows: [] });
     const fix = { kind: 'action', id: nid(), type: 'consentFix', payload: { personId: P_OK, subId: u(801) }, note: null, leaderId: null };
-    expect(h.oc(await h.one(DIRECTOR, fix))).toBe('FORBIDDEN');
+    expect(h.oc(await h.one(OVERSIGHT, fix))).toBe('FORBIDDEN');
     expect(h.oc(await h.one(ADMIN, fix))).toBe('saved');
     expect(h.oc(await h.one(ADMIN, { ...fix, id: nid() }))).toBe('duplicate'); // one open fix per person
   });
   it('L6: consentLink queues for admin only, one open per form, link and unlink; the unlinked lookup is stored and read back', async () => {
     const h = await setup();
     const sub = u(802), link = { kind: 'action', id: nid(), type: 'consentLink', payload: { subId: sub, personId: P_OK }, note: null, leaderId: null };
-    expect(h.oc(await h.one(DIRECTOR, link))).toBe('FORBIDDEN');
+    expect(h.oc(await h.one(OVERSIGHT, link))).toBe('FORBIDDEN');
     expect(h.oc(await h.one(ADMIN, { ...link, payload: { subId: sub } }))).toBe('VALIDATION_ERROR');
     expect(h.oc(await h.one(ADMIN, link))).toBe('saved');
     expect(h.oc(await h.one(ADMIN, { ...link, id: nid() }))).toBe('duplicate'); // one open link per form and person
@@ -320,11 +320,11 @@ describe('rev 6: consentLookup + push + GET, consentFix (R2 b/c)', () => {
     expect(await h.sync.push('consentLookup', { ...p, consoleId: CONSOLE })).toEqual({ applied: true, rows: 2 });
     await h.sync.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id, outcome: 'planned' }] });
     expect(await h.svc.consentLookup(ADMIN, { id })).toMatchObject({ status: 'ready', kind: 'other', total: 2, rows: p.rows });
-    await expect(h.svc.consentLookup(DIRECTOR, { id })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(h.svc.consentLookup(OVERSIGHT, { id })).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
   it('L6: the consents person search needs the intake gate; the lifegroup one is unchanged', async () => {
     const h = await setup();
-    await expect(h.svc.youth(DIRECTOR, { scope: 'consents' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(h.svc.youth(OVERSIGHT, { scope: 'consents' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     expect(await h.svc.youth(ADMIN, { scope: 'consents' })).toEqual({ rows: [] });
     const off = await setup({ intakeAdmin: 'off' });
     await expect(off.svc.youth(ADMIN, { scope: 'consents' })).rejects.toMatchObject({ code: 'MODULE_DISABLED' });

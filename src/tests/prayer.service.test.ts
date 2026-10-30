@@ -11,7 +11,7 @@ const actor = (role: string, opts: { grade?: number; gender?: string; quad?: str
      leaderId: opts.leaderId ?? null });
 
 const ADMIN = actor('admin');
-const DIRECTOR = actor('director');
+const OVERSIGHT = actor('oversight');
 const G9F = actor('grade', { grade: 9, gender: 'female' });
 const G9M = actor('grade', { grade: 9, gender: 'male' });
 const G8M = actor('grade', { grade: 8, gender: 'male' });
@@ -118,7 +118,7 @@ describe('PrayerService scoping + CRUD', () => {
     expect(created.studentId).toBeNull();
 
     // Visible to its own creator and to admin (ministry-wide viewer)...
-    for (const viewer of [G9F, ADMIN, DIRECTOR]) {
+    for (const viewer of [G9F, ADMIN, OVERSIGHT]) {
       const list = await s.list(viewer);
       expect(list.map((p) => p.id)).toContain(created.id);
       expect(list.find((p) => p.id === created.id)!.student).toBeNull();
@@ -145,16 +145,16 @@ describe('PrayerService scoping + CRUD', () => {
       const list = await s.list(viewer);
       expect(list.map((p) => p.id)).not.toContain(created.id);
     }
-    // Admin/director still see everything regardless.
-    for (const viewer of [ADMIN, DIRECTOR]) {
+    // Admin/oversight still see everything regardless.
+    for (const viewer of [ADMIN, OVERSIGHT]) {
       expect((await s.list(viewer)).map((p) => p.id)).toContain(created.id);
     }
   });
 
-  it('a director/admin-created general prayer is visible to every gender/grade', async () => {
+  it('an oversight login/admin-created general prayer is visible to every gender/grade', async () => {
     const { s } = await svc([]);
-    const created = await s.create(DIRECTOR, { text: 'Pray for the whole ministry' });
-    for (const viewer of [G9F, G8M, QB79, QG79, QB1012, ADMIN, DIRECTOR]) {
+    const created = await s.create(OVERSIGHT, { text: 'Pray for the whole ministry' });
+    for (const viewer of [G9F, G8M, QB79, QG79, QB1012, ADMIN, OVERSIGHT]) {
       expect((await s.list(viewer)).map((p) => p.id)).toContain(created.id);
     }
   });

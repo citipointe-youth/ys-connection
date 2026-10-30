@@ -183,7 +183,7 @@ describe('my car', () => {
     expect(nextWeek.ownCarDraft!.car!.name).toBe("Sarah's car");
   });
   // Task 6: confirmed this already works — self-identification via `as=` is spoofable by
-  // design (spec §4), and a bus:coordinate login (quad/director/admin) already has `bus:use`
+  // design (spec §4), and a bus:coordinate login (quad/oversight/admin) already has `bus:use`
   // outright via ROLE_PERMISSIONS, so `removeOwnCar` resolves `me` to whatever `as=` names and
   // finds/deletes THAT leader's own car. Since 2026-10-15 the SPA sends `?owner=<ownerLeaderId>`
   // with its own as= instead (see "permission split" below); this soft-guard path still works.
@@ -278,7 +278,7 @@ describe('guest linking', () => {
     await t.students.save(student('s4', 'Jessica', 'Tran', 9, 'female'));
     expect((await t.svc.linkGuestsAfterImport()).linked).toBe(1);   // Riley Kim ↔ s3
     expect((await t.bus.listAddresses({ studentId: 's3' }))[0]!.label).toBe('Home');
-    const pending = await t.svc.pendingGuests(t.ctx('director'));
+    const pending = await t.svc.pendingGuests(t.ctx('oversight'));
     expect(pending.map((p) => p.id)).toEqual([g2.id]);
     expect(pending[0]!.suggestions.map((s) => s.studentId).sort()).toEqual(['s1', 's4']);
   });
@@ -288,20 +288,20 @@ describe('guest linking', () => {
   it('Task 2: matches by phone (mobile), even with no name overlap at all', async () => {
     const t = await setup(); // s1 'Jess Tran' seeded with mobile '0412345678'
     const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Random', lastName: 'Walker', grade: 9, gender: 'female', phone: '+61 412 345 678' });
-    const pending = await t.svc.pendingGuests(t.ctx('director'));
+    const pending = await t.svc.pendingGuests(t.ctx('oversight'));
     expect(pending.find((p) => p.id === g.id)!.suggestions).toEqual([{ studentId: 's1', name: 'Jess Tran', grade: 9, byPhone: true }]);
   });
   it('Task 2: matches by parent phone too, leading 0/61 normalised the same way', async () => {
     const t = await setup();
     await t.students.save({ ...(await t.students.findById('s2'))!, parentPhone: '0433222111' });
     const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Random', lastName: 'Other', grade: 8, gender: 'male', phone: '61433222111' });
-    const pending = await t.svc.pendingGuests(t.ctx('director'));
+    const pending = await t.svc.pendingGuests(t.ctx('oversight'));
     expect(pending.find((p) => p.id === g.id)!.suggestions).toEqual([{ studentId: 's2', name: 'Sam Ode', grade: 8, byPhone: true }]);
   });
   it('Task 2: a student matching both by phone and by name is listed once, flagged byPhone', async () => {
     const t = await setup();
     const g = await t.svc.createGuest(t.ctx('grade'), { firstName: 'Jess', lastName: 'Tran', grade: 9, gender: 'female', phone: '0412345678' });
-    const pending = await t.svc.pendingGuests(t.ctx('director'));
+    const pending = await t.svc.pendingGuests(t.ctx('oversight'));
     expect(pending.find((p) => p.id === g.id)!.suggestions).toEqual([{ studentId: 's1', name: 'Jess Tran', grade: 9, byPhone: true }]);
   });
 });
@@ -413,8 +413,8 @@ describe('own car write-ordering (I6)', () => {
 describe('history excludes tonight and any future run (M5)', () => {
   it("excludes tonight's own run, not just a future one", async () => {
     const t = await withFleet(); // creates the run for FRI_7PM (2026-10-09)
-    expect((await t.svc.history(t.ctx('director'))).nights).toHaveLength(0);
-    const nextWeek = await t.svc.history(t.ctx('director', null, '2026-10-16T19:00'));
+    expect((await t.svc.history(t.ctx('oversight'))).nights).toHaveLength(0);
+    const nextWeek = await t.svc.history(t.ctx('oversight', null, '2026-10-16T19:00'));
     expect(nextWeek.nights).toHaveLength(1); // last Friday's run is now in the past
   });
 });
@@ -612,7 +612,7 @@ describe('Task 5: removing a rider fully deletes an orphaned guest', () => {
     await svc.removeRider(ctx('grade'), r.id);
     expect(await bus.getGuest(g.id)).toBeNull();
     expect(await bus.listAddresses({ guestId: g.id })).toHaveLength(0);
-    const pending = await svc.pendingGuests(ctx('director'));
+    const pending = await svc.pendingGuests(ctx('oversight'));
     expect(pending.map((p) => p.id)).not.toContain(g.id); // pending-new-people count drops too
   });
   it('a guest still riding on a past run is NOT deleted when removed from tonight', async () => {
@@ -845,11 +845,11 @@ describe('quad loses bus:coordinate under Simple logins (October rework E2)', ()
     expect((await t.svc.getRun(t.ctx('quad'))).canCoordinate).toBe(true);
     await expect(t.svc.generate(t.ctx('quad'), { mode: 'all' })).resolves.toBeTruthy();
   });
-  it('admin and director coordinate in both modes', async () => {
+  it('admin and oversight coordinate in both modes', async () => {
     for (const on of [true, false]) {
       const t = await withFleet();
       await simple(t, on);
-      for (const role of ['admin', 'director']) {
+      for (const role of ['admin', 'oversight']) {
         expect((await t.svc.getRun(t.ctx(role))).canCoordinate).toBe(true);
         await expect(t.svc.generate(t.ctx(role), { mode: 'all' })).resolves.toBeTruthy();
       }

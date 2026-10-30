@@ -18,7 +18,7 @@ describe('MinistryConfigSchema', () => {
     expect(MINISTRY_CONFIG_DEFAULTS.branding.logoImage).toBe(null);
     expect(MINISTRY_CONFIG_DEFAULTS.modules.connectionAudit).toBe(false); // module tree: Connection Audit needs New person form, off by default
     expect(MINISTRY_CONFIG_DEFAULTS.structure.cohortModel).toBe('grades-quads');
-    expect(MINISTRY_CONFIG_DEFAULTS.roles.enabled).toEqual({ director: true, grade: true, quad: true, leader: false });
+    expect(MINISTRY_CONFIG_DEFAULTS.roles.enabled).toEqual({ oversight: true, grade: true, quad: true, leader: false });
   });
 
   it('rejects an invalid hex colour', () => {
@@ -124,7 +124,7 @@ describe('logins and modules.prayers (October rework)', () => {
     const old = {
       version: 1,
       preset: 'large-graded-au',
-      roles: { enabled: { director: true, grade: true, quad: true, leader: false } },
+      roles: { enabled: { oversight: true, grade: true, quad: true, leader: false } },
       modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', busMinistry: true, newYouthForms: 'shadow' },
       busMinistry: { churchAddress: '1 Church St', coordinatorLeaderIds: ['l1'] },
     };

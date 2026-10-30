@@ -9,7 +9,7 @@ import { MINISTRY_CONFIG_DEFAULTS, assertGradesInRange } from '../core/ministry-
 import { NotFoundError } from '../core/errors/app-error';
 import { makeDnc, type Dnc } from './dnc';
 
-/** R1: every student read carries `dnc`; phones are null for a DNC student unless admin/director. */
+/** R1: every student read carries `dnc`; phones are null for a DNC student unless admin/oversight. */
 export type StudentView = Student & { dnc: boolean };
 
 const CreateStudentSchema = z.object({

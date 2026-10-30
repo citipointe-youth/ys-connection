@@ -103,7 +103,7 @@ export interface LeaderFollowup {
   notSeenService: DncFollowup[];
   notSeenGroup: DncFollowup[];
 }
-/** R1: phones null for a DO NOT CONTACT student unless admin/director. */
+/** R1: phones null for a DO NOT CONTACT student unless admin/oversight. */
 export type DncFollowup = FollowupStudent & { dnc: boolean };
 
 export interface FollowupService {

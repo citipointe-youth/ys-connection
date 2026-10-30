@@ -28,7 +28,7 @@ const S_AMY = u(701), S_TOM = u(703);
 const actor = (id: string, role: string, o: Partial<Actor> = {}): Actor =>
   ({ id, role: role as Actor['role'], displayName: `${role} login`, grade: null, quad: null, gender: null, leaderId: null, ...o });
 const ADMIN = actor(ADMIN_ID, 'admin');
-const DIRECTOR = actor(DIR_ID, 'director');
+const OVERSIGHT = actor(DIR_ID, 'oversight');
 const GRADE = actor(GRADE_ID, 'grade', { grade: 9, gender: 'female' });
 const QUAD_B = actor(QB_ID, 'quad', { quad: 'b1012' });
 const CAPS: Capabilities = { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live',
@@ -60,7 +60,7 @@ async function setup(o: { caps?: Capabilities | null } = {}) {
   for (const r of [settings, students, leaders, users, sessions, attendance]) await r.init();
   await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
     modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, newYouthForms: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'on' } } } as never);
-  for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'director', 'director'], [GRADE_ID, 'grade9g', 'grade'],
+  for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'oversight', 'oversight'], [GRADE_ID, 'grade9g', 'grade'],
     [QB_ID, 'b1012', 'quad']] as const) {
     await users.save({ id, email, displayName: email, role, status: 'active', createdAt: T0, updatedAt: T0 } as never);
   }
@@ -96,9 +96,9 @@ const act = (type: 'addGroupMember' | 'removeGroupMember', personId: string, lea
 const one = async (h: H, a: Actor, item: object) => (await h.svc.batch(a, { items: [item] })).results[0]!;
 
 describe('T6 rules', () => {
-  it('canEditGroupMembers: admin and director always; others only as a leader of the group', () => {
+  it('canEditGroupMembers: admin and oversight always; others only as a leader of the group', () => {
     expect(canEditGroupMembers(ADMIN, false)).toBe(true);
-    expect(canEditGroupMembers(DIRECTOR, false)).toBe(true);
+    expect(canEditGroupMembers(OVERSIGHT, false)).toBe(true);
     expect(canEditGroupMembers(GRADE, false)).toBe(false);
     expect(canEditGroupMembers(GRADE, true)).toBe(true);
   });
@@ -134,13 +134,13 @@ describe('T5 GET /link/lifegroups/:groupId/members', () => {
     expect(JSON.stringify(v)).not.toMatch(/0400/);
     expect((await h.svc.groupMembers(ADMIN, G9F, {})).members[1]!.studentId).toBe(S_TOM);
   });
-  it('canEdit: the group leader as "I am", admin, director; not another leader or no "I am"', async () => {
+  it('canEdit: the group leader as "I am", admin, oversight; not another leader or no "I am"', async () => {
     const h = await setup();
     expect((await h.svc.groupMembers(GRADE, G9F, { leaderId: L_DANA })).canEdit).toBe(true);
     expect((await h.svc.groupMembers(GRADE, G9F, { leaderId: L_EVE })).canEdit).toBe(false);
     expect((await h.svc.groupMembers(GRADE, G9F, {})).canEdit).toBe(false);
     expect((await h.svc.groupMembers(ADMIN, G9F, {})).canEdit).toBe(true);
-    expect((await h.svc.groupMembers(DIRECTOR, G9F, {})).canEdit).toBe(true);
+    expect((await h.svc.groupMembers(OVERSIGHT, G9F, {})).canEdit).toBe(true);
   });
   it('a group out of scope is 403; an unknown one 404', async () => {
     const h = await setup();
@@ -159,12 +159,12 @@ describe('T6 GET /link/youth (picker)', () => {
 });
 
 describe('T6 enqueue addGroupMember / removeGroupMember', () => {
-  it('the group leader ("I am") adds; the row carries the person; director needs no "I am"', async () => {
+  it('the group leader ("I am") adds; the row carries the person; oversight needs no "I am"', async () => {
     const h = await setup();
     const r = await one(h, GRADE, act('addGroupMember', P_BEA));
     expect(r).toMatchObject({ outcome: 'saved', action: { type: 'addGroupMember', status: 'pending' } });
     expect((await h.link.getAction(r.id))!).toMatchObject({ personId: P_BEA, dedupeKey: `addMember:${G9F}:${P_BEA}`, note: null });
-    expect((await one(h, DIRECTOR, act('removeGroupMember', P_TOM, null))).outcome).toBe('saved');
+    expect((await one(h, OVERSIGHT, act('removeGroupMember', P_TOM, null))).outcome).toBe('saved');
   });
   it('refused: no "I am", not a leader of the group, group out of scope, person out of scope', async () => {
     const h = await setup();

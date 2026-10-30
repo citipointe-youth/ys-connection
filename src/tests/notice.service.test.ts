@@ -16,17 +16,17 @@ function make(notices: 'on' | 'off' = 'on', now = NOW) {
 }
 
 describe('notice RBAC', () => {
-  it('only admin and director may write', () => {
-    for (const r of ['admin', 'director']) expect(can(A(r), 'notice:write')).toBe(true);
+  it('only admin and oversight may write', () => {
+    for (const r of ['admin', 'oversight']) expect(can(A(r), 'notice:write')).toBe(true);
     for (const r of ['quad', 'grade', 'leader']) expect(can(A(r), 'notice:write')).toBe(false);
   });
 });
 
 describe('notice service', () => {
-  it('admin and director send; others are refused', async () => {
+  it('admin and oversight send; others are refused', async () => {
     const { svc } = make();
     await expect(svc.send(A('admin'), { title: 't', body: 'b', recipients: ['b79'] })).resolves.toMatchObject({ title: 't', recipients: ['b79'] });
-    await expect(svc.send(A('director'), { title: 't', body: 'b', recipients: ['g79'] })).resolves.toBeTruthy();
+    await expect(svc.send(A('oversight'), { title: 't', body: 'b', recipients: ['g79'] })).resolves.toBeTruthy();
     for (const r of ['quad', 'grade', 'leader']) {
       await expect(svc.send(A(r, 'b79'), { title: 't', body: 'b', recipients: ['b79'] })).rejects.toThrow();
     }
@@ -42,7 +42,7 @@ describe('notice service', () => {
     await expect(svc.send(A('admin'), { ...ok, body: 'x'.repeat(1000) })).resolves.toBeTruthy();
   });
 
-  it('quad logins see only notices addressed to their quad; admin/director see all; others none', async () => {
+  it('quad logins see only notices addressed to their quad; admin/oversight see all; others none', async () => {
     const { svc } = make();
     await svc.send(A('admin'), { title: 'jg', body: 'b', recipients: ['b79'] });
     await svc.send(A('admin'), { title: 'both', body: 'b', recipients: ['b79', 'g1012'] });
@@ -51,7 +51,7 @@ describe('notice service', () => {
     expect(await titles(A('quad', 'g1012'))).toEqual(['both']);
     expect(await titles(A('quad', 'g79'))).toEqual([]);
     expect(await titles(A('admin'))).toEqual(['both', 'jg']);
-    expect(await titles(A('director'))).toEqual(['both', 'jg']);
+    expect(await titles(A('oversight'))).toEqual(['both', 'jg']);
     expect(await titles(A('grade'))).toEqual([]);
     expect(await titles(A('leader'))).toEqual([]);
   });
@@ -64,11 +64,11 @@ describe('notice service', () => {
     expect((await svc.list(A('admin'))).map((n) => n.id)).toEqual(['new', 'edge']);
   });
 
-  it('delete: admin/director only, unknown id is 404', async () => {
+  it('delete: admin/oversight only, unknown id is 404', async () => {
     const { svc } = make();
     const n = await svc.send(A('admin'), { title: 't', body: 'b', recipients: ['b79'] });
     await expect(svc.remove(A('quad', 'b79'), n.id)).rejects.toThrow();
-    await svc.remove(A('director'), n.id);
+    await svc.remove(A('oversight'), n.id);
     expect(await svc.list(A('admin'))).toEqual([]);
     await expect(svc.remove(A('admin'), n.id)).rejects.toMatchObject({ statusCode: 404 });
   });

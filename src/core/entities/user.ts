@@ -79,7 +79,7 @@ export interface Actor {
   leaderId?: string | null;
   // Gender scope, derived at sign-in: quad logins from their quad; grade logins
   // from their email convention (grade7g -> female, grade7b -> male). null/absent
-  // = no gender restriction (director/admin, or an ungendered grade login).
+  // = no gender restriction (oversight/admin, or an ungendered grade login).
   gender?: 'male' | 'female' | null;
   // See User.mustChangePassword. Embedded in the signed session token so the
   // route gate can check it without a DB round-trip.

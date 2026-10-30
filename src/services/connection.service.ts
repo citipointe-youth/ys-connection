@@ -46,7 +46,7 @@ export interface ExportRow {
   dateOfBirth: string | null;
   mobile: string | null;
   parentPhone: string | null;
-  /** R1: DO NOT CONTACT (phones blank for non-admin/director). */
+  /** R1: DO NOT CONTACT (phones blank for non-admin/oversight). */
   dnc: boolean;
 }
 

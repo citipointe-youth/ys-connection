@@ -112,7 +112,7 @@ export interface LinkStatus {
   mirrors: Record<MirrorKind, { takenAt: string | null; ageSeconds: number | null }>;
   /** T1: the newest console's LINK_REV (null = no console yet) and this app's; the admin page warns when lower. */
   consoleLinkRev: number | null; appLinkRev: number;
-  /** Y6c (admin/director only): false = DNC is not fully on yet (roster never pushed, or active students unmatched). */
+  /** Y6c (admin/oversight only): false = DNC is not fully on yet (roster never pushed, or active students unmatched). */
   dncReady?: boolean;
 }
 /** `isDefault`: the default service of its own day (spec §2.3; APP-43), so the report form needs no copy of the rule. */
@@ -146,7 +146,7 @@ export interface FlowView { rowId: string; flowId: string; stepId: string; flowN
   currentLeaderId: string | null;
   /** 2026-10-24 (Q9): the current leader has an Elvanto person, so a non-admin Complete hands the next step to them; false = Elvanto picks. */
   currentLeaderLinked: boolean;
-  /** Rev 6 (R1): the profile consent flag; dnc = contact|all (mobile is then null for a non-admin/director login). */
+  /** Rev 6 (R1): the profile consent flag; dnc = contact|all (mobile is then null for a non-admin/oversight login). */
   consent: 'ok' | 'contact' | 'all' | 'unknown'; dnc: boolean;
   /** Rev 6 (review C1): the New People consent step; Complete there is refused CONSENT_CHECK_FIRST unless the consent check is done. */
   consentStep: boolean;
@@ -196,7 +196,7 @@ export interface LinkService {
   lifegroups(actor: Actor): Promise<{ groups: LifegroupView[] }>;
   /** `steps` (link:admin only): every pushed flow step, hidden ones included, for the Youth Setup hidden-step picker. */
   /** T12: every login gets `steps` (the console's pushed list, else from the rows), minus the hidden step for a non-admin. */
-  /** 2026-10-24: `leaders` (admin/director only) = the active app leaders for the Assigned to picker; personId null = no Elvanto match. */
+  /** 2026-10-24: `leaders` (admin/oversight only) = the active app leaders for the Assigned to picker; personId null = no Elvanto match. */
   flows(actor: Actor): Promise<{ rows: FlowView[]; leaders?: FlowLeader[]; steps: LinkFlowStep[]; progress: ProgressView | null }>;
   groupMembers(actor: Actor, groupId: string, q: unknown): Promise<GroupMembersView>;
   youth(actor: Actor, q?: unknown): Promise<{ rows: YouthRow[] }>;
@@ -300,10 +300,10 @@ function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope): boolean {
   return canAccessGrade(a, g.grade, s) && (g.gender ? canAccessGender(a, g.gender, s) : true);
 }
 /**
- * T4: a flow row is seen by its own grade/gender first, then the roster's (no grade = admin/director only, through
+ * T4: a flow row is seen by its own grade/gender first, then the roster's (no grade = admin/oversight only, through
  * canAccessGrade). Step 0, Elvanto's first step (the console numbers every step from 1, empty ones included), is the
  * 7-day wait: it moves on its own (contact consent confirmed, or 6.5 days), so no non-admin login lists, completes or
- * assigns it on the Flow Steps screen (admin / director still see it; no intake screen is affected). Operator 2026-10-14b T11.
+ * assigns it on the Flow Steps screen (admin / oversight still see it; no intake screen is affected). Operator 2026-10-14b T11.
  */
 /** The admin's picks per flow (modules.flowHiddenStep): the flow's list, else the '*' list, else the first step. */
 export function stepHidden(a: Actor, f: Pick<LinkFlowRow, 'flowId' | 'stepId' | 'stepOrder'>, picks: Record<string, unknown> | undefined): boolean {
@@ -333,7 +333,7 @@ function currentOf(f: LinkFlowRow, assigned: Leader | undefined, leaders: Leader
   const hits = k ? leaders.filter((l) => l.active && matchFold(l.fullName) === k) : [];
   return hits.length === 1 ? hits[0]! : null;
 }
-/** T6: a youth roster person this login may pick (admin/director: anyone; else grade, then gender when known). */
+/** T6: a youth roster person this login may pick (admin/oversight: anyone; else grade, then gender when known). */
 // F-50(a): unknown gender is visible only to a login with no gender scope (as flowRowVisible).
 export function personVisible(a: Actor, r: LinkRosterRow, s: StructureScope): boolean {
   return isAdminRole(a) || (canAccessGrade(a, r.grade, s) && (r.gender ? canAccessGender(a, r.gender, s) : genderScopeOf(a, s) == null));
@@ -515,7 +515,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
    *  F1 (review 2026-10-16): every other login may only act as a leader inside leaderInScope — the same rule as the
    *  Home / link "I am" pickers (GET /leaders?pick=1). An out-of-scope id is treated exactly like an unknown id:
    *  a plain action is recorded under the login's own name, a note type is refused, cancel/undo compares against null.
-   *  Director/admin may act as anyone. `identity` log items are not actions and are left alone. */
+   *  Oversight/admin may act as anyone. `identity` log items are not actions and are left alone. */
   async function scopedLeader(c: Ctx, id: string | null): Promise<Leader | null> {
     if (!id) return null;
     const l = (await c.leaders()).find((x) => x.id === id);
@@ -629,14 +629,14 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       return ok(prev, 'replay');
     };
     // 1. T10: the item's own screen must be usable (the batch envelope only checks that one is); X19: intake = admin + module
-    // Rev 6: the Consents screen's two types = intake's gate; removeFromFlowStep = the flows screen + admin/director.
+    // Rev 6: the Consents screen's two types = intake's gate; removeFromFlowStep = the flows screen + admin/oversight.
     if (it.type === 'recheck') throw new BadRequestError('Use Check again in Admin > Elvanto link.'); // L7: admin route only
     const intake = isIntakeType(it.type);
     const consentType = isConsentType(it.type);
     if (intake) intakeGate(c.actor, c.settings);
     else if (consentType) consentsGate(c.actor, c.settings); // modular setup: the Consents hub's types follow consentsHubOn
     else if (!usable(c.actor, c.settings, FEATURE_OF[it.type]!)) throw new ModuleDisabledError('Elvanto link');
-    if (it.type === 'removeFromFlowStep' && !can(c.actor, 'link:flowRemove')) throw new ForbiddenError('Only the admin or a director can remove someone from a step.');
+    if (it.type === 'removeFromFlowStep' && !can(c.actor, 'link:flowRemove')) throw new ForbiddenError('Only the admin or an oversight login can remove someone from a step.');
     // 2. replay / id reuse
     const prev = await d.link.getAction(it.id);
     if (prev) return replay(prev);
@@ -790,7 +790,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         throw new LinkBusyRow();
       }
       if (it.type === 'completeStep') {
-        // 2026-10-24 (ruling Q4, r21 rule kept): only the admin or a director picks who gets the next step, and only a leader who
+        // 2026-10-24 (ruling Q4, r21 rule kept): only the admin or an oversight login picks who gets the next step, and only a leader who
         // fits the person or the current assignee. Anyone else hands it to the current assignee (server-set, like notReceived);
         // with no Elvanto match for them, Elvanto's usual pick (Q9).
         const [leaders, assigns, steps] = await Promise.all([c.leaders(), c.flowAssignments(), c.flowSteps()]);
@@ -998,7 +998,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     async status(actor) {
       const settings = await gate(actor, 'any');
       const t = clock().getTime();
-      // Y6c: the DNC state is for admin/director only, and only once a link screen is on (one roster read, in parallel).
+      // Y6c: the DNC state is for admin/oversight only, and only once a link screen is on (one roster read, in parallel).
       const mods = settings.ministryConfig.modules;
       const boss = isAdminRole(actor) && FEATURES.some((f) => (mods[f] ?? mods.newYouthForms) !== 'off');
       const [consoles, mirrors, roster] = await Promise.all([d.link.listConsoles(), d.link.mirrorState(), boss ? d.link.roster() : null]);
@@ -1201,7 +1201,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const [flows, roster, open, assigns, leaders, pushed, consoles, mirrors] = await Promise.all([c.flows(), c.roster(),
         d.link.listActions({ types: FLOW_ROW_TYPES, statuses: OPEN }), d.link.flowAssignments(), c.leaders(), d.link.flowSteps(), c.consoles(), c.mirror()]);
       const done = await d.link.listActions({ types: FLOW_ROW_TYPES, statuses: ['sent', 'refused', 'cancelled'], serviceDateFrom: addDays(c.today, -FLOW_BACK_DAYS) });
-      const seesDnc = isAdminRole(actor); // R1: admin/director keep a DO NOT CONTACT person's number (and see the banner)
+      const seesDnc = isAdminRole(actor); // R1: admin/oversight keep a DO NOT CONTACT person's number (and see the banner)
       const now = clock();
       const people = peopleFlowOf(flows, now, c.time.timeZone, peoplePrefix(c.settings));
       const cRows = flows.some((f) => isConsentStep(f, people)) ? await c.consentRows() : []; // R4: one light read, only with a step 0
@@ -1223,16 +1223,16 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
             ...refusedLast(o, done.filter((r) => (r.payload as { rowId?: string }).rowId === f.rowId)) };
         });
       // T12: the pushed list (empty steps included); an older console sends none, so the rows' steps. Admin: every step (the picker).
-      // r30 (rev 21): a known offered (non-empty) goes to admin/director only, for the picker; a leader's assignTo is server-set.
+      // r30 (rev 21): a known offered (non-empty) goes to admin/oversight only, for the picker; a leader's assignTo is server-set.
       const steps = new Map((pushed ?? flows).map((f) => { const o = (f as LinkFlowStep).offered; return [f.stepId, { flowId: f.flowId, flowName: f.flowName,
         stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder, ...(o?.length && isAdminRole(actor) ? { offered: o } : {}) }]; }));
       const hidden = c.settings.ministryConfig.modules.flowHiddenStep;
       // S5: the console is reading the flows now (progress posted after the last flows push landed)
       const progress = progressOf(newest(consoles), 'flows', clock().getTime(), mirrors.find((m) => m.kind === 'flows')?.appliedAt ?? null);
-      // 2026-10-24 (replaces r21 assignees): the Assigned to picker's leaders, admin/director only (they alone pick or reassign).
+      // 2026-10-24 (replaces r21 assignees): the Assigned to picker's leaders, admin/oversight only (they alone pick or reassign).
       const pick = (): FlowLeader[] => leaders.filter((l) => l.active).sort((a, b) => a.fullName.localeCompare(b.fullName))
         .map((l) => ({ id: l.id, name: l.fullName, personId: personOf(l), gender: l.gender, grades: [...l.grades] }));
-      return { rows, ...(isAdminRole(actor) ? { leaders: pick() } : {}), steps: [...steps.values()].filter((s) => !stepHidden(actor, s, hidden)) // T11: admin/director see every step
+      return { rows, ...(isAdminRole(actor) ? { leaders: pick() } : {}), steps: [...steps.values()].filter((s) => !stepHidden(actor, s, hidden)) // T11: admin/oversight see every step
         .sort((a, b) => a.flowName.localeCompare(b.flowName) || a.stepOrder - b.stepOrder), progress };
     },
 
@@ -1314,10 +1314,10 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       return { rows };
     },
 
-    /** T6: give a flow person to a leader (app only, never sent to Elvanto). 2026-10-24 (Q4): admin/director only. */
+    /** T6: give a flow person to a leader (app only, never sent to Elvanto). 2026-10-24 (Q4): admin/oversight only. */
     async assignFlow(actor, body) {
       const c = context(actor, await gate(actor, ['flows']));
-      if (!isAdminRole(actor)) throw new ForbiddenError('Only the admin or a director can reassign.');
+      if (!isAdminRole(actor)) throw new ForbiddenError('Only the admin or an oversight login can reassign.');
       const parsed = z.object({ flowId: Uuid, personId: Uuid, leaderId: Uuid.nullable() }).safeParse(body ?? {});
       if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Validation failed', 400);
       const b = parsed.data;

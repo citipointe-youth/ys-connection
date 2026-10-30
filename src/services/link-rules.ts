@@ -259,7 +259,7 @@ export function noteRoom(leaderName: string): number {
   return CLAIM_NOTE_MAX - attributedNote(leaderName, 'x').length + 1;
 }
 
-/** Flows (2026-10-24, ruling Q1): may this leader hold this flow person? No grades = director/admin level (anyone, any gender);
+/** Flows (2026-10-24, ruling Q1): may this leader hold this flow person? No grades = oversight/admin level (anyone, any gender);
  *  else the person's grade, and the leader's gender unset or the person's (sdEligibleLeaders' shape). Unknown grade = only
  *  no-grade leaders; unknown gender = ungendered leaders (or no-grade). */
 export function leaderFitsPerson(l: { active: boolean; grades: readonly number[]; gender: string | null },

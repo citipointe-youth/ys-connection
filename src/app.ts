@@ -13,7 +13,7 @@ export async function createAppInstance(): Promise<Express> {
   if (env.PERSISTENCE === 'memory' && process.env['VERCEL_ENV'] !== 'production') {
     const pw = await seedDemoData(container.repos);
     // F5: the random demo password, shown once in the server log (local dev only).
-    if (pw) console.log(`Demo logins (admin, director, grade7, ...): password ${pw}`);
+    if (pw) console.log(`Demo logins (admin, oversight, grade7, ...): password ${pw}`);
   }
 
   const routes = buildRoutes(container.services);

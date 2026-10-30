@@ -22,8 +22,8 @@ describe('C-B6 notice requestId', () => {
     const repo = new InMemoryNoticeRepository();
     const svc = makeNoticeService(repo, settings);
     const first = await svc.send(admin, { title: 't', body: 'b', recipients: ['b79'], requestId: RID });
-    const director = { id: 'dir-1', role: 'director', displayName: 'Dir', grade: null, quad: null } as unknown as Actor;
-    await expect(svc.send(director, { title: 'x', body: 'y', recipients: ['g79'], requestId: RID })).rejects.toMatchObject({ statusCode: 409 });
+    const oversight = { id: 'dir-1', role: 'oversight', displayName: 'Dir', grade: null, quad: null } as unknown as Actor;
+    await expect(svc.send(oversight, { title: 'x', body: 'y', recipients: ['g79'], requestId: RID })).rejects.toMatchObject({ statusCode: 409 });
     const all = await repo.findAll();
     expect(all.length).toBe(1);
     expect(all[0]).toMatchObject({ id: RID, senderId: 'admin-1', title: 't' });

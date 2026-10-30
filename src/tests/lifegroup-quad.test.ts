@@ -36,9 +36,9 @@ describe('quad lifegroup names', () => {
     // the real renamed group (read 24 Oct) has no gender word, so no quad; never invent one
     expect(parseGroupName('Brisbane - YS - Senior Wednesday Mt Gravatt Lifegroup')).toEqual({ grade: null, gender: null, quad: null });
   });
-  it('canAccessQuadGroup: admin/director, the quad login, a grade login with a grade in range + gender', () => {
+  it('canAccessQuadGroup: admin/oversight, the quad login, a grade login with a grade in range + gender', () => {
     expect(canAccessQuadGroup(ADMIN, 'g79')).toBe(true);
-    expect(canAccessQuadGroup(act('director'), 'b1012')).toBe(true);
+    expect(canAccessQuadGroup(act('oversight'), 'b1012')).toBe(true);
     expect(canAccessQuadGroup(act('quad', { quad: 'g79' }), 'g79')).toBe(true);
     expect(canAccessQuadGroup(act('quad', { quad: 'b79' }), 'g79')).toBe(false);
     expect(canAccessQuadGroup(act('quad', { quad: 'g1012' }), 'g79')).toBe(false);
@@ -68,7 +68,7 @@ describe('quad lifegroup names', () => {
     await svc.importServiceCsv(ADMIN, [
       { first_name: 'Amy', last_name: 'A', gender: 'female', grade: 8, '2026-04-17': true, '2026-04-24': true },
     ], 'svc.csv');
-    await svc.importGroupCsv(act('director'), { groups: [{ name: 'YS - Junior Girls Wednesday Lifegroup',
+    await svc.importGroupCsv(act('oversight'), { groups: [{ name: 'YS - Junior Girls Wednesday Lifegroup',
       meetings: ['2026-04-13', '2026-04-20'], members: [{ first_name: 'Amy', last_name: 'A', attendance: [true, true] }] }] }, 'grp.csv');
     const [lg] = await r.lifegroups.findAll();
     expect(lg).toMatchObject({ grade: null, gender: 'female', quad: 'g79' });

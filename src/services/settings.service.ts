@@ -17,7 +17,7 @@ import { elvantoReady, checkForms, checkBusForm, formUrl, type FormCheck, type F
 // The optional roles a ministry can switch off in Setup (Admin always exists
 // and isn't toggleable — see ministry-config.ts). User.role values match these
 // names exactly, so no extra mapping is needed to find the accounts a toggle covers.
-const OPTIONAL_ROLES: Exclude<UserRole, 'admin'>[] = ['director', 'grade', 'quad', 'leader'];
+const OPTIONAL_ROLES: Exclude<UserRole, 'admin'>[] = ['oversight', 'grade', 'quad', 'leader'];
 
 const SettingsPatchSchema = z.object({
   termGapDays: z.number().int().min(1).optional(),
@@ -35,7 +35,7 @@ const SettingsPatchSchema = z.object({
   confirmIntakeOff: z.boolean().optional(),
 });
 
-const LOGIN_STYLE_MSG = 'Pick a Login style in Youth Setup: Junior/Senior, or Director and leaders.';
+const LOGIN_STYLE_MSG = 'Pick a Login style in Youth Setup: Junior/Senior, or Oversight and leaders.';
 const CHANGED_MSG = 'Someone else changed this. Reload Youth Setup.';
 export const INTAKE_OFF_MSG = 'Turning Intakes off deletes waiting intake rows.';
 
@@ -205,7 +205,7 @@ export function makeSettingsService(
         simpleFlip = wasOn !== isOn;
         if (isOn) {
           // The rule (Login style, 2026-10-27): with no grade logins, the ministry is either Junior/Senior (the
-          // grades-quads cohort model and the Quad role) or Director and leaders (cohort model none, no Quad role).
+          // grades-quads cohort model and the Quad role) or Oversight and leaders (cohort model none, no Quad role).
           // A half-and-half state is refused. Grade 6 is junior since T13, so Include Grade 6 is fine.
           if ((merged.structure.cohortModel === 'grades-quads') !== merged.roles.enabled.quad) throw new BadRequestError(LOGIN_STYLE_MSG);
           merged.roles.enabled.grade = false;

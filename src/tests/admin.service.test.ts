@@ -22,7 +22,7 @@ function actor(role: string): Actor {
 }
 
 const ADMIN = actor('admin');
-const DIRECTOR = actor('director');
+const OVERSIGHT = actor('oversight');
 const CONFIRM = 'I understand this cannot be undone';
 
 async function buildService() {
@@ -123,6 +123,6 @@ describe('Admin Service — wipe guard', () => {
 
   it('non-admin actor is still rejected regardless of force/confirmWipe', async () => {
     const { svc } = await buildService();
-    await expect(svc.reset(DIRECTOR, { force: true, confirmWipe: CONFIRM })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(svc.reset(OVERSIGHT, { force: true, confirmWipe: CONFIRM })).rejects.toBeInstanceOf(ForbiddenError);
   });
 });

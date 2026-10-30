@@ -29,7 +29,7 @@ const ADMIN_ID = u(1), DIR_ID = u(2);
 const actor = (id: string, role: string): Actor =>
   ({ id, role: role as Actor['role'], displayName: `${role} login`, grade: null, quad: null, gender: null, leaderId: null });
 const ADMIN = actor(ADMIN_ID, 'admin');
-const DIRECTOR = actor(DIR_ID, 'director');
+const OVERSIGHT = actor(DIR_ID, 'oversight');
 const DEV = { id: 'dev-1', label: 'iPhone' };
 const CAPS: Capabilities = { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live',
   firstTimerCheckIn: 'live', intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'live',
@@ -52,7 +52,7 @@ async function setup() {
   for (const r of [settings, users, students, leaders, sessions, attendance]) await r.init();
   await settings.updateSettings({ ministryConfig: { ...MINISTRY_CONFIG_DEFAULTS,
     modules: { ...MINISTRY_CONFIG_DEFAULTS.modules, intakeAdmin: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'on' } } } as never);
-  for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'director', 'director']] as const) {
+  for (const [id, email, role] of [[ADMIN_ID, 'admin', 'admin'], [DIR_ID, 'oversight', 'oversight']] as const) {
     await users.save({ id, email, displayName: `${email} name`, role, status: 'active', createdAt: T0, updatedAt: T0 } as never);
   }
   const errorLog = { record: vi.fn(async () => {}) };
@@ -295,7 +295,7 @@ describe('S-1 / D7: the last refused result comes back from the server after you
     expect((await h.svc.listActions(ADMIN, { type: 'consentFix' })).map((r) => [r.id, r.fixKey])).toEqual([[fix.id, P]]);
     expect((await h.svc.listActions(ADMIN, { type: 'consentLink' })).map((r) => [r.id, r.fixKey])).toEqual([[ln.id, `cn:${S}:${P}`]]);
     await h.link.insertAction(newRow({ type: 'consentFix', dedupeKey: 'cf:d', createdBy: DIR_ID, payload: { personId: P } }));
-    const dir = await h.svc.listActions(DIRECTOR, { type: 'consentFix' });
+    const dir = await h.svc.listActions(OVERSIGHT, { type: 'consentFix' });
     expect(dir).toHaveLength(1);
     expect(dir[0]).not.toHaveProperty('fixKey');
     for (let i = 0; i < 105; i++) await h.link.insertAction(newRow({ type: 'consentFix', dedupeKey: `cf:${i}`, payload: { personId: P } }));

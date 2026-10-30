@@ -139,7 +139,7 @@ export const PAYLOAD_SCHEMAS = {
   consentSave: z.object({ date: Ymd, row: Uuid, confirmed: z.array(StepKey).min(1).max(4) }).strict(),
   intakeText: z.object({ date: Ymd, row: Uuid,
     key: StepKey.refine((k) => k.startsWith('complete:parent:'), 'the parent text step') }).strict(),
-  // Rev 6 (R4): admin/director; the optional note (encrypted outbox note) goes to the person's Elvanto notes.
+  // Rev 6 (R4): admin/oversight; the optional note (encrypted outbox note) goes to the person's Elvanto notes.
   removeFromFlowStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable() }).strict(),
   // Rev 6 (R2 b/c): a read request; ref = the row's own id (each request its own dedupe key). The search text is the note.
   consentLookup: z.object({ kind: z.enum(CONSENT_LOOKUP_KINDS), page: z.number().int().min(1).max(1000), ref: Uuid,

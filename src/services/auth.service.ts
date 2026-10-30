@@ -13,7 +13,7 @@ import { quadGenderOf } from './access-control';
 // Derive a grade/quad login's gender scope. Quad logins come from their quad;
 // grade logins from the email convention (grade7g -> female, grade7b -> male,
 // or a "girls"/"boys" word). Anything else (incl. an ungendered grade account
-// or director/admin) returns null = no gender restriction.
+// or oversight/admin) returns null = no gender restriction.
 export function deriveActorGender(user: User): 'male' | 'female' | null {
   if (user.role === 'quad') return quadGenderOf(user.quad);
   if (user.role === 'grade') {

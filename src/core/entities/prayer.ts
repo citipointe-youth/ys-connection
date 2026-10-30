@@ -16,7 +16,7 @@ export interface PrayerRequest {
   createdByRole: UserRole;
   // The creator's grade+gender domain at creation time (access-control.ts's
   // generalPrayerCreatorScope) — only meaningful when studentId is null. Both
-  // null means "no boundary" (admin/director, or a leader — see that function).
+  // null means "no boundary" (admin/oversight, or a leader — see that function).
   // Ignored for a student-linked prayer, which scopes through the student instead.
   createdByGrades: number[] | null;
   createdByGender: 'male' | 'female' | null;

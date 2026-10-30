@@ -108,7 +108,7 @@ export interface BusRunView {
   availablePoolLeaderIds: ID[];
   fleet: BusVehicle[];
   canCoordinate: boolean;
-  pendingNewPeople: number | null;   // null unless director/admin
+  pendingNewPeople: number | null;   // null unless oversight/admin
   pastRiders: BusPastRiderView[];    // [] unless bus:roster; the most recent 100 (saved address or a current matched consent form), by first name then last name
   // Task 10 (owner): leaders on a car this week (any running vehicle's leaderIds + own-car
   // ownerLeaderId), names+ids only, unscoped by grade/quad — feeds the "who are you" picker so

@@ -17,7 +17,7 @@ export const CreateUserSchema = z.object({
   displayName: z.string().min(1),
   email: z.string().min(1),
   password: z.string().min(8),
-  role: z.enum(['leader', 'grade', 'quad', 'director', 'admin']),
+  role: z.enum(['leader', 'grade', 'quad', 'oversight', 'admin']),
   // For a `leader` (junior leader) account — the Leader record it is bound to.
   leaderId: z.string().nullable().optional(),
   // Legacy single-grade field (back-compat). New account forms send `grades`.

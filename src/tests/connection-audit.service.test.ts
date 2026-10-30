@@ -14,7 +14,7 @@ import type { Actor } from '../core/entities/user';
 import { buildContainer } from '../container';
 import { buildRoutes } from '../api/http/router';
 
-// T5 #4: import:run is admin + director only, and both see DNC phones; this switch plays a non-keep reader through get().
+// T5 #4: import:run is admin + oversight only, and both see DNC phones; this switch plays a non-keep reader through get().
 const dncPhones = vi.hoisted(() => ({ off: false }));
 vi.mock('../services/access-control', async (orig) => {
   const m = await orig<typeof import('../services/access-control')>();
@@ -32,7 +32,7 @@ const NOW = new Date(Date.parse(SVC.exportedAt) + 3_600_000);
 const DAY = 86_400_000;
 const P1 = '9e000000-0000-4000-8000-0000000000a1';
 const actor = (role: string): Actor => ({ id: `u-${role}`, role: role as any, displayName: 'T', grade: null as any, quad: null as any });
-const ADMIN = actor('admin'), DIRECTOR = actor('director');
+const ADMIN = actor('admin'), OVERSIGHT = actor('oversight');
 
 const later = <B extends AuditPushBody>(b: B, mins: number): B => ({ ...b, takenAt: new Date(Date.parse(b.takenAt) + mins * 60_000).toISOString() });
 const failed = (source: AuditPushBody['source'], mins: number, reason: 'read' | 'timeout' | 'budget' | 'empty' = 'read'): AuditPushBody =>
@@ -183,9 +183,9 @@ describe('ingest (spec §5.6, §8)', () => {
 describe('manual upload, reads, feed check (spec §5.6, §5.7, §7)', () => {
   const manual = (b: OkBody) => ({ headers: b.headers, rows: b.rows, exportedAt: b.exportedAt });
 
-  it('manual upload needs admin:manage (director 403); same ingest path, fedBy manual, uploaded_by = admin id', async () => {
+  it('manual upload needs admin:manage (oversight 403); same ingest path, fedBy manual, uploaded_by = admin id', async () => {
     const h = await harness();
-    await expect(h.svc.uploadSource(DIRECTOR, 'service', manual(SVC))).rejects.toThrow(ForbiddenError);
+    await expect(h.svc.uploadSource(OVERSIGHT, 'service', manual(SVC))).rejects.toThrow(ForbiddenError);
     expect(await h.repo.sources(YEAR)).toEqual([]);
     expect(await h.svc.uploadSource(ADMIN, 'service', manual(SVC))).toEqual({ applied: true, source: 'service', status: 'stored' });
     expect(await copy(h.repo, 'service')).toMatchObject({ fedBy: 'manual', takenAt: SVC.exportedAt });
@@ -207,7 +207,7 @@ describe('manual upload, reads, feed check (spec §5.6, §5.7, §7)', () => {
     await h.svc.ingest(SVC, 'console');
     const all = vi.spyOn(h.repo, 'findAll');
     const sum = vi.spyOn(h.repo, 'findAllSummaries');
-    const list = await h.svc.list(DIRECTOR);
+    const list = await h.svc.list(OVERSIGHT);
     expect(all).not.toHaveBeenCalled();
     expect(sum).toHaveBeenCalledTimes(1);
     expect(list).toEqual([{ year: YEAR, label: String(YEAR), uploadedAt: NOW.toISOString(), termKeys: expect.any(Array) }]);
@@ -221,12 +221,12 @@ describe('manual upload, reads, feed check (spec §5.6, §5.7, §7)', () => {
     await h.link.replaceMirror('roster', [{ personId: P1, firstName: SVC.rows[0]![fi]!, lastName: SVC.rows[0]![li]!, gender: null,
       grade: null, kind: 'student', consent: 'contact' }], { takenAt: SVC.takenAt, consoleId: SVC.consoleId });
     await h.svc.ingest(body, 'console');
-    const got = (await h.svc.get(DIRECTOR, YEAR)) as AuditView;
+    const got = (await h.svc.get(OVERSIGHT, YEAR)) as AuditView;
     const me = got.snapshot.students.find((x) => x.personId === P1)!;
-    expect(me).toMatchObject({ dnc: true, phone: '0400000001' });       // director: canSeeDncPhones
+    expect(me).toMatchObject({ dnc: true, phone: '0400000001' });       // oversight: canSeeDncPhones
     const others = got.snapshot.students.filter((x) => x.personId !== P1);
     expect(others.every((x) => x.dnc === false)).toBe(true);
-    // import:run is admin + director only and both see DNC phones, so the strip itself is checked on the pure helper:
+    // import:run is admin + oversight only and both see DNC phones, so the strip itself is checked on the pure helper:
     const masked = maskDnc(got.snapshot.students, [{ personId: P1, firstName: 'Zz', lastName: 'Zz', consent: 'contact' }], false);
     expect(masked.find((x) => x.personId === P1)).toMatchObject({ dnc: true, phone: null });
     expect(masked.filter((x) => x.personId !== P1)).toEqual(others);
@@ -448,9 +448,9 @@ describe('T5: a missing phone is filled from the person\'s flow row (consent aud
     }
   });
 
-  it('#4: a DNC flow row (roster not DNC, any step) makes the person DNC: admin/director keep the number, others do not', async () => {
+  it('#4: a DNC flow row (roster not DNC, any step) makes the person DNC: admin/oversight keep the number, others do not', async () => {
     const h = await setup([ros(P3, CF, CL, 'ok')], [fl({ consent: 'contact' })]);
-    expect(riley((await h.svc.get(DIRECTOR, YEAR)) as AuditView)).toMatchObject({ dnc: true, phone: '0400000077' });
+    expect(riley((await h.svc.get(OVERSIGHT, YEAR)) as AuditView)).toMatchObject({ dnc: true, phone: '0400000077' });
     dncPhones.off = true;
     try {
       expect(riley((await h.svc.get(ADMIN, YEAR)) as AuditView)).toMatchObject({ dnc: true, phone: null });
@@ -496,7 +496,7 @@ describe('modules.connectionAudit toggle', () => {
     await h.settings.updateSettings({ ministryConfig: { ...c.ministryConfig, modules: { ...c.ministryConfig.modules, connectionAudit: true } } });
     expect(await h.svc.list(ADMIN)).toHaveLength(1);
   });
-  it('rejects a non-director/admin read', async () => {
+  it('rejects a non-oversight/admin read', async () => {
     const h = await harness();
     await expect(h.svc.list(actor('grade'))).rejects.toThrow(ForbiddenError);
   });
