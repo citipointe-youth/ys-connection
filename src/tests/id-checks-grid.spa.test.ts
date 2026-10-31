@@ -25,11 +25,12 @@ describe('grid HTML', () => {
     expect(h).toMatch(/data-u="u1" data-l="l1"[^>]*checked/);
     expect(h).toContain('title="Oversight One"');
   });
-  it('shows grades as "Gr 8, 9", Tick all and Clear per column, a sticky first column and scrolls inside its card', () => {
+  it('shows grades as "Gr 8, 9", All and Clear per column, a sticky first column and scrolls inside its card', () => {
     const h = _icGridHtml(DATA);
     expect(h).toContain('Girls · Gr 8, 9');
     expect(h).toContain('Guys');
-    expect((h.match(/>Tick all</g) || []).length).toBe(2);
+    expect((h.match(/>All</g) || []).length).toBe(2);
+    expect(h).toContain('aria-label="Tick all for Oversight"');
     expect((h.match(/>Clear</g) || []).length).toBe(2);
     expect(h).toContain('position:sticky;left:0');
     const page = extractFn(HTML, '_icGridPage');

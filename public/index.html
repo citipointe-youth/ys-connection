@@ -2349,7 +2349,7 @@ function _icRowMeta(r) {
 }
 function _icTickKeys(d) { return new Set((d.ticks || []).map(t => t.userId + '|' + t.leaderId)); }
 // The grid: sticky first column of leaders, one narrow tick column per account (its name, plus the role when it differs),
-// Tick all / Clear stacked under each name. More columns than fit scroll sideways inside the card (edge shadow + hint).
+// All / Clear side by side under each name. More columns than fit scroll sideways inside the card (edge shadow + hint).
 function _icGridHtml(d) {
   const cols = d.columns || [], rows = d.rows || [], on = _icTickKeys(d);
   if (!rows.length) return `<div class="lk-hint">No active leaders yet.</div>`;
@@ -2358,12 +2358,12 @@ function _icGridHtml(d) {
   // Column head = first name, flat; two with the same first name get the last initial ("Sam K").
   const first = (c) => String(c.name || '').trim().split(/\s+/)[0].toLowerCase(), same = {};
   for (const c of cols) same[first(c)] = (same[first(c)] || 0) + 1;
-  const bs = 'padding:6px 2px;font-size:11px;min-width:0';
+  const bs = 'padding:0 3px;font-size:11px;min-width:24px;min-height:28px;flex:1 1 auto';
   for (const c of cols) {
     const w = String(c.name || '').trim().split(/\s+/), label = same[first(c)] > 1 && w[1] ? `${w[0]} ${w[w.length - 1][0]}` : w[0];
     h += `<th class="ic-col" data-u="${esc(c.id)}" title="${esc(c.name)}" style="width:60px;min-width:60px;max-width:60px;padding:8px 2px;vertical-align:top;text-align:center;font-size:12px;white-space:normal;overflow-wrap:anywhere;border-bottom:1px solid var(--line)">${esc(label)}`
-      + `<div style="display:flex;flex-direction:column;align-items:center;margin-top:4px"><button type="button" class="btn btn-ghost btn-sm" style="${bs}" onclick="_icTickCol(${_icJs(c.id)},true)">Tick all</button>`
-      + `<button type="button" class="btn btn-ghost btn-sm" style="${bs}" onclick="_icTickCol(${_icJs(c.id)},false)">Clear</button></div></th>`;
+      + `<div style="display:flex;gap:2px;margin-top:4px"><button type="button" class="btn btn-ghost btn-sm" style="${bs}" aria-label="Tick all for ${esc(label)}" onclick="_icTickCol(${_icJs(c.id)},true)">All</button>`
+      + `<button type="button" class="btn btn-ghost btn-sm" style="${bs}" aria-label="Clear all for ${esc(label)}" onclick="_icTickCol(${_icJs(c.id)},false)">Clear</button></div></th>`;
   }
   h += `</tr></thead><tbody>`;
   for (const r of rows) {
