@@ -2353,8 +2353,8 @@ function _icTickKeys(d) { return new Set((d.ticks || []).map(t => t.userId + '|'
 function _icGridHtml(d) {
   const cols = d.columns || [], rows = d.rows || [], on = _icTickKeys(d);
   if (!rows.length) return `<div class="lk-hint">No active leaders yet.</div>`;
-  const stick = 'position:sticky;left:0;z-index:1;background:var(--paper-card);min-width:120px;box-sizing:border-box;border-right:1px solid var(--line)';
-  let h = `<table style="border-collapse:separate;border-spacing:0;min-width:100%"><thead><tr><th style="${stick};text-align:left;padding:8px;font-size:12px;vertical-align:bottom;border-bottom:1px solid var(--line)">Leader</th>`;
+  const stick = 'position:sticky;left:0;z-index:1;background:var(--paper-card);width:140px;min-width:140px;max-width:140px;box-sizing:border-box;border-right:1px solid var(--line)';
+  let h = `<table style="border-collapse:separate;border-spacing:0"><thead><tr><th style="${stick};text-align:left;padding:8px;font-size:12px;vertical-align:bottom;border-bottom:1px solid var(--line)">Leader</th>`;
   // Column head = first name, flat; two with the same first name get the last initial ("Sam K").
   const first = (c) => String(c.name || '').trim().split(/\s+/)[0].toLowerCase(), same = {};
   for (const c of cols) same[first(c)] = (same[first(c)] || 0) + 1;
