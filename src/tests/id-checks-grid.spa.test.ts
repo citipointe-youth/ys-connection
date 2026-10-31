@@ -44,20 +44,21 @@ describe('grid HTML', () => {
     expect(h).toContain('onchange="_icTick(&quot;u1&quot;,&quot;l1&quot;,this.checked)"');
     expect(h).toContain('onclick="_icTickCol(&quot;u1&quot;,true)"');
   });
-  it('column heads are the first name only, flat, thin, with no role line', () => {
+  it('column heads are the first name only, written bottom-to-top, 40px wide, with no role line', () => {
     const h = _icGridHtml({ ...DATA, columns: [{ id: 'u2', name: 'Admin', role: 'admin' }, { id: 'u1', name: 'Oversight Two', role: 'oversight' }] });
-    expect(h).toMatch(/title="Oversight Two"[^>]*>Oversight</);
+    expect(h).toMatch(/title="Oversight Two"[^>]*><span[^>]*>Oversight<\/span>/);
     expect(h).not.toContain('Two<');
     expect(h).not.toContain('<span class="lk-d" style="display:block">');
-    expect(h).not.toContain('writing-mode');
-    expect(h).toContain('width:60px;min-width:60px');
+    expect(h).toContain('writing-mode:vertical-rl;transform:rotate(180deg)');
+    expect(h).toContain('width:40px;min-width:40px');
+    expect(h).toContain('min-width:36px;min-height:28px');
     expect(h).toContain('min-height:44px;min-width:36px');
   });
   it('two logins with the same first name get a last initial, others stay plain', () => {
     const h = _icGridHtml({ ...DATA, columns: [{ id: 'a', name: 'Sam Kelly', role: 'oversight' }, { id: 'b', name: 'sam Brown Lee', role: 'oversight' }, { id: 'c', name: 'Tom Ree', role: 'admin' }] });
-    expect(h).toMatch(/title="Sam Kelly"[^>]*>Sam K</);
-    expect(h).toMatch(/title="sam Brown Lee"[^>]*>sam L</);
-    expect(h).toMatch(/title="Tom Ree"[^>]*>Tom</);
+    expect(h).toMatch(/title="Sam Kelly"[^>]*><span[^>]*>Sam K<\/span>/);
+    expect(h).toMatch(/title="sam Brown Lee"[^>]*><span[^>]*>sam L<\/span>/);
+    expect(h).toMatch(/title="Tom Ree"[^>]*><span[^>]*>Tom<\/span>/);
   });
   it('the page shows a swipe hint and an edge shadow only when more than two columns', () => {
     const page = (cols: number) => loadFns(['_icGridPage', '_icGridHtml', '_icTickKeys', '_icRowMeta', '_icJs', '_icArchHtml'], `${BASE}
