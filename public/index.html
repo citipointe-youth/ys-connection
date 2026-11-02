@@ -6458,10 +6458,10 @@ async function renderTrends() {
     if (['oversight', 'admin'].includes(u.role)) {
       const mn = (trends && trends.ministry) || {};
       body += `<div class="sh">Ministry Overview</div><div class="card">`;
-      body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term${_termNote ? ` (${_termNote})` : ''}. Seen: different students who came at least once. Weekly: average per week.</div>`;
+      body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term${_termNote ? ` (${_termNote})` : ''}</div>`;
       body += statCard([mn.uniqueAttenders || 0, Math.round(mn.averageAttendance || 0)], ['Seen', 'Weekly'],
         (mn.prevUniqueAttenders || mn.prevAverageAttendance) ? ['prev: ' + (mn.prevUniqueAttenders||0), 'prev: ' + (mn.prevAverageAttendance||0)] : null);
-      body += '</div>';
+      body += '<div style="font-size:11px;color:var(--ink-faint);margin-top:6px">Seen: different students who came at least once. Weekly: average per week.</div></div>';
 
       // Weekly attendance chart — one bar per valid CURRENT-TERM service (whole ministry)
       if (trends && trends.ministry && Array.isArray(trends.ministry.sessions)) {
