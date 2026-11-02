@@ -372,6 +372,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .drop.open > .drop-body{display:block}
 .drop-chev{display:inline-block;line-height:1;transition:transform .2s}
 .drop.open > .drop-head .drop-chev{transform:rotate(90deg)}
+.drop-head{min-height:44px;box-sizing:border-box} /* a 44px tap strip: the card padding around a 19px head did not respond (QA MOB-8) */
 .qcard.drop.open{grid-column:1/-1;max-width:480px;width:100%}
 .qcard.g79{border-color:#ec4899}.qcard.b79{border-color:#3b82f6}
 .qcard.g1012{border-color:#8b5cf6}.qcard.b1012{border-color:#10b981}
@@ -524,6 +525,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
   .vg-bar .fc{min-height:40px;min-width:31px}
   .filter-row .fc,button[onclick="go('trends')"]{min-height:44px;min-width:31px}
   .htip::after{content:"";position:absolute;inset:-13px} /* rel20 U13: 18px "?" gets a 44px hit area, no visual change */
+  .prow .pgo{width:44px;height:44px} /* QA MOB-14: the Mark answered tick was 26px */
+  label[style*="flex"]:has(> input[type=checkbox]){min-height:44px;align-items:center} /* tick rows (Add Account grades, Youth Setup): the whole row is the tap target */
 }
 /* rel20 U13 + U14 #21: touch iPad top nav = one row of 44px links that scrolls sideways (no 2nd row holding one link). */
 @media(pointer:coarse) and (min-width:768px){
@@ -1998,7 +2001,8 @@ async function _ntPushFinish(permP, publicKey) {
 async function _quadAlertsPrompt(n = 0) {
   if (!S.user || S.user.role !== 'quad' || _previewStash || !_noticesOn()) return;
   try { if (Date.now() - Number(localStorage.getItem('yap_alert_ask') || 0) < 7 * 864e5) return; } catch {}
-  if (document.querySelector('#modal-root .mo')) { if (n < 30) setTimeout(() => _quadAlertsPrompt(n + 1), 2000); return; } // e.g. the I am sheet: ask after it
+  const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName); // never ask over a field being used
+  if (typing || document.querySelector('#modal-root .mo')) { if (n < 30) setTimeout(() => _quadAlertsPrompt(n + 1), 2000); return; } // e.g. the I am sheet: ask after it
   const env = await _ntPushEnv(); _ntPushLast = env;
   const st = _ntPushState(env);
   if (st !== 'off' && st !== 'ios-install') return;
@@ -2641,13 +2645,38 @@ function _roleDesc(role) {
   const gw = _gradeWord().toLowerCase() + 's';
   return {
     grade: 'Sees only its own ' + gw + ', boys or girls. Can connect same-gender students from other ' + gw + ' (no phone numbers).',
-    quad: 'Sees only its own group (' + gw + ', boys or girls). Can connect same-gender students from other ' + gw + ' (no phone numbers).',
+    quad: 'Sees only its own Junior or Senior group (boys or girls). Can connect same-gender students from other ' + gw + ' (no phone numbers).',
     oversight: 'Sees every student and leader. Can import data.',
     admin: 'Sees everything. Also manages accounts and settings.',
     leader: 'Sees only the students connected to its linked leader.',
   }[role] || '';
 }
 // The header badge is a button (a hover tooltip does not work on a phone): tap it to read what this login can see.
+// About (QA item 28): plain facts drawn from the code (entities, access-control, doLogout, login activity). No policy,
+// retention or contact claims: the church writes those. Names follow Branding and Terminology (appName, ministryName, L).
+function _aboutHtml() {
+  const u = S.user;
+  const on = ((((S.settings || {}).ministryConfig || {}).roles || {}).enabled) || null;
+  const roles = ['grade', 'quad', 'oversight', 'admin', 'leader'].filter((r) => r === 'admin' || !on || on[r]);
+  const h = (t) => '<div class="fl" style="margin-top:14px">' + esc(t) + '</div>';
+  const p = (t) => '<p class="lk-sub">' + t + '</p>';
+  const gw = esc(_gradeWord().toLowerCase());
+  return h('What it is')
+    + p(esc(appName()) + ' is the ' + esc(ministryName()) + ' app for following up students. It shows attendance, connects each student to a leader, and keeps prayer requests. Your admin can switch other screens on or off.')
+    + h('What it stores')
+    + p('Students: name, ' + gw + ', gender, birthday, phone numbers and attendance. Leaders: name, gender and ' + gw + 's. Which leader each student is connected to. Prayer requests and notices your team enter. Logins: username, display name and sign-in times, with the kind of phone used.')
+    + h('What each login sees')
+    + roles.map((r) => p('<b>' + esc(_roleLabel(r)) + '</b>: ' + esc(_roleDesc(r)))).join('')
+    + p('A student marked do not contact has no phone numbers shown to any login except admin and oversight.')
+    + h('What stays on your phone')
+    + p('Your sign-in, your "Who are you?" choice, your screen filters, a code for this phone, and taps that are waiting to be sent. Signing out removes your sign-in. Your "Who are you?" choice stays for the same login.')
+    + h('Who to ask')
+    + p(u && u.role === 'admin' ? 'You are an admin. Accounts and settings are under Admin.' : 'Ask your admin about your login, what you can see, or a mistake in the data.');
+}
+function showAbout() {
+  modal('<div class="mo-title">About ' + esc(appName()) + '</div>' + _aboutHtml()
+    + '<div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Close</button></div>');
+}
 function showScopeInfo() {
   const u = S.user;
   if (!u) return;
@@ -3318,7 +3347,8 @@ function openMore() {
     const here = S.page === m.id;
     return `<button type="button" class="more-row${here ? ' on' : ''}" onclick="closeModal();${here && m.id === 'new-youth' ? '' : m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`;
   }).join('') // Y5: a junior leader changes its password here (no Setup page); r21 L1: the other roles use Setup's button
-    + (S.user && S.user.role === 'leader' ? `<button type="button" class="more-row" onclick="closeModal();showChangeOwnPassword()">${icN('key')}<span>Change password</span></button>` : '');
+    + (S.user && S.user.role === 'leader' ? `<button type="button" class="more-row" onclick="closeModal();showChangeOwnPassword()">${icN('key')}<span>Change password</span></button>` : '')
+    + `<button type="button" class="more-row" onclick="closeModal();showAbout()">${icN('info')}<span>About</span></button>`;
   modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
     <button type="button" class="btn btn-secondary btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);
 }
@@ -3611,6 +3641,7 @@ function renderLogin() {
           <div class="fg"><label class="fl" for="lpw">Password</label><input class="fi" id="lpw" name="password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
           <button class="btn btn-primary btn-full" type="submit">Sign In</button>
         </form>
+        <p style="text-align:center;font-size:12px;margin-top:14px"><a onclick="showAbout()" style="color:var(--accent);cursor:pointer;text-decoration:underline">About this app</a></p>
         ${/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? `<p style="text-align:center;font-size:12px;line-height:1.9;color:var(--ink-faint);margin-top:14px">Install as an app — <a href="/install.html" style="color:var(--accent)">how to add to Home Screen</a><br>Password not saving? — <a href="/save-password.html" style="color:var(--accent)">how to save it manually</a></p>` : ''}
       </div>
     </div>`;
@@ -4464,14 +4495,14 @@ function showAddLeader() {
   ).join('');
   const qg = u.role === 'quad' ? quadGender(u.quad) : null;
   const genderField = qg
-    ? `<div class="fg"><label class="fl" for="lg">Gender</label><select class="fs" id="lg"><option value="${qg}" selected>${qg==='female'?'Female':'Male'}</option></select><p style="font-size:11px;color:var(--ink-mid);margin-top:3px">Scoped to your Junior/Senior group</p></div>`
+    ? `<div class="fg"><label class="fl" for="lg">Gender</label><select class="fs" id="lg"><option value="${qg}" selected>${qg==='female'?'Female':'Male'}</option></select><p style="font-size:11px;color:var(--ink-mid);margin-top:3px">Limited to your Junior/Senior group</p></div>`
     : `<div class="fg"><label class="fl" for="lg">Gender</label><select class="fs" id="lg"><option value="">Any gender</option><option value="female">Female</option><option value="male">Male</option></select></div>`;
   modal(`
     <div class="mo-title">Add Leader</div>
     <div id="le"></div>
     <div class="fg"><label class="fl" for="ln">Full Name *</label><input class="fi" id="ln" placeholder="Sarah Mitchell"></div>
     ${genderField}
-    ${u.role!=='grade'?`<div class="fg"><label class="fl">Grade Focus${u.role==='quad'?' (your group)':' (leave blank = all)'}</label>${gcbs}</div>`:'<p style="font-size:12px;color:var(--ink-mid);margin-bottom:12px">Leader will be scoped to your grade automatically</p>'}
+    ${u.role!=='grade'?`<div class="fg"><label class="fl">Grade Focus${u.role==='quad'?' (your group)':' (leave blank = all)'}</label>${gcbs}</div>`:'<p style="font-size:12px;color:var(--ink-mid);margin-bottom:12px">Leader will be limited to your grade automatically</p>'}
     <div style="display:flex;gap:8px">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" style="flex:1" onclick="submitAddLeader()">Add Leader</button>
@@ -4729,7 +4760,7 @@ function renderConnectView() {
   let body = `
     <div class="ph">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div class="ph-title">Connect Setup ${helpTip('Search and connect are scoped to your grade and gender. You can add students from other grades, but only ones matching your gender.')}</div>
+        <div class="ph-title">Connect Setup ${helpTip('Search and connect are limited to your grade and gender. You can add students from other grades, but only ones matching your gender.')}</div>
         <div style="display:flex;gap:6px">
           ${canEdit?`<button class="btn btn-primary btn-sm" onclick="showAddLeader()">+ Add Leader</button>`:''}
           <button class="btn btn-secondary btn-sm" onclick="exportConnectCSV()" aria-label="Export connections to Excel">Export Excel</button>
@@ -4782,7 +4813,7 @@ function renderConnectView() {
       body += `<div class="connect-leader" data-name="${esc(l.fullName.toLowerCase())}"${lq && !l.fullName.toLowerCase().includes(lq) ? ' style="display:none"' : ''}>
         <div class="connect-leader-head">
           <div class="connect-leader-name" style="flex:1;display:flex;align-items:center;gap:4px">${gi?`<span style="display:inline-flex;flex:none">${gi}</span>`:''}${esc(l.fullName)}</div>
-          ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:2px 5px" title="Edit leader" onclick="showEditLeader('${l.id}')">${icS('edit')}</button>`:''}
+          ${canEdit?`<button class="btn btn-ghost btn-sm" style="padding:2px 5px" title="Edit leader" aria-label="Edit leader" onclick="showEditLeader('${l.id}')">${icS('edit')}</button>`:''}
         </div>
         <div class="connect-leader-sub">
           <span class="connect-leader-meta"><span>Gr ${l.grades?.join(', ')||'All'} · ${l.gender||'any gender'}</span><span><b>${n}</b> student${n!==1?'s':''}</span></span>
@@ -5011,7 +5042,7 @@ function pickerRow(s, isAssigned, note) {
         <div class="picker-item-name" style="display:flex;align-items:center;gap:4px">${icS('check')} ${esc(s.firstName)} ${esc(s.lastName)}</div>
         <div class="picker-item-meta">Gr ${s.grade||'—'} · ${s.gender}${pct!==null?' · '+pct+'% attended':''}</div>
       </div>
-      <div class="picker-item-right">${rise}<button onclick="remPick('${s.id}')" title="Remove from this leader" style="margin-left:8px;border:none;background:none;color:var(--danger);font-size:20px;font-weight:700;line-height:1;cursor:pointer">−</button></div>
+      <div class="picker-item-right">${rise}<button onclick="remPick('${s.id}')" title="Remove from this leader" aria-label="Remove from this leader" style="margin-left:8px;border:none;background:none;color:var(--danger);font-size:20px;font-weight:700;line-height:1;cursor:pointer">−</button></div>
     </div>`;
   }
   return `<button class="picker-item" onclick="addConnFromPicker('${s.id}')" aria-label="Assign ${esc(s.firstName)} ${esc(s.lastName)}">
@@ -5297,7 +5328,7 @@ async function renderMyStudents() {
 
   let body = _msHead(!_msLeader) + filters;
   const opts = visLeaders.map(l => `<option value="${l.id}" ${_msLeader === l.id ? 'selected' : ''}>${esc(l.fullName)} (Gr ${l.grades?.join(', ') || 'All'} · ${l.gender || 'any gender'})</option>`).join('');
-  const msNotYouBtn = _msLeader ? `<button class="btn btn-secondary btn-sm" onclick="_msNotYou()">Not you?</button>` : '';
+  const msNotYouBtn = _msLeader && !(S.user && S.user.role === 'leader') ? `<button class="btn btn-secondary btn-sm" onclick="_msNotYou()">Not you?</button>` : '';
   body += `<div class="fg"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><label class="fl" style="margin-bottom:0">Who are you?</label>${msNotYouBtn}</div><select class="fs" onchange="_msPickLeader(this.value)"><option value="">— Choose a leader —</option>${opts}</select></div>`;
 
   if (_msLeader) {
@@ -12031,7 +12062,7 @@ function _lkGroupAct(g) {
 function _lkGroupsHtml() {
   const gs = LINK.groups;
   if (!gs) return LINK.gErr ? `<div class="card"><p>${esc(LINK.gErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkGroups()">Try again</button></div>` : progBar('Loading');
-  if (!gs.length) return '<p class="lk-hint">No lifegroups for this login.' + (S.user && S.user.role === 'admin' ? '' : ' Ask your admin.') + '</p>';
+  if (!gs.length) return '<p class="lk-hint">' + (S.user && S.user.role === 'admin' ? 'No lifegroups for this login.' : 'No lifegroups for this login. Ask your admin.') + '</p>';
   const cats = LK_CATS.filter(([k]) => gs.some((g) => _lkCat(g) === k));
   let sel = 'all';
   try { sel = localStorage.getItem('yap_lk_cat') || 'all'; } catch (e) {}

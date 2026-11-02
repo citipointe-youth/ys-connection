@@ -60,3 +60,25 @@ describe('validation errors in plain words', () => {
     expect(f._acctProblems({ ...ok, password: '        ' })).toEqual(["Password can't be only spaces."]);
   });
 });
+
+// Item 28: the About text is built from the settings, so branding, terminology and enabled roles show through.
+describe('About page', () => {
+  const mk = (user: any, roles: any) => loadFns(['_aboutHtml', '_roleLabel', '_roleDesc'], `
+    const S = { user: ${JSON.stringify(user)}, settings: { ministryConfig: { roles: { enabled: ${JSON.stringify(roles)} } } } };
+    const _ROLE_LABEL_DEFAULTS = { admin: 'Admin', oversight: 'Oversight', leader: 'Leader', grade: 'Grade', quad: 'Junior/Senior' };
+    function esc(s) { return String(s); } function appName() { return 'Test App'; } function ministryName() { return 'Test Ministry'; }
+    function _gradeWord() { return 'Year'; }`);
+  const text = (h: string) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  it('uses the configured names, lists only enabled roles, and tells the admin where to look', () => {
+    const t = text(mk({ role: 'quad' }, { grade: false, quad: true, oversight: true, leader: false })._aboutHtml());
+    expect(t).toContain('Test App is the Test Ministry app');
+    expect(t).toContain('Junior/Senior : Sees only its own Junior or Senior group (boys');
+    expect(t).not.toContain('Leader : Sees only');
+    expect(t).not.toContain('Grade : Sees');
+    expect(t).toContain('Ask your admin');
+    expect(text(mk({ role: 'admin' }, null)._aboutHtml())).toContain('You are an admin');
+  });
+  it('makes no policy, retention or contact claims', () => {
+    expect(text(mk(null, null)._aboutHtml())).not.toMatch(/privacy|policy|retain|retention|delete[sd]? after|days|years of|legal|@|\d{4}/i);
+  });
+});
