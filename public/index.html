@@ -1814,7 +1814,7 @@ function _noticeToList(n) {
 }
 function _noticeCardHtml(n, showTo) {
   return `<div class="card" style="margin-bottom:10px"><div style="display:flex;gap:8px;align-items:flex-start">
-    <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">${esc(n.title)}</div>
+    <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px;overflow-wrap:anywhere">${esc(n.title)}</div>
     <div style="font-size:13px;color:var(--ink-mid);margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere">${esc(n.body)}</div>
     <div style="font-size:11px;color:var(--ink-faint);margin-top:6px">${esc(n.senderName || '')} · ${esc(_relTime(n.createdAt))}${showTo ? ' · To: ' + esc(_noticeToList(n)) : ''}</div></div>
     ${showTo ? `<button type="button" class="btn btn-ghost btn-sm" aria-label="Delete notice" onclick="deleteNotice('${esc(n.id)}')">${icS('trash')}</button>` : ''}
@@ -2052,7 +2052,7 @@ const _IC_BTN = 'min-height:44px';
 function _icJs(v) { return esc(JSON.stringify(String(v))); }
 function _icListHtml(data, isAdmin) {
   const rows = (data && data.leaders) || [], rh = (data && data.rhythm) || {};
-  let h = '<div class="sh">ID Checks</div>';
+  let h = '<div class="sh">ID Checks</div><p class="lk-d" style="margin:0 0 var(--s3)">Private catch-up checks and notes about leaders. Only the logins ticked for a leader can see the records about them.</p>';
   // No start date: due dates count from each leader's last check, and a leader never checked is simply due now.
   if (!rh.cycleStart) h += isAdmin
     ? `<div class="card" style="margin-bottom:var(--s3)"><div class="lk-d">No start date is set, so due dates count from each leader's last check.</div><button type="button" class="btn btn-secondary btn-sm" style="margin-top:var(--s2)" onclick="_icSetStart()">Set the start date</button></div>`
@@ -2653,7 +2653,7 @@ function showScopeInfo() {
   if (!u) return;
   modal(`<div class="mo-title">${esc(roleBadgeInner(u))} login</div>
     <p class="lk-sub">${esc(_roleDesc(u.role))}</p>
-    <p class="lk-sub">Prayers follow the same limits. Notices reach only the groups they are sent to. If you cannot see something you need, ask your admin.</p>
+    <p class="lk-sub">Prayers follow the same limits. Notices reach only the groups they are sent to.${S.user.role === 'admin' ? '' : ' If you cannot see something you need, ask your admin.'}</p>
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Close</button></div>`);
 }
 function roleBadgeInner(u) {
@@ -3638,6 +3638,7 @@ async function doLogin() {
   const email = document.getElementById('lemail')?.value?.trim();
   const password = document.getElementById('lpw')?.value;
   const errEl = document.getElementById('lerr');
+  if (!email || !password) { errEl.innerHTML = '<div class="alert al-err">Enter your username and your password.</div>'; return; }
   try {
     const res = await API.post('/auth/login', { email, password, deviceId: _deviceId(), deviceLabel: _deviceLabel(navigator.userAgent) });
     API.setToken(res.token); S.user = res.user;
@@ -4486,7 +4487,7 @@ async function submitAddLeader() {
   try {
     await API.post('/leaders', { fullName:name, gender, grades });
     Cache.del('/leaders', '/connections', '/overview');
-    closeModal(); toast('Leader added'); await renderConnect();
+    closeModal(); toast(_aS.gf.size || _aS.df.size || (_aS.lq && !name.toLowerCase().includes(_aS.lq)) ? 'Leader added. A filter may hide them: clear the filter or search to see them.' : 'Leader added'); await renderConnect();
   } catch (e) { errEl.innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
@@ -5008,7 +5009,7 @@ function pickerRow(s, isAssigned, note) {
     return `<div class="picker-item assigned">
       <div>
         <div class="picker-item-name" style="display:flex;align-items:center;gap:4px">${icS('check')} ${esc(s.firstName)} ${esc(s.lastName)}</div>
-        <div class="picker-item-meta">Gr ${s.grade||'—'} · ${s.gender}${pct!==null?' · '+pct+'%':''}</div>
+        <div class="picker-item-meta">Gr ${s.grade||'—'} · ${s.gender}${pct!==null?' · '+pct+'% attended':''}</div>
       </div>
       <div class="picker-item-right">${rise}<button onclick="remPick('${s.id}')" title="Remove from this leader" style="margin-left:8px;border:none;background:none;color:var(--danger);font-size:20px;font-weight:700;line-height:1;cursor:pointer">−</button></div>
     </div>`;
@@ -5016,7 +5017,7 @@ function pickerRow(s, isAssigned, note) {
   return `<button class="picker-item" onclick="addConnFromPicker('${s.id}')" aria-label="Assign ${esc(s.firstName)} ${esc(s.lastName)}">
     <div>
       <div class="picker-item-name">${esc(s.firstName)} ${esc(s.lastName)}</div>
-      <div class="picker-item-meta">Gr ${s.grade||'—'} · ${s.gender}${pct!==null?' · '+pct+'%':''}</div>
+      <div class="picker-item-meta">Gr ${s.grade||'—'} · ${s.gender}${pct!==null?' · '+pct+'% attended':''}</div>
       ${noteHtml}
     </div>
     <div class="picker-item-right">${rise}<span style="color:var(--accent);font-size:18px;margin-left:8px">+</span></div>
@@ -5025,7 +5026,7 @@ function pickerRow(s, isAssigned, note) {
 
 async function addConnFromPicker(studentId) {
   if (!_pickerCtx) return;
-  const { leaderId } = _pickerCtx;
+  const { leaderId, leaderName } = _pickerCtx;
   try {
     await API.post('/connections', { studentId, leaderId });
     Cache.del('/connections', '/overview', '/at-risk');
@@ -5034,7 +5035,7 @@ async function addConnFromPicker(studentId) {
     window._pickerAssigned.add(studentId);
     filterPicker();
     const s = _aS.students.find(x => x.id === studentId);
-    if (s) toast(`${s.firstName} ${s.lastName} added`);
+    if (s) toast(`${s.firstName} ${s.lastName} connected${leaderName ? ' to ' + leaderName : ''}`);
   } catch (e) { toast(e.message); }
 }
 
@@ -6782,7 +6783,7 @@ function processAllocationImport(file, onDone) {
     let rows;
     try {
       rows = isExcel ? parseAllocationCSV(rowsToCsv(await readXlsx(e.target.result))) : parseAllocationCSV(e.target.result);
-    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${esc((err && err.message) || 'Could not read this file')}</div>`; return; }
+    } catch (err) { statusEl.innerHTML = _importErrHtml(err); return; }
     if (!rows.length) { statusEl.innerHTML = '<div class="alert al-err">No rows found</div>'; return; }
     statusEl.innerHTML = `<div class="alert al-info">Found ${rows.length} rows. Importing…</div>`;
     try {
@@ -6875,7 +6876,7 @@ function processPrayerImport(file) {
     let rows;
     try {
       rows = isExcel ? parseAllocationCSV(rowsToCsv(await readXlsx(e.target.result))) : parseAllocationCSV(e.target.result);
-    } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${esc((err && err.message) || 'Could not read this file')}</div>`; return; }
+    } catch (err) { statusEl.innerHTML = _importErrHtml(err); return; }
     if (!rows.length) { statusEl.innerHTML = '<div class="alert al-err">No rows found</div>'; return; }
     statusEl.innerHTML = `<div class="alert al-info">Found ${rows.length} rows. Importing…</div>`;
     try {
@@ -6921,7 +6922,7 @@ async function detectAndPreview(file) {
   try {
     if (isExcel) text = rowsToCsv(await readXlsx(await file.arrayBuffer()));
     else text = await file.text();
-  } catch (err) { statusEl.innerHTML = `<div class="alert al-err">${esc((err && err.message) || 'Could not read this file')}</div>`; return; }
+  } catch (err) { statusEl.innerHTML = _importErrHtml(err); return; }
 
   // Group exports have DD/MM/YYYY date-column headers + group-name header rows;
   // parseGroupCSV returns null when that structure is absent → treat as Service.
@@ -6986,6 +6987,10 @@ function previewGroupImport(filename, parsed) {
 // so re-parsing and re-confirming a file mid-upload would otherwise be able to
 // kick off a second concurrent request.
 let _importBusy = false;
+// A file the import cannot read: say so, and point to the how-to (item NNS-15).
+function _importErrHtml(err) {
+  return `<div class="alert al-err">${esc((err && err.message) || 'Could not read this file')}${_exportGuidesOn() ? ` <a onclick="openExportGuide('import')" style="text-decoration:underline;cursor:pointer;font-weight:700">How to export the files</a>` : ''}</div>`;
+}
 function _setImportStatus(html) {
   const el = document.getElementById('import-status');
   if (el) el.innerHTML = html;
@@ -11944,7 +11949,7 @@ function _lkIamListHtml(q, ls) {
     .filter((l) => toks.every((t) => String(l.fullName || '').toLowerCase().indexOf(t) >= 0))
     .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
   return xs.length ? xs.map((l) => `<button type="button" class="lk-opt" onclick="_lkIamUse('${esc(l.id)}')"><span class="lk-opt-t">${esc(l.fullName)}</span></button>`).join('')
-    : `<p class="lk-sub">${toks.length ? 'No name matches.' : 'No leaders found. Ask your admin to add leaders.'}</p>`;
+    : `<p class="lk-sub">${toks.length ? 'No name matches.' : (S.user && S.user.role === 'admin' ? 'No leaders found. Add leaders in Setup.' : 'No leaders found. Ask your admin to add leaders.')}</p>`;
 }
 function _lkIamFilter(v) { const el = document.getElementById('lk-iam-list'); if (el) el.innerHTML = _lkIamListHtml(v); }
 function _lkIamRetry() { LINK.iamPick = undefined; _lkIamFilter(LINK.iamQ || ''); }
@@ -12026,7 +12031,7 @@ function _lkGroupAct(g) {
 function _lkGroupsHtml() {
   const gs = LINK.groups;
   if (!gs) return LINK.gErr ? `<div class="card"><p>${esc(LINK.gErr)}</p><button class="btn btn-secondary btn-sm" onclick="renderLinkGroups()">Try again</button></div>` : progBar('Loading');
-  if (!gs.length) return '<p class="lk-hint">No lifegroups for this login. Ask your admin.</p>';
+  if (!gs.length) return '<p class="lk-hint">No lifegroups for this login.' + (S.user && S.user.role === 'admin' ? '' : ' Ask your admin.') + '</p>';
   const cats = LK_CATS.filter(([k]) => gs.some((g) => _lkCat(g) === k));
   let sel = 'all';
   try { sel = localStorage.getItem('yap_lk_cat') || 'all'; } catch (e) {}
@@ -15450,7 +15455,7 @@ async function renderBus() {
     { id: 'mycar', label: 'My car' }, // BUS-1 (2026-10-18): now last; 2026-10-19 operator: label back to "My car" (was "Trip logging")
   ].filter(Boolean);
   BUS.tab = BUS.tab === 'forms' && seesForms ? 'forms' : _busPickTab(tabs.map((t) => t.id), BUS.tab, seesPast, seesAnalysis);
-  const date = fmtDay(_busHeadDate(v));
+  const date = (BUS.tab === 'mycar' ? 'Trip day: ' : '') + fmtDay(_busHeadDate(v)); // My car logs a trip for any day (default today), the other tabs show the bus night
   const tripOther = BUS.tab === 'mycar' && v.run.serviceDate !== _busTripDate(); // R19-U14 S9: it is the bus night's
   const last = v.run.lastChangeBy && !tripOther ? `Last change: ${esc(v.run.lastChangeBy)} · ${new Date(v.run.lastChangeAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
   const body = { roster: _busRosterHtml, cars: _busCarsHtml, routes: _busRoutesHtml, mycar: () => _busMyCarHtml() + _busAllCarsSection(), analysis: _busAnalysisHtml, past: _busHistHtml, forms: _busFormsHtml }[BUS.tab]();
@@ -15549,7 +15554,7 @@ function _busRosterHtml() {
     ${_busConsentStatusHtml(BUS.consentStatus)}
     <div class="bus-sec bus-sec-row"><span class="card-title">Students who need a lift home tonight (${shown.length === v.riders.length ? v.riders.length : `${shown.length} of ${v.riders.length}`})</span>${v.riders.length ? filters : ''}</div>
     ${rows || (v.riders.length ? '<div class="card-sub">No one matches the filter.</div>' : `<div class="empty">${icEmpty('bus')}<div>No one yet. Search above to add someone.</div></div>`)}
-    <div class="bus-foot">${v.riders.length} riders · ${seats} youth seats</div>
+    <div class="bus-foot">${v.riders.length} rider${v.riders.length === 1 ? '' : 's'} · ${seats} youth seat${seats === 1 ? '' : 's'}</div>
     ${_busPastHtml(readOnly)}`;
 }
 // Past riders (saved address or a current consent form, not on tonight; consent-only rows have nothing to delete, so no trash) — collapsed by default; BUS.pastOpen survives the 10 s re-render.
@@ -16348,7 +16353,7 @@ function _busCarsHtml() {
   const seats = run.reduce((n, rv) => n + (rv.kind === 'bus' ? Math.max(rv.capacity, v.riders.filter((r) => r.runVehicleId === rv.id).length) : rv.capacity), 0), kids = v.riders.length;
   const nBus = run.filter((rv) => rv.kind === 'bus').length, nCar = run.length - nBus;
   const inWhat = [nBus ? `${nBus} bus${nBus === 1 ? '' : 'es'}` : '', nCar || !nBus ? `${nCar} car${nCar === 1 ? '' : 's'}` : ''].filter(Boolean).join(' + ');
-  const totals = `<div class="card bus-totals"><b>${seats}</b> seats for youth in ${inWhat} · <b>${kids}</b> student${kids === 1 ? '' : 's'} tonight${kids > seats ? ` <span class="chip c-warn">${icS('alert')} ${kids - seats} short</span>` : ''}</div>`;
+  const totals = `<div class="card bus-totals"><b>${seats}</b> seats for youth in ${inWhat} · <b>${kids}</b> student${kids === 1 ? '' : 's'} tonight${kids > seats ? ` <span class="chip c-warn">${icS('alert')} needs ${kids - seats} more seat${kids - seats === 1 ? '' : 's'}</span>` : ''}</div>`;
   // Review E13: a leader driving tonight gets a way from Car setup (their landing tab) to their riders.
   const me = getMyLeaderId();
   const mine = me && run.find((rv) => rv.ownerLeaderId === me || rv.leaderIds.includes(me));

@@ -1584,8 +1584,8 @@ describe('_busCarsHtml header totals (I12)', () => {
     expect(html).toContain('<b>3</b> students tonight');
     expect(html).not.toContain('short');
   });
-  it('shows "N short" when riders exceed seats', () => {
-    expect(mk(12)).toContain('1 short</span>');
+  it('shows "needs N more seats" when riders exceed seats', () => {
+    expect(mk(12)).toContain('needs 1 more seat</span>');
   });
 });
 
