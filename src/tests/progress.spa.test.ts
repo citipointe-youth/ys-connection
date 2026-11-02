@@ -27,6 +27,7 @@ describe('progBar', () => {
   it('reduced motion stops the slide; no Loading… or Asking the console… text is left', () => {
     const src = loadIndexHtml();
     expect(src).toMatch(/@media\(prefers-reduced-motion:reduce\)\{\.pbar-fill\.ind\{animation:none/);
-    expect(src).not.toMatch(/Loading…|Loading\.\.\.|Asking the console/);
+    // The one exception: the first-paint line in the static #app (MOB-15), replaced by the first render; no script has run yet.
+    expect(src.replace(/<div id="app">.*?<\/div>/, '')).not.toMatch(/Loading…|Loading\.\.\.|Asking the console/);
   });
 });

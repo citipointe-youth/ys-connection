@@ -109,10 +109,10 @@ describe('QA 1: sign-in prefetch', () => {
 
 describe('QA 11: dismissing a sheet', () => {
   const kit = () => loadFns(['_moDismiss'], `
-    const S = {}; const root = { _typed: false, _armed: 0 }; let closed = 0, toasts = 0;
+    const S = {}; const _inFlight = new Set(); const root = { _typed: false, _armed: 0, contains: (k) => k.inSheet }; let closed = 0, toasts = 0;
     const document = { getElementById: (id) => (id === 'modal-root' ? root : null) };
     const closeModal = () => { closed++; }, toast = () => { toasts++; };
-    const peek = () => ({ closed, toasts }); `, ['_moDismiss', 'root', 'peek']);
+    const peek = () => ({ closed, toasts }); `, ['_moDismiss', 'root', 'peek', '_inFlight']);
 
   it('untouched closes at once', () => {
     const k = kit();
@@ -124,11 +124,31 @@ describe('QA 11: dismissing a sheet', () => {
     k.root._typed = true;
     k._moDismiss();
     expect(k.peek()).toEqual({ closed: 0, toasts: 1 });
+    k.root._armed = Date.now() - 600; // past a double tap
     k._moDismiss();
     expect(k.peek()).toEqual({ closed: 1, toasts: 1 });
     k.root._armed = Date.now() - 5000;
     k._moDismiss();
     expect(k.peek()).toEqual({ closed: 1, toasts: 2 });
+  });
+  it('a double tap does not discard: the second tap within 500 ms is ignored', () => {
+    const k = kit();
+    k.root._typed = true;
+    k._moDismiss();
+    k._moDismiss();
+    expect(k.peek()).toEqual({ closed: 0, toasts: 1 });
+  });
+  it("stays open while this sheet's own save is running (_once), not for another save", () => {
+    const k = kit();
+    const here = { nodeType: 1, inSheet: true };
+    k._inFlight.add(here);
+    k._moDismiss();
+    expect(k.peek()).toEqual({ closed: 0, toasts: 0 });
+    k._inFlight.clear();
+    k._inFlight.add({ nodeType: 1, inSheet: false });
+    k._inFlight.add('login');
+    k._moDismiss();
+    expect(k.peek()).toEqual({ closed: 1, toasts: 0 });
   });
 });
 

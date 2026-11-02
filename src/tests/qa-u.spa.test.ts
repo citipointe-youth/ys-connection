@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadFns } from './helpers/extract-fn';
+import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 // QA 2026-11-02 lane U: the "I am" pick belongs to one login (item 10).
 describe('"I am" survives the same login, not a different one', () => {
@@ -80,5 +80,20 @@ describe('About page', () => {
   });
   it('makes no policy, retention or contact claims', () => {
     expect(text(mk(null, null)._aboutHtml())).not.toMatch(/privacy|policy|retain|retention|delete[sd]? after|days|years of|legal|@|\d{4}/i);
+  });
+});
+
+// QA integrate: the two gaps the lanes left, and the merged buttons that must hand their button to _once.
+describe('integration: first paint, About reach, busy buttons', () => {
+  const html = loadIndexHtml();
+  it('the first paint says Loading, in the static HTML (MOB-15)', () => {
+    expect(html).toMatch(/<div id="app">[^<]*<p[^>]*>Loading…<\/p><\/div>/);
+  });
+  it('the login scope sheet links to About (a grade or quad login has no More)', () => {
+    expect(extractFn(html, 'showScopeInfo')).toContain('closeModal();showAbout()');
+  });
+  it('Add Leader and Add Account pass their button to the save guard', () => {
+    expect(html).toContain('onclick="submitAddLeader(this)"');
+    expect(html).toContain('onclick="submitAddUser(this)"');
   });
 });

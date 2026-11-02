@@ -207,7 +207,7 @@ describe('controller ruling: a junior leader always has the More button', () => 
       expect(shown()).toContain('showChangeOwnPassword()');
     }
   });
-  it('the other roles keep their nav (Setup has Reset Password): plain Prayers tab with only Prayers', () => {
+  it('the other roles keep their nav (Setup has Change Password): plain Prayers tab with only Prayers', () => {
     for (const r of ['grade', 'quad', 'admin']) expect(nav(r, {}).n.navItems().map((i: any) => i.id), r).not.toContain('more');
     // r22 U1 (operator): an oversight always gets More, which always holds Import.
     expect(nav('oversight', {}).n.navItems().map((i: any) => i.id)).toContain('more');

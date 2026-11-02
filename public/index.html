@@ -957,7 +957,7 @@ button.rc-go{padding:0;text-align:left}
 </head>
 <body>
 <div id="nprog"></div>
-<div id="app"></div>
+<div id="app"><p style="text-align:center;padding:48px 16px;color:#475569">Loading…</p></div><!-- QA MOB-15: first paint; the first render replaces it -->
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 <div id="undo-toast"></div>
 <div id="modal-root"></div>
@@ -1680,6 +1680,8 @@ document.addEventListener('input', (e) => {
 function _moDismiss() {
   const r = document.getElementById('modal-root');
   if (S.reauth) return;
+  if ([..._inFlight].some((k) => k.nodeType && r.contains(k))) return; // this sheet's save is running: _once closes it or shows its error
+  if (r._typed && Date.now() - r._armed < 500) return; // the second tap of a double tap is not the deliberate second gesture
   if (r._typed && Date.now() - r._armed >= 4000) { r._armed = Date.now(); toast("What you typed isn't saved. Do that again to discard it.", 4000); return; }
   closeModal();
 }
@@ -2752,6 +2754,7 @@ function showScopeInfo() {
   modal(`<div class="mo-title">${esc(roleBadgeInner(u))} login</div>
     <p class="lk-sub">${esc(_roleDesc(u.role))}</p>
     <p class="lk-sub">Prayers follow the same limits. Notices reach only the groups they are sent to.${S.user.role === 'admin' ? '' : ' If you cannot see something you need, ask your admin.'}</p>
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal();showAbout()">About this app</button></div>
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Close</button></div>`);
 }
 function roleBadgeInner(u) {
