@@ -63,7 +63,7 @@ describe('C0 API keepalive pass-through', () => {
     const calls: any[] = [];
     const fetch = async (path: string, opts: any) => { calls.push({ path, opts }); return { ok: true, json: async () => ({ ok: 1 }) }; };
     const API = new Function('fetch', `
-      const _lsGet = () => null, _npStart = () => {}, _npDone = () => {}, Cache = { get: () => null, set: () => {} }, SECTION_OF = {};
+      const _lsGet = () => null, _npStart = () => {}, _npDone = () => {}, Cache = { get: () => null, set: () => {}, failed: new Set() }, SECTION_OF = {};
       ${src.slice(start, end + 6)}
       return API;`)(fetch);
     return { API, calls };

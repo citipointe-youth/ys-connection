@@ -69,6 +69,36 @@ describe('QA 22: a failed load is not an empty list', () => {
     spy.mockRestore();
   });
 
+  it('a retry that succeeds across a Cache.del forgets the failure and still caches nothing', async () => {
+    let release: (v: unknown) => void = () => {};
+    let up = false;
+    const { API, Cache } = apiKit(() => { if (!up) return Promise.reject(new TypeError('Failed to fetch')); return new Promise((r) => { release = r; }); });
+    await expect(API.get('/students')).rejects.toThrow();
+    up = true;
+    const retry = API.get('/students');
+    Cache.del('/connections');
+    release(ok(['fresh']));
+    expect(await retry).toEqual(['fresh']);
+    expect(Cache.failed.has('/students')).toBe(false);
+    expect(Cache.getStale('/students')).toBeNull();
+  });
+
+  it('the same retry through /batch forgets the failure of the path it answered, and only that one', async () => {
+    let release: (v: unknown) => void = () => {};
+    let up = false;
+    const { API, Cache } = apiKit(() => { if (!up) return Promise.reject(new TypeError('Failed to fetch')); return new Promise((r) => { release = r; }); });
+    await expect(API.get('/overview')).rejects.toThrow();
+    await expect(API.get('/trends')).rejects.toThrow();
+    up = true;
+    const retry = API.batch(['/overview', '/trends']);
+    Cache.del('/connections');
+    release(ok({ results: { overview: { pct: 1 } } }));
+    await retry;
+    expect(Cache.failed.has('/overview')).toBe(false);
+    expect(Cache.failed.has('/trends')).toBe(true);
+    expect(Cache.getStale('/overview')).toBeNull();
+  });
+
   it('a 403 is a refusal, not a failed load', async () => {
     const { API, Cache } = apiKit(async () => fail(403));
     await expect(API.get('/import/history')).rejects.toThrow();
@@ -205,6 +235,21 @@ describe('QA 24: session death under a form', () => {
   it('nothing typed: the usual sign-out', () => {
     const k = kit(false); k._handleAuthExpired();
     expect(k.calls).toEqual(['out']);
+  });
+  it('Sign out on the sheet drops an unsaved Youth Setup draft, so the next login is not asked about it', () => {
+    const k = loadFns(['_handleAuthExpired', '_setupState', '_setupDirty'], `
+      var _authExpiring = false, _previewStash = null, S = { user: { id: 'u' }, page: 'admin' }, _adminTab = 'youthsetup';
+      var _setupDraft = { a: 2 }, _setupServiceMinAttendance = 100, _setupTermGapDays = 14, _setupClean = '[{"a":1},100,14]';
+      const _swTyped = () => _setupDirty(), _reauthOpen = () => {}, toast = () => {};
+      const navReset = () => {}, API = { setToken() {} }, _vgReset = () => {}, _lkSoftReset = () => {}, render = () => {};
+      var setTimeout = () => {}; const peek = () => ({ draft: _setupDraft, clean: _setupClean }); const toSetup = () => { S.page = 'admin'; };`,
+      ['_handleAuthExpired', '_setupDirty', 'peek', 'toSetup']);
+    k._handleAuthExpired(); // the session ends under the draft: the sheet opens and the draft stays
+    expect(k.peek().draft).toEqual({ a: 2 });
+    k._handleAuthExpired(true); // the sheet's Sign out
+    expect(k.peek()).toEqual({ draft: null, clean: null });
+    k.toSetup(); // the next login opens Admin
+    expect(k._setupDirty()).toBe(false);
   });
 });
 

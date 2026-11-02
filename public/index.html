@@ -1066,7 +1066,7 @@ const SECTION_OF = {
 function _lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 // Item 2: the server's validation issues (zod) as plain words that name each field. A message we wrote ourselves is kept
 // as is; zod's stock wording is rewritten. null when there is nothing useful to say.
-const _FIELD_WORDS = { displayName: 'Display name', email: 'Username', password: 'Password', role: 'Role', grade: 'Grade', grades: 'Grade', gender: 'Gender', quad: 'Group', leaderId: 'Leader', firstName: 'First name', lastName: 'Last name', text: 'Text', title: 'Title', message: 'Message', name: 'Name' };
+const _FIELD_WORDS = { displayName: 'Display name', email: 'Username', password: 'Password', role: 'Role', get grade() { return _gradeWord(); }, get grades() { return _gradeWord(); }, gender: 'Gender', quad: 'Group', leaderId: 'Leader', firstName: 'First name', lastName: 'Last name', text: 'Text', title: 'Title', message: 'Message', name: 'Name' };
 function _validationText(details) {
   const out = [];
   for (const i of Array.isArray(details) ? details : []) {
@@ -1165,7 +1165,7 @@ const API = (() => {
         .catch(err => (err.status === 503 ? r('GET', p) : Promise.reject(err)))
         // QA 5: a /batch reply is never cached under its own key. Cache.del could not reach it, so for 30 s it re-seeded
         // the paths just invalidated with their pre-write values (Home's connection % after connecting a student).
-        .then(data => { if (gen === Cache.gen && !p.startsWith('/batch?')) Cache.set(p, data); if (_inflight.get(p) === promise) _inflight.delete(p); return data; })
+        .then(data => { Cache.failed.delete(p); if (gen === Cache.gen && !p.startsWith('/batch?')) Cache.set(p, data); if (_inflight.get(p) === promise) _inflight.delete(p); return data; })
         .catch(err => {
           if (_inflight.get(p) === promise) _inflight.delete(p);
           // QA 22: no answer or a server failure is not "no data": the last-known copy if there is one, else remember the failure.
@@ -1195,9 +1195,11 @@ const API = (() => {
           API.get('/batch?sections=' + sections.join(','))
             .then(res => {
               const results = (res && res.results) || {};
-              if (gen === Cache.gen) for (const p of batchable) {
+              for (const p of batchable) {
                 const k = SECTION_OF[p];
-                if (Object.prototype.hasOwnProperty.call(results, k)) Cache.set(p, results[k]);
+                if (!Object.prototype.hasOwnProperty.call(results, k)) continue;
+                Cache.failed.delete(p);
+                if (gen === Cache.gen) Cache.set(p, results[k]);
               }
               return res;
             })
@@ -2712,10 +2714,12 @@ function roleBadge(u) {
   return `<button type="button" class="role-badge" onclick="showScopeInfo()" aria-label="${esc(label + ': ' + tip + '. Tap for more.')}">${esc(label)}</button>`;
 }
 // What a login of this role sees, in short plain words (verified against access-control.ts, prayer/notice services).
-function _roleDesc(role) {
+function _roleDesc(role, u) { // u: this login; left out when describing the role in general (About, Add Account)
   const gw = _gradeWord().toLowerCase() + 's';
   return {
-    grade: 'Sees only its own ' + gw + ', boys or girls. Can connect same-gender students from other ' + gw + ' (no phone numbers).',
+    grade: !u ? 'Sees only its own ' + gw + ': boys, girls or both, as set on the login. Can connect students from other ' + gw + ' with the same limit (no phone numbers).'
+      : _loginGender(u) ? 'Sees only its own ' + gw + ', boys or girls. Can connect same-gender students from other ' + gw + ' (no phone numbers).'
+      : 'Sees only its own ' + gw + ', boys and girls. Can connect students from other ' + gw + ' (no phone numbers).',
     quad: 'Sees only its own Junior or Senior group (boys or girls). Can connect same-gender students from other ' + gw + ' (no phone numbers).',
     oversight: 'Sees every student and leader. Can import data.',
     admin: 'Sees everything. Also manages accounts and settings.',
@@ -2752,7 +2756,7 @@ function showScopeInfo() {
   const u = S.user;
   if (!u) return;
   modal(`<div class="mo-title">${esc(roleBadgeInner(u))} login</div>
-    <p class="lk-sub">${esc(_roleDesc(u.role))}</p>
+    <p class="lk-sub">${esc(_roleDesc(u.role, u))}</p>
     <p class="lk-sub">Prayers follow the same limits. Notices reach only the groups they are sent to.${S.user.role === 'admin' ? '' : ' If you cannot see something you need, ask your admin.'}</p>
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal();showAbout()">About this app</button></div>
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Close</button></div>`);
@@ -7060,7 +7064,7 @@ async function previewServiceImport(filename, rows) {
   let studentList = Cache.get('/students');
   if (!studentList) {
     try { studentList = await API.get('/students'); }
-    catch { studentList = Cache.getStale('/students') || []; }
+    catch { studentList = Cache.getStale('/students'); }
   }
   const existing = new Set((studentList || []).map(s => `${(s.firstName||'').trim().toLowerCase()} ${(s.lastName||'').trim().toLowerCase()}`));
   // BRK-24: count what the server will do: same-name rows are one student, and it skips a row with no last name, no gender column or a grade out of range.
@@ -7073,10 +7077,17 @@ async function previewServiceImport(filename, rows) {
     if (bad) { skipped++; continue; }
     if (!seen.has(key)) { seen.add(key); if (!existing.has(key)) nu++; }
   }
-  const warn = (unknownGrade ? `<div style="color:var(--warn);font-size:12px;margin-top:6px">${unknownGrade} row(s) have a grade outside ${esc(_gradeWord())} ${_gradeList()[0]}–${_gradeList().slice(-1)[0]}.</div>` : '')
+  // The server's refusal only covers a file with no marks. A small file is allowed, so say what it does; warn under half the saved count.
+  const saved = studentList ? studentList.length : null, inFile = seen.size;
+  const replaces = saved === null
+    ? `This replaces all saved attendance. ${inFile} student${inFile!==1?'s':''} in this file.`
+    : `This replaces all saved attendance: ${saved} student${saved!==1?'s':''} now, ${inFile} in this file.`;
+  const warn = (saved !== null && inFile * 2 < saved ? '<div class="alert al-warn" style="margin-top:8px">Far fewer students than are saved. Anyone not in this file loses their attendance. Import only if this is the full export.</div>' : '')
+    + (unknownGrade ? `<div style="color:var(--warn);font-size:12px;margin-top:6px">${unknownGrade} row(s) have a grade outside ${esc(_gradeWord())} ${_gradeList()[0]}–${_gradeList().slice(-1)[0]}.</div>` : '')
     + (skipped ? `<div style="color:var(--warn);font-size:12px;margin-top:6px">${skipped} row${skipped!==1?'s':''} will be skipped: no last name, no gender column, or a grade out of range.</div>` : '');
   modal(`<div class="mo-title">Service import — confirm</div>
     <div style="font-size:13px;color:var(--ink-mid);line-height:1.7">
+      <div style="color:var(--ink);font-weight:600;margin-bottom:6px">${replaces}</div>
       <div><strong>${rows.length}</strong> attendance rows</div>
       <div><strong>${nu}</strong> new student${nu!==1?'s':''} · ${seen.size - nu} already known</div>
       <div>Grades seen: ${[...grades].sort((a,b)=>a-b).join(', ') || '—'}</div>
@@ -7206,14 +7217,30 @@ function parseGroupCSV(csv) {
 }
 
 // BRK-24: a quoted cell may hold a line break (a two-line name): that break is a space, not a new row.
-function _csvLines(csv) { return csv.trim().replace(/"[^"]*"/g, (q) => q.replace(/\r?\n/g, ' ')).split(/\r?\n/); }
+// A quote opens a cell only at the start of a line or straight after a comma, and only if a later quote can close it, so a
+// stray quote cannot swallow the rows after it. splitCSVLine keeps the same rule, or that row's columns would shift.
+// ponytail: a stray quote that starts a cell still pairs with the next quote in the file, joining the rows between them. Rows here are short, so a cap on quoted line breaks would close that if it is ever seen.
+function _csvLines(csv) {
+  const s = csv.trim(), lines = []; let cur = '', inQ = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    const br = c === '\n' ? 1 : c === '\r' && s[i + 1] === '\n' ? 2 : 0;
+    if (br) { i += br - 1; if (inQ) cur += ' '; else { lines.push(cur); cur = ''; } continue; }
+    if (inQ && c === '"' && s[i + 1] === '"') { cur += '""'; i++; continue; }
+    if (inQ && c === '"') inQ = false;
+    else if (!inQ && c === '"' && (!cur || cur.endsWith(',')) && s.indexOf('"', i + 1) !== -1) inQ = true;
+    cur += c;
+  }
+  lines.push(cur);
+  return lines;
+}
 function splitCSVLine(line) {
-  const vals=[]; let cur='', inQ=false;
+  const vals=[]; let cur='', inQ=false, atStart=true;
   for (let i=0; i<line.length; i++) {
-    const c=line[i];
+    const c=line[i], start=atStart; atStart=false;
     if (inQ) { if (c==='"'&&line[i+1]==='"') { cur+='"'; i++; } else if (c==='"') { inQ=false; } else { cur+=c; } }
-    else if (c==='"') { inQ=true; }
-    else if (c===',') { vals.push(cur.trim()); cur=''; }
+    else if (c==='"'&&start&&line.indexOf('"',i+1)!==-1) { inQ=true; }
+    else if (c===',') { vals.push(cur.trim()); cur=''; atStart=true; }
     else { cur+=c; }
   }
   vals.push(cur.trim());
@@ -8936,7 +8963,7 @@ function _acctProblems(f) {
   if (!f.password) out.push('Enter a password.');
   else if (!f.password.trim()) out.push("Password can't be only spaces.");
   else if (f.password.length < 8) out.push('Password needs at least 8 characters.');
-  if (f.role === 'grade' && !(f.grades && f.grades.length)) out.push('Select at least one grade.');
+  if (f.role === 'grade' && !(f.grades && f.grades.length)) out.push('Select at least one ' + _gradeWord().toLowerCase() + '.');
   if (f.role === 'grade' && !f.gender) out.push('Select a gender scope.');
   if (f.role === 'leader' && !f.leaderId) out.push('Select the leader record this login is for.');
   return out;
@@ -17426,6 +17453,7 @@ function _handleAuthExpired(signOutAnyway) { // signOutAnyway: the sign-in-again
   // QA 24: typed text on screen: sign back in on top of it, so nothing is lost.
   let typed = false; try { typed = !signOutAnyway && !!S.user && _swTyped(); } catch (e) {}
   if (typed) { _reauthOpen(); return; }
+  _setupDraft = null; _setupClean = null; // unsaved Youth Setup must not reach the next login
   navReset();
   API.setToken(null);
   S.user = null;

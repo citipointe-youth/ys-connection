@@ -38,7 +38,13 @@ describe('"I am" survives the same login, not a different one', () => {
 // Item 2: the shared error path turns the server's validation issues into plain words that name the field.
 describe('validation errors in plain words', () => {
   const f = loadFns(['_validationText', '_acctProblems'], `const _FIELD_WORDS = { displayName: 'Display name', email: 'Username', password: 'Password', grades: 'Grade' };
-    function esc(s) { return s; }`);
+    function esc(s) { return s; } function _gradeWord() { return 'Grade'; }`);
+  it('a Year-labelled location reads "Year" in both', () => {
+    const y = loadFns(['_validationText', '_acctProblems'], loadIndexHtml().match(/^const _FIELD_WORDS = .*$/m)![0] + ` function _gradeWord() { return 'Year'; }`);
+    expect(y._validationText([{ code: 'invalid_type', expected: 'integer', received: 'float', path: ['grades', 0], message: 'Expected integer, received float' }])).toBe('Year must be a whole number.');
+    expect(y._validationText([{ code: 'invalid_type', expected: 'integer', received: 'undefined', path: ['grade'], message: 'Required' }])).toBe('Year is required.');
+    expect(y._acctProblems({ displayName: 'A', email: 'a', password: 'longenough1', role: 'grade', grades: [], gender: 'male' })).toEqual(['Select at least one year.']);
+  });
   it('names the field and rewrites zod wording', () => {
     expect(f._validationText([
       { code: 'too_small', type: 'string', minimum: 8, path: ['password'], message: 'String must contain at least 8 character(s)' },
@@ -62,6 +68,19 @@ describe('validation errors in plain words', () => {
 });
 
 // Item 28: the About text is built from the settings, so branding, terminology and enabled roles show through.
+describe('what a grade login sees', () => {
+  const f = loadFns(['_roleDesc', '_loginGender'], `function _gradeWord() { return 'Grade'; } function quadGender() { return null; }`);
+  const GENDERED = 'Sees only its own grades, boys or girls. Can connect same-gender students from other grades (no phone numbers).';
+  it('this login: the gendered sentence is unchanged; one with no gender says it sees both', () => {
+    expect(f._roleDesc('grade', { role: 'grade', gender: 'female', email: 'x' })).toBe(GENDERED);
+    expect(f._roleDesc('grade', { role: 'grade', email: 'grade9g' })).toBe(GENDERED);
+    expect(f._roleDesc('grade', { role: 'grade', email: 'grade9' })).toBe('Sees only its own grades, boys and girls. Can connect students from other grades (no phone numbers).');
+  });
+  it('no particular login (About, Add Account): true for both kinds', () => {
+    expect(f._roleDesc('grade')).toBe('Sees only its own grades: boys, girls or both, as set on the login. Can connect students from other grades with the same limit (no phone numbers).');
+  });
+});
+
 describe('About page', () => {
   const mk = (user: any, roles: any) => loadFns(['_aboutHtml', '_roleLabel', '_roleDesc'], `
     const S = { user: ${JSON.stringify(user)}, settings: { ministryConfig: { roles: { enabled: ${JSON.stringify(roles)} } } } };
@@ -73,6 +92,7 @@ describe('About page', () => {
     const t = text(mk({ role: 'quad' }, { grade: false, quad: true, oversight: true, leader: false })._aboutHtml());
     expect(t).toContain('Test App is the Test Ministry app');
     expect(t).toContain('Junior/Senior : Sees only its own Junior or Senior group (boys');
+    expect(text(mk({ role: 'grade' }, { grade: true })._aboutHtml())).toContain('Sees only its own years: boys, girls or both, as set on the login.');
     expect(t).not.toContain('Leader : Sees only');
     expect(t).not.toContain('Grade : Sees');
     expect(t).toContain('Ask your admin');

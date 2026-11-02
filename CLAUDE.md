@@ -58,7 +58,7 @@ Full gate (ship.sh + CI): `npx tsc --noEmit && npx vitest run && node scripts/ch
 - `SESSION_SECRET` required in prod; CORS never `*` in prod. Commit with explicit paths, never `git add -A` (`supabase/.temp/`, `_design/`). Never `npm audit fix --force`.
 - Accepted risks (do not re-flag): Bus `as=` coordinator soft guard; prayer text plaintext; token in localStorage; stateless logout.
 
-**Roles**: `leader` (own connected students, read-only, default off) < `grade` (own grade + own gender) < `quad` (gender + bracket) < `oversight` (all + import) < `admin` (all + back office; exactly one, undeletable). Never add a `cohortModel === 'none'` scoping bypass. `actor-key` must key on the full grade set.
+**Roles**: `leader` (own connected students, read-only except its own message template, default off) < `grade` (own grade + own gender) < `quad` (gender + bracket) < `oversight` (all + import) < `admin` (all + back office; exactly one, undeletable). Never add a `cohortModel === 'none'` scoping bypass. `actor-key` must key on the full grade set.
 
 **Code**: repos return deep clones; ESM extensionless imports; strict TS (`noUncheckedIndexedAccess`); jsonb via `sql.json(value)`, never `JSON.stringify(x)::jsonb`; prod `DATABASE_URL` = Supavisor pooler SESSION mode port 5432. Keep client mirrors in sync (see `docs/areas/spa-rules.md`). Every bulk path caps at 50. Status/quad colours are not configurable. No dark mode.
 

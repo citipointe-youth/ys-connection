@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadFns } from './helpers/extract-fn';
+import { loadFns, loadIndexHtml } from './helpers/extract-fn';
 
 describe('#19 Terminology labels cannot carry markup', () => {
   const world = (service: string) => `const DEFAULT_LABELS = { service: 'Youth' };
@@ -102,5 +102,67 @@ describe('BRK-24 CSV rows', () => {
     ]);
     expect(shown).toContain('<strong>1</strong> new student · 1 already known');
     expect(shown).toContain('2 rows will be skipped');
+  });
+  const csvFns = () => {
+    const src = loadIndexHtml();
+    return loadFns(['parseCSV', '_csvLines', 'splitCSVLine', '_extractHeaderDate'], src.match(/^const _CSV_FIELD_MAP = \{[\s\S]*?^\};/m)![0] + src.match(/^const _CSV_SKIP = .*$/m)![0]);
+  };
+  it('a stray quote inside a cell keeps every row and every column', () => {
+    const csv = 'First Name,Last Name,Gender,2026-02-01\n"Ann","O"Neil","F","Y"\n"Ben","Roe","M","Y"\n"Cal","Poe","M","N"\n"Dee","Lee","F","Y"\n';
+    const rows = csvFns().parseCSV(csv);
+    expect(rows.map((r: any) => r.first_name)).toEqual(['Ann', 'Ben', 'Cal', 'Dee']);
+    expect(rows[0].gender).toBe('F');
+    expect(rows[0]['2026-02-01']).toBe(true);
+    expect(rows[0].last_name).toContain('Neil');
+  });
+  it('a quote that opens a cell and never closes keeps every row', () => {
+    const { _csvLines, splitCSVLine } = csvFns();
+    const lines = _csvLines('First,Last\nAnn,"Neil\nBen,Roe\nCal,Poe');
+    expect(lines).toHaveLength(4);
+    expect(splitCSVLine(lines[1])).toEqual(['Ann', '"Neil']);
+  });
+  it('escaped quotes and quoted line breaks and commas still parse', () => {
+    const { _csvLines, splitCSVLine } = csvFns();
+    const lines = _csvLines('First,Last\r\n"An ""Annie"" Lee","Roe, Jr"\r\n"Mary\nJane",Lee\r\nBen,Roe');
+    expect(lines).toHaveLength(4);
+    expect(splitCSVLine(lines[1])).toEqual(['An "Annie" Lee', 'Roe, Jr']);
+    expect(splitCSVLine(lines[2])).toEqual(['Mary Jane', 'Lee']);
+    expect(splitCSVLine(lines[3])).toEqual(['Ben', 'Roe']);
+  });
+  describe('the confirm step says it replaces saved attendance', () => {
+    const preview = async (saved: unknown, count: number) => {
+      let shown = '';
+      (globalThis as any).__m = (h: string) => { shown = h; };
+      (globalThis as any).__saved = saved;
+      const { previewServiceImport } = loadFns(['previewServiceImport'], `function modal(h) { globalThis.__m(h); } function esc(s) { return s; }
+        const Cache = { get: () => null, getStale: () => null }; const API = { get: async () => { if (!globalThis.__saved) throw new Error('offline'); return globalThis.__saved; } };
+        function _gradeList() { return [7, 8, 9]; } function _gradeWord() { return 'Grade'; } const window = {};`);
+      await previewServiceImport('f.csv', Array.from({ length: count }, (_, i) => ({ first_name: 'S' + i, last_name: 'Dummyton', gender: 'f', grade: 8 })));
+      return shown;
+    };
+    const list = (n: number) => Array.from({ length: n }, (_, i) => ({ firstName: 'S' + i, lastName: 'Dummyton' }));
+    const WARN = 'Far fewer students than are saved';
+    it('a small file: names both counts and warns, but can still be imported', async () => {
+      const h = await preview(list(120), 2);
+      expect(h).toContain('This replaces all saved attendance: 120 students now, 2 in this file.');
+      expect(h).toContain(WARN);
+      expect(h).toContain('uploadServiceImport');
+    });
+    it('half or more of the saved count: the same plain line, no warning', async () => {
+      for (const n of [60, 118]) {
+        const h = await preview(list(120), n);
+        expect(h).toContain(`This replaces all saved attendance: 120 students now, ${n} in this file.`);
+        expect(h).not.toContain(WARN);
+      }
+    });
+    it('one under half warns', async () => {
+      expect(await preview(list(120), 59)).toContain(WARN);
+    });
+    it('saved count unreadable: no invented zero and no warning', async () => {
+      const h = await preview(null, 1);
+      expect(h).toContain('This replaces all saved attendance. 1 student in this file.');
+      expect(h).not.toContain('0 students now');
+      expect(h).not.toContain(WARN);
+    });
   });
 });
