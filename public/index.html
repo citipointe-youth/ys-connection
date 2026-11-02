@@ -1062,6 +1062,27 @@ const SECTION_OF = {
 };
 // F-33: a phone that blocks storage (private mode, full) must still boot.
 function _lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+// Item 2: the server's validation issues (zod) as plain words that name each field. A message we wrote ourselves is kept
+// as is; zod's stock wording is rewritten. null when there is nothing useful to say.
+const _FIELD_WORDS = { displayName: 'Display name', email: 'Username', password: 'Password', role: 'Role', grade: 'Grade', grades: 'Grade', gender: 'Gender', quad: 'Group', leaderId: 'Leader', firstName: 'First name', lastName: 'Last name', text: 'Text', title: 'Title', message: 'Message', name: 'Name' };
+function _validationText(details) {
+  const out = [];
+  for (const i of Array.isArray(details) ? details : []) {
+    if (!i || typeof i.message !== 'string') continue;
+    const keys = (i.path || []).filter((k) => typeof k === 'string');
+    const key = keys[keys.length - 1] || '';
+    const field = _FIELD_WORDS[key] || (key ? key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()) : 'This');
+    let t;
+    if (!/^(String must|Number must|Required|Invalid|Expected|Array must)/.test(i.message)) t = i.message;
+    else if (i.code === 'invalid_type') t = i.received === 'undefined' || i.received === 'null' ? field + ' is required.' : i.expected === 'integer' || i.received === 'float' ? field + ' must be a whole number.' : field + ' is not the right kind of value.';
+    else if (i.code === 'too_small') t = i.type === 'string' ? (i.minimum <= 1 ? field + ' is required.' : field + ' needs at least ' + i.minimum + ' characters.') : field + ' must be at least ' + i.minimum + '.';
+    else if (i.code === 'too_big') t = i.type === 'string' ? field + ' is too long (' + i.maximum + ' characters at most).' : field + ' must be ' + i.maximum + ' or less.';
+    else if (i.code === 'invalid_enum_value') t = field + ': pick one of the choices.';
+    else t = field + ' is not valid.';
+    if (!out.includes(t)) out.push(t);
+  }
+  return out.length ? out.join(' ') : null;
+}
 const API = (() => {
   // The session token is kept in localStorage (sent as a Bearer header). This is
   // an accepted risk: the XSS vector that could read it is closed by escaping all
@@ -1095,8 +1116,10 @@ const API = (() => {
       }
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
-        const said = e.message || e.error || res.statusText || 'Request failed';
-        const err = new Error(_plainErr(method, res.status, e.code, said));
+        let said = e.message || e.error || res.statusText || 'Request failed';
+        const plain = e.code === 'VALIDATION_ERROR' && !/^[/](link|sync)/.test(path) ? _validationText(e.details) : null; // item 2
+        if (e.code === 'FORBIDDEN' && /^Role '.*' cannot perform/.test(said)) said = "You don't have access to that.";
+        const err = new Error(plain || _plainErr(method, res.status, e.code, said));
         err.serverMessage = said; // the server's own words (a non-boss sees plain text in err.message)
         err.status = res.status;
         err.code = e.code;
@@ -8656,9 +8679,9 @@ async function showAddUser() {
   modal(`
     <div class="mo-title">Add Account</div>
     <div id="uerr"></div>
-    <div class="fg"><label class="fl" for="u-name">Display Name</label><input class="fi" id="u-name" placeholder="Grade 9"></div>
-    <div class="fg"><label class="fl" for="u-email">Username ${helpTip('The name used to log in. For a grade login, also set Gender scope below.')}</label><input class="fi" id="u-email" type="text" placeholder="grade9"></div>
-    <div class="fg"><label class="fl" for="u-pw">Password</label><input class="fi" id="u-pw" type="password" placeholder="Min 8 chars"></div>
+    <div class="fg"><label class="fl" for="u-name">Display Name</label><input class="fi" id="u-name" placeholder="Grade 9" maxlength="60"></div>
+    <div class="fg"><label class="fl" for="u-email">Username ${helpTip('The name used to log in. For a grade login, also set Gender scope below.')}</label><input class="fi" id="u-email" type="text" placeholder="grade9" maxlength="40" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
+    <div class="fg"><label class="fl" for="u-pw">Password <span style="font-weight:400;color:var(--ink-mid)">(8 or more characters)</span></label><input class="fi" id="u-pw" type="password" autocomplete="new-password"></div>
     <div class="fg"><label class="fl" for="u-role">Role</label>
       <select class="fs" id="u-role" onchange="toggleUserRoleFields();suggestEmail()">${_accRoleOptions('')}</select>
     </div>
@@ -8731,6 +8754,21 @@ function toggleUserRoleFields() {
   const ld = document.getElementById('u-leader-f'); if (ld) ld.style.display = role==='leader'?'block':'none';
 }
 
+// The problems with a new account, all at once (the server checks the same rules; see NewNamesSchema).
+function _acctProblems(f) {
+  const out = [];
+  if (!f.displayName) out.push('Enter a display name.'); else if (f.displayName.length > 60) out.push('Display name is too long (60 characters at most).');
+  if (!f.email) out.push('Enter a username.');
+  else if (!/^[A-Za-z0-9._@+-]+$/.test(f.email)) out.push('Username can use letters, numbers and . _ - @ + only. No spaces.');
+  else if (f.email.length > 40) out.push('Username is too long (40 characters at most).');
+  if (!f.password) out.push('Enter a password.');
+  else if (!f.password.trim()) out.push("Password can't be only spaces.");
+  else if (f.password.length < 8) out.push('Password needs at least 8 characters.');
+  if (f.role === 'grade' && !(f.grades && f.grades.length)) out.push('Select at least one grade.');
+  if (f.role === 'grade' && !f.gender) out.push('Select a gender scope.');
+  if (f.role === 'leader' && !f.leaderId) out.push('Select the leader record this login is for.');
+  return out;
+}
 async function submitAddUser() {
   const displayName = document.getElementById('u-name')?.value?.trim();
   const email = document.getElementById('u-email')?.value?.trim();
@@ -8741,10 +8779,8 @@ async function submitAddUser() {
   const quad = role==='quad' ? document.getElementById('u-quad')?.value : null;
   const leaderId = role==='leader' ? (document.getElementById('u-leader')?.value || null) : null;
   const errEl = document.getElementById('uerr');
-  if (!displayName || !email || !password) { errEl.innerHTML='<div class="alert al-err">All fields required</div>'; return; }
-  if (role==='grade' && (!grades || !grades.length)) { errEl.innerHTML='<div class="alert al-err">Select at least one grade</div>'; return; }
-  if (role==='grade' && !gender) { errEl.innerHTML='<div class="alert al-err">Select a gender scope</div>'; return; }
-  if (role==='leader' && !leaderId) { errEl.innerHTML='<div class="alert al-err">Select the leader record this login is for</div>'; return; }
+  const problems = _acctProblems({ displayName, email, password, role, grades, gender, leaderId });
+  if (problems.length) { errEl.innerHTML = '<div class="alert al-err">' + problems.map(esc).join('<br>') + '</div>'; return; }
   try {
     const created = await API.post('/accounts/users', { displayName, email, password, role, grades, gender, quad, leaderId });
     Cache.del('/accounts/users');

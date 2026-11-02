@@ -13,10 +13,19 @@ import { planCohortAccountLayout, type CohortLayoutPlan } from './cohort-account
 
 const CohortModelSchema = z.enum(['grades-quads', 'none']);
 
+// Set-time password rules (create, reset, self-change). Login is NOT checked, so an older password keeps working.
+// bcrypt reads only the first 72 bytes, so a longer one was silently cut: refuse it instead.
+export function passwordProblem(pw: unknown): string | null {
+  if (typeof pw !== 'string' || !pw) return 'Enter a password.';
+  if (!pw.trim()) return "Password can't be only spaces.";
+  if (Buffer.byteLength(pw, 'utf8') > 72) return 'Password is too long. Use 72 characters or fewer; accents and emoji count extra.';
+  return null;
+}
+
 export const CreateUserSchema = z.object({
   displayName: z.string().min(1),
   email: z.string().min(1),
-  password: z.string().min(8),
+  password: z.string().min(8).superRefine((pw, ctx) => { const m = passwordProblem(pw); if (m) ctx.addIssue({ code: 'custom', message: m }); }),
   role: z.enum(['leader', 'grade', 'quad', 'oversight', 'admin']),
   // For a `leader` (junior leader) account — the Leader record it is bound to.
   leaderId: z.string().nullable().optional(),
@@ -30,6 +39,16 @@ export const CreateUserSchema = z.object({
   gender: z.enum(['male', 'female']).nullable().optional(),
   quad: z.enum(['g79', 'b79', 'g1012', 'b1012']).nullable().optional(),
 });
+
+// Name limits for NEW and RENAMED accounts only. Existing accounts are never re-checked (login matches the stored
+// username as is), so nothing here can lock one out. No control, zero-width or right-to-left override characters.
+const HIDDEN_CHARS = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/;
+export const NewNamesSchema = z.object({
+  displayName: z.string().trim().min(1, 'Enter a display name.').max(60, 'Display name is too long (60 characters at most).')
+    .refine((v) => !HIDDEN_CHARS.test(v) && !/[<>]/.test(v), 'Display name has a character that is not allowed.'),
+  email: z.string().min(1, 'Enter a username.').max(40, 'Username is too long (40 characters at most).')
+    .regex(/^[A-Za-z0-9._@+-]+$/, 'Username can use letters, numbers and . _ - @ + only. No spaces.'),
+}).partial();
 
 /**
  * Normalise the incoming grade/grades pair into the stored representation:
@@ -129,7 +148,7 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
 
     async create(actor, input) {
       assertCan(actor, 'admin:manage');
-      const data = CreateUserSchema.parse(input);
+      const data = CreateUserSchema.and(NewNamesSchema).parse(input); // both rule sets at once, so every problem is reported together
       assertGradesInRange((await settings.getSettings()).ministryConfig.structure, [data.grade, ...(data.grades ?? [])]);
       if (data.role === 'grade' && (await simpleOn())) throw new BadRequestError(SIMPLE_ON_MSG);
       const existing = await users.findByEmail(data.email);
@@ -177,6 +196,11 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
       if (!existing) throw new NotFoundError('User not found');
       if (existing.role === 'admin') await guardAdmin(id, 'modify');
       const patch = CreateUserSchema.omit({ password: true }).partial().parse(input);
+      // Only a name that is being CHANGED is checked, so saving another field on an older account always works.
+      NewNamesSchema.parse({
+        ...(patch.displayName !== undefined && patch.displayName !== existing.displayName ? { displayName: patch.displayName } : {}),
+        ...(patch.email !== undefined && patch.email !== existing.email ? { email: patch.email } : {}),
+      });
       assertGradesInRange((await settings.getSettings()).ministryConfig.structure, [patch.grade, ...(patch.grades ?? [])]);
       // The protected admin account's username is its stable login identity — it
       // can never be changed, unlike its display name (see isProtectedAdmin above).
@@ -227,7 +251,9 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
       assertCan(actor, 'admin:manage');
       const existing = await users.findById(id);
       if (!existing) throw new NotFoundError('User not found');
-      if (newPassword.length < 8) throw new BadRequestError('Password must be at least 8 characters');
+      if (typeof newPassword === 'string' && newPassword.length < 8) throw new BadRequestError('Password must be at least 8 characters');
+      const bad = passwordProblem(newPassword);
+      if (bad) throw new BadRequestError(bad);
       const passwordHash = await hashPassword(newPassword);
       await users.save({ ...existing, passwordHash, updatedAt: new Date().toISOString() });
     },
@@ -241,6 +267,8 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
         throw new UnauthorizedError('Current password is incorrect');
       }
       if (newPassword.length < 8) throw new BadRequestError('Password must be at least 8 characters');
+      const bad = passwordProblem(newPassword);
+      if (bad) throw new BadRequestError(bad);
       // Audit C1: re-entering the current (e.g. seeded) password must not clear the flag.
       if (newPassword === currentPassword) throw new BadRequestError('Choose a new password that is different from the current one');
       const passwordHash = await hashPassword(newPassword);
