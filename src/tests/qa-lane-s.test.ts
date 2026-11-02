@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { makeImportService } from '../services/import.service';
 import { makeLeaderService } from '../services/leader.service';
+import { isRealDob } from '../services/terms';
 import { makePrayerService } from '../services/prayer.service';
 import { makeAccountService } from '../services/account.service';
 import { setup, FRI_7PM } from './helpers/bus-setup';
@@ -92,5 +93,31 @@ describe('#15 a blank-grade leader on a quad login', () => {
     const cfg = (await settings.getSettings()).ministryConfig;
     await settings.updateSettings({ ministryConfig: { ...cfg, structure: { ...cfg.structure, gradeMin: 6 } } });
     expect((await svc.create(quad, { fullName: 'Blank 6' })).grades).toEqual([6, 7, 8, 9]);
+  });
+});
+
+describe('#26 unknown gender, BRK-14 impossible dates', () => {
+  it('lists a blank gender in the report; a later file fills it; a blank cell never clears a known one', async () => {
+    const { svc, students } = importer();
+    const r = await svc.importServiceCsv(ADMIN, [row({ gender: '' })], 'a.csv');
+    expect(r.report.warnings).toEqual([{ name: 'Amy Lee', reason: expect.stringContaining('no gender recorded') }]);
+    const again = await svc.importServiceCsv(ADMIN, [row()], 'b.csv');
+    expect(again.report.warnings).toEqual([]);
+    await svc.importServiceCsv(ADMIN, [row({ gender: '' })], 'c.csv');
+    const [s] = await students.findAll();
+    expect([s!.gender, s!.quad]).toEqual(['female', 'g79']);
+  });
+  it('an impossible date of birth is not saved, and is reported', async () => {
+    const { svc, students } = importer();
+    const r = await svc.importServiceCsv(ADMIN, [row({ date_of_birth: '32/13/2099' })], 'a.csv');
+    expect((await students.findAll())[0]!.dateOfBirth).toBeNull();
+    expect(r.report.warnings[0]!.reason).toContain('not a real date');
+    await svc.importServiceCsv(ADMIN, [row({ date_of_birth: '1/2/2012' })], 'b.csv');
+    expect((await students.findAll())[0]!.dateOfBirth).toBe('2012-02-01');
+  });
+  it('isRealDob', () => {
+    const now = new Date('2026-11-02T00:00:00Z');
+    expect(['2012-02-29', '1900-01-01'].every((d) => isRealDob(d, now))).toBe(true);
+    expect(['2013-02-29', '2099-13-32', '3000-01-01', '1800-01-01', 'junk'].some((d) => isRealDob(d, now))).toBe(false);
   });
 });

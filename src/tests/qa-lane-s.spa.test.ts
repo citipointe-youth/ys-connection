@@ -56,3 +56,51 @@ describe('#20 #21 Undo after removing a leader', () => {
     expect(posts).toHaveLength(2);
   });
 });
+
+describe('#25 New Year re-import reports', () => {
+  const load = () => {
+    let shown = '';
+    (globalThis as any).__m = (h: string) => { shown = h; };
+    const f: Record<string, any> = loadFns(['showAllocationReport', 'showPrayerImportReport'], "function modal(h) { globalThis.__m(h); } function esc(s) { return s; } function icS() { return ''; }");
+    return { ...f, html: () => shown } as Record<string, any>;
+  };
+  const alloc = { studentsInFile: 0, rowsRead: 0, connectionsAdded: 0, connectionsRemoved: 0, connectionsUnchanged: 0, unmatchedStudents: [], unmatchedLeaders: [], ambiguousStudents: [], ambiguousLeaders: [], studentsWithSkippedRemovals: [] };
+  it('allocations: 0 students or a dropped row is not clean; a real file is', () => {
+    const f = load();
+    f.showAllocationReport(alloc, 2);
+    expect(f.html()).not.toContain('matched cleanly');
+    expect(f.html()).toContain('2 rows had no student name');
+    f.showAllocationReport({ ...alloc, studentsInFile: 1, rowsRead: 1 }, 1);
+    expect(f.html()).toContain('matched cleanly');
+  });
+  it('prayers: a row with no text is not clean', () => {
+    const f = load();
+    f.showPrayerImportReport({ rowsInFile: 1, added: 0, skippedDuplicates: 0, skippedBlank: 1, unmatched: [], ambiguous: [] });
+    expect(f.html()).not.toContain('matched cleanly');
+    expect(f.html()).toContain('no prayer text');
+  });
+});
+
+describe('BRK-24 CSV rows', () => {
+  it('a line break inside a quoted name stays in one row', () => {
+    const { _csvLines, splitCSVLine } = loadFns(['_csvLines', 'splitCSVLine']);
+    const lines = _csvLines('First Name,Last Name\r\n"Mary\r\nJane",Lee\r\nBen,Roe\r\n');
+    expect(lines).toHaveLength(3);
+    expect(splitCSVLine(lines[1])).toEqual(['Mary Jane', 'Lee']);
+  });
+  it('the preview counts students as the server will', async () => {
+    let shown = '';
+    (globalThis as any).__m = (h: string) => { shown = h; };
+    const { previewServiceImport } = loadFns(['previewServiceImport'], `function modal(h) { globalThis.__m(h); } function esc(s) { return s; }
+      const Cache = { get: () => [{ firstName: 'Old', lastName: 'One' }] }; function _gradeList() { return [7, 8, 9]; } function _gradeWord() { return 'Grade'; } const window = {};`);
+    await previewServiceImport('f.csv', [
+      { first_name: 'Old', last_name: 'One', gender: 'f', grade: 8 },
+      { first_name: 'New', last_name: 'Kid', gender: 'f', grade: 8 },
+      { first_name: 'New', last_name: 'Kid', gender: 'f', grade: 8 },
+      { first_name: 'No', last_name: '', gender: 'f', grade: 8 },
+      { first_name: 'Too', last_name: 'Old', gender: 'f', grade: 40 },
+    ]);
+    expect(shown).toContain('<strong>1</strong> new student · 1 already known');
+    expect(shown).toContain('2 rows will be skipped');
+  });
+});

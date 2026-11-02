@@ -548,7 +548,7 @@ describe('Import Service', () => {
       const result = await svc.importServiceCsv(ADMIN, [
         { first_name: 'Alice', last_name: 'Smith', gender: 'female', grade: 9, '2025-02-07': true },
       ], 'clean.csv');
-      expect(result.report).toEqual({ skippedRows: [], nameCollisions: [] });
+      expect(result.report).toEqual({ skippedRows: [], nameCollisions: [], warnings: [] });
     });
   });
 
@@ -585,10 +585,10 @@ describe('Import Service', () => {
       await r.settings.updateSettings({ ministryConfig: { ...current.ministryConfig, import: { ...current.ministryConfig.import, dateOrder: 'MDY' } } });
       const svc = makeImportService(r.students, r.sessions, r.attendance, r.imports, r.settings, r.lifegroups, r.lifegroupWeeks, r.lifegroupAttendance, r.leaders);
       await svc.importServiceCsv(ADMIN, [
-        { first_name: 'Alice', last_name: 'Smith', gender: 'female', grade: 9, date_of_birth: '25/12/2026', '2025-02-07': true },
+        { first_name: 'Alice', last_name: 'Smith', gender: 'female', grade: 9, date_of_birth: '25/12/2012', '2025-02-07': true },
       ], 'unambig.csv');
       const [s] = await r.students.findAll();
-      expect(s!.dateOfBirth).toBe('2026-12-25'); // 25 can only be a day, so this can't be misread as month 25
+      expect(s!.dateOfBirth).toBe('2012-12-25'); // 25 can only be a day, so this can't be misread as month 25
     });
 
     it('tolerates "Year 7" / "Grade 9" / "7th" grade text instead of a bare integer', async () => {

@@ -32,6 +32,14 @@ const MS_PER_DAY = 86_400_000;
 // original Sat–Fri buckets, byte-identical. A Wednesday (3) service → Thu–Wed
 // weeks, etc. (structure.serviceDayOfWeek, §5 of the generalisation design). The
 // name is kept for its many call sites; it no longer implies literal Saturday.
+/** BRK-14: a real calendar day, not in the future, from 1900 on. Postgres' date column would refuse an impossible one with a 500. */
+export function isRealDob(v: string, now: Date = new Date()): boolean {
+  const d = v.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const t = Date.parse(`${d}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === d && d >= '1900-01-01' && t <= now.getTime() + 86_400_000;
+}
+
 export function saturdayOf(isoDate: string, serviceDayOfWeek: number = 5): string {
   const d = new Date(isoDate + 'T00:00:00Z');
   if (isNaN(d.getTime())) return isoDate;

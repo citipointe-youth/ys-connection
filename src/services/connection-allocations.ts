@@ -24,6 +24,7 @@ export interface AllocationPlanPair {
 
 export interface AllocationImportReport {
   studentsInFile: number;
+  rowsRead: number; // QA #25: rows with a name; the SPA compares this with the rows it sent
   connectionsAdded: number;
   connectionsRemoved: number;
   connectionsUnchanged: number;
@@ -141,6 +142,7 @@ export function planAllocationSync(
 ): AllocationPlan {
   const report: AllocationImportReport = {
     studentsInFile: 0,
+    rowsRead: parsed.length,
     connectionsAdded: 0,
     connectionsRemoved: 0,
     connectionsUnchanged: 0,
