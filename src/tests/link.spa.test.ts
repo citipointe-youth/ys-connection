@@ -5,7 +5,7 @@ import { loadIndexHtml, extractFn, loadFns, SITE_TIME_SRC, withPlain, ES_FNS } f
 
 const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '_linkOn', '_linkAdminOn', 'moreItems', 'setMyLeaderId', '_vgSnap', '_vgActive',
   '_lkFresh', '_lkTime', '_lkDay', 'fmtDay', '_lkSvcLabel', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
-  '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkTakeBack', '_lkQueuedIdx', '_lkMerge', '_lkApply',
+  '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkTakeBack', '_lkQueuedIdx', '_lkSending', '_lkMerge', '_lkApply',
   '_lkBoot', '_lkDrain', '_lkActions', '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
   '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkLists', '_lkListHtml', '_lkDoneRowsHtml', '_lkDoneToggle', '_lkSetSearch', '_lkRowHtml', '_lkCheck', '_lkUndo',
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
@@ -292,12 +292,12 @@ describe('F1.2 queue', () => {
     expect([...h.env.storage.keys()]).toEqual(['ysc.lkq.u1']);
     spy.mockRestore();
   });
-  it('tapping again while queued removes it locally; nothing is sent', async () => {
+  it('the toast Undo before the send removes it locally; nothing is sent', async () => {
     vi.useFakeTimers();
     const h = makeEnv();
     door(h, [{ personId: P(1), name: 'Ava Example', grade: 7, leader: false, checkedIn: false, action: null, mine: false }]);
     h.fns._lkCheck(P(1), 'checkIn');
-    h.fns._lkUndo(P(1));
+    h.fns._lkToastUndo();
     expect(h.fns._lkQGet()).toEqual([]);
     await vi.advanceTimersByTimeAsync(2000);
     expect(h.calls.posts).toHaveLength(0);
@@ -455,7 +455,7 @@ describe('F1.2 queue', () => {
     expect(h.calls.posts[0].b.items[0]._s).toBeUndefined();
     expect(h.get().LINK.people[SVC.serviceTimeId].people[0]).toMatchObject({ checkedIn: false, action: { status: 'cancelled' } });
   });
-  it('B7 / T-38: a tap on an item in flight queues an undo; it resolves saved and the undo stays queued', async () => {
+  it('B7 / T-38: the toast Undo on an item in flight queues an undo; it resolves saved and the undo stays queued', async () => {
     vi.useFakeTimers();
     let release!: () => void;
     const h = makeEnv({ post: (_p, b) => new Promise((r) => { release = () => r({ results: b.items.map((i: any) => ({ id: i.id, kind: i.kind,
@@ -464,8 +464,8 @@ describe('F1.2 queue', () => {
     h.fns._lkCheck(P(1), 'checkIn');
     const first = h.fns._lkQGet()[0];
     const f = h.fns._lkFlush();
-    vi.advanceTimersByTime(600); // fix16 F-02: a second tap on the same row within 600 ms is ignored
-    h.fns._lkCheck(P(1), 'checkIn'); // the second tap lands while the first is on the wire
+    vi.advanceTimersByTime(600);
+    h.fns._lkToastUndo(); // lands while the first is on the wire
     release();
     await f;
     const q = h.fns._lkQGet();
@@ -896,7 +896,7 @@ describe('F1.3 door', () => {
     const merged = h.fns._lkMerge(h.get().LINK.people[SVC.serviceTimeId].people, h.fns._lkQGet(), SVC.serviceTimeId);
     const row = strip(h.fns._lkRowHtml(merged[0]));
     expect(row).toContain('Undo');
-    expect(row).toContain('Waiting to send.');
+    expect(row).toContain('Saving…'); // door-retap.spa.test.ts: Waiting to send once settled
   });
   it('B6 / T-30: Undo only while queued or pending; a sent check-in (mine) shows Check out only', () => {
     const h = setup();

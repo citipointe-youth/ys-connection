@@ -10976,6 +10976,17 @@ function _lkQueuedIdx(q, svc, pid) {
   }
   return -1;
 }
+// A door tap still being sent: a re-tap on its row is ignored (slow signal: a second tap must not undo the first).
+// Settled, so Undo works, once it was answered, its send failed, the phone says it is offline (nothing to wait for),
+// or 25 s after the tap (the 20 s flush timeout and a margin), even if no answer ever comes.
+function _lkSending(svc, pid) {
+  try {
+    const q = _lkQGet(), it = q[_lkQueuedIdx(q, svc, pid)];
+    if (!it || it.kind !== 'action' || !(Date.now() - Date.parse(it._at) < 25000)) return false;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+    return !!(LINK.inflight || {})[it.id] || (!LINK.fails && !!(LINK.flushing || LINK.timer));
+  } catch (e) { return false; }
+}
 // Server rows win, except people with an item still in this phone's queue: those show the queued state.
 function _lkMerge(serverPeople, queue, svc) {
   const last = {};
@@ -11585,13 +11596,14 @@ function _lkRowHtml(p) {
   let line = null;
   if (p.checkedIn) line = act && act.status !== 'cancelled' ? act : { status: 'mirror' };
   else if (act && ['queued', 'refused', 'unclear'].includes(act.status)) line = act;
-  const lineHtml = line ? `<div class="lk-st ${_lkStatusTone(line)}">${_lkStatusHtml(line, _lkLastSeen())}</div>` : '';
+  const sending = !!act && act.status === 'queued' && _lkSending(LINK.svc, p.personId);
+  const lineHtml = sending ? '<div class="lk-st wait">Saving…</div>' : line ? `<div class="lk-st ${_lkStatusTone(line)}">${_lkStatusHtml(line, _lkLastSeen())}</div>` : '';
   // B6 / T-30: Undo only while the tap is still on this phone or the check-in is still pending (a cancel); every
   // checked-in row (not just queued) also offers Check out, which anyone on the door may do.
   const queued = !!act && act.status === 'queued';
   const undo = queued || (p.mine && p.checkedIn && !!act && act.type === 'checkIn' && act.status === 'pending');
   let btn = '';
-  if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();if(!(LINK.doorHeld==='${pid}'&&Date.now()-(LINK.doorAt||0)<600))_lkUndo('${pid}')">Undo</button>`;
+  if (undo) btn = `<button type="button" class="btn btn-secondary btn-sm"${sending ? ' aria-disabled="true" style="opacity:.45"' : ''} onclick="event.stopPropagation();if(!(LINK.doorHeld==='${pid}'&&Date.now()-(LINK.doorAt||0)<600))_lkUndo('${pid}')">Undo</button>`;
   // RFIX: someone shown from the pushed check-in name alone (no roster row) can be checked out, never checked in.
   const canIn = !p.noRoster && !_lkCapOff('checkIn');
   // F-28: a past service is read-only for check-out (one stray tap must not check someone out of last week).
@@ -11607,7 +11619,7 @@ function _lkCheck(pid, type) {
     const svc = LINK.svc, s = _lkSvc();
     // F-02: a double tap must not undo, or tick the row that slid up. _lkLists keeps the tapped row in place for
     // 600 ms (so the next row does not move under the finger), and a second tap on it (or its Undo) is ignored.
-    if (!svc || !s || (LINK.doorHeld === pid && Date.now() - (LINK.doorAt || 0) < 600)) return;
+    if (!svc || !s || (LINK.doorHeld === pid && Date.now() - (LINK.doorAt || 0) < 600) || _lkSending(svc, pid)) return;
     LINK.doorAt = Date.now(); LINK.doorHeld = pid;
     const at = LINK.doorAt; // r1: only this tap's own hold is cleared, never a later tap's
     setTimeout(() => { if (LINK.doorAt === at) LINK.doorHeld = null; _lkRefreshView(); }, 620);
@@ -11655,17 +11667,18 @@ function _lkToastUndo() {
   // UI diff review M2: only this tap is undone. Still queued or on the wire: _lkUndo removes it or queues the undo /
   // cancel after it (server M2 queueing). Sent and still this row's action: the existing undo / cancel item.
   const q = _lkQGet(), i = _lkQueuedIdx(q, t.svc, t.pid);
-  if (i >= 0 && q[i].id === t.id) { _lkUndo(t.pid); return; }
+  if (i >= 0 && q[i].id === t.id) { _lkUndo(t.pid, true); return; }
   const d = LINK.people[t.svc];
   const p = d && [].concat(d.people || [], d.leaders || []).find((x) => x.personId === t.pid), a = p && p.action;
-  if (a && a.id === t.id && !['cancelled', 'refused'].includes(a.status)) { _lkUndo(t.pid); return; }
+  if (a && a.id === t.id && !['cancelled', 'refused'].includes(a.status)) { _lkUndo(t.pid, true); return; }
   // A check-out that met an unsent check-in cancelled it (B4): undoing that check-out is checking them in again.
   if (t.b4) { LINK.doorHeld = null; _lkCheck(t.pid, 'checkIn'); return; }
   toast('Changed by someone else. Check the list.', 4000); // another leader's change landed: never undo theirs
 }
 // Undo: still queued: removed here; sent check-in: an undo item; anything else: a cancel item.
-function _lkUndo(pid) {
+function _lkUndo(pid, fromToast) { // the toast's Undo is deliberate: it may queue an undo behind a tap on the wire
   try {
+    if (!fromToast && _lkSending(LINK.svc, pid)) return;
     LINK.doorHeld = null; // F-02: a deliberate Undo ends the 600 ms hold on that row
     const svc = LINK.svc, q = _lkQGet(), i = _lkQueuedIdx(q, svc, pid);
     if (i >= 0 && _lkTakeBack(q[i], { _s: svc, _p: pid })) return;
