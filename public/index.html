@@ -1282,9 +1282,11 @@ const DEFAULT_LABELS = {
   serviceNight: 'Friday Nights', studentTeam: 'Student Team', connection: 'Connection',
   /*BUS-HOOK*/ busMinistry: 'Bus Ministry',
 };
+// QA #19: labels go into HTML raw at ~60 sites (and through esc() at others, so L() can't escape without double-escaping).
+// Dropping the characters that open a tag or leave an attribute makes every site safe, a value already stored included.
 function L(key) {
   const labels = (S.settings && S.settings.ministryConfig && S.settings.ministryConfig.labels) || {};
-  return labels[key] || DEFAULT_LABELS[key] || key;
+  return String(labels[key] || '').replace(/[<>"]/g, '') || DEFAULT_LABELS[key] || key;
 }
 // appName()/ministryName() — identity strings, same fallback shape as L().
 // Falls back to the cached theme blob (pre-/settings-response, e.g. the very
@@ -3095,7 +3097,7 @@ function _cohortModel() { return _structure().cohortModel || 'grades-quads'; }
 function _cohorted() { return _cohortModel() !== 'none'; }        // false = no grade/quad cohorting at all
 function _genderPolicy() { return _structure().genderPolicy || 'strict'; }
 function _genderHidden() { return _genderPolicy() === 'off'; }    // hide gendered UI (suffixes, filters)
-function _gradeWord() { return _structure().gradeLabel || 'Grade'; } // "Grade" | "Year"
+function _gradeWord() { return String(_structure().gradeLabel || '').replace(/[<>"]/g, '') || 'Grade'; } // "Grade" | "Year"
 function _serviceDow() { const d = _structure().serviceDayOfWeek; return typeof d === 'number' ? d : 5; }
 function _serviceDayName() { return _DAY_NAMES[_serviceDow()] || 'Friday'; }
 // Y3b: the location's clock (structure.timeZone) and the consent cut-off on the youth night (structure.consentCutoff).

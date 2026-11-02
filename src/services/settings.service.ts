@@ -186,6 +186,10 @@ export function makeSettingsService(
           cleanPatch = { ...cleanPatch, busMinistry: rest };
         }
         const merged = mergeMinistryConfig(cur, cleanPatch);
+        // QA #19: the words in Terminology are shown to every login, so they can't carry markup.
+        if ([...Object.values(merged.labels), merged.structure.gradeLabel].some((v) => typeof v === 'string' && /[<>"]/.test(v))) {
+          throw new BadRequestError('Terminology words cannot contain < > or ". Change them in Youth Setup and save again.');
+        }
         // Module tree rules (module-tree.ts): refuse a save that leaves a module on without what it needs, rather than let
         // the resolver hide it silently. The one cascade allowed is Intakes following its parents off, behind the confirm.
         const asked = mergeModulesUnresolved(cur, cleanPatch);

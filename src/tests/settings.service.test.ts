@@ -545,3 +545,13 @@ describe('bus consent check stamps are push-only (fix round 1)', () => {
     expect([b.consentLastChecked, b.consentLastNew, b.leaveTime]).toEqual(['2026-10-23T04:00:20.000Z', 3, '20:30']);
   });
 });
+
+describe('#19 Terminology on the server', () => {
+  it('refuses markup in a label or the grade word, and keeps ordinary words', async () => {
+    const { service } = await makeService();
+    await expect(service.update(ADMIN, { ministryConfig: { labels: { service: '<img src=x onerror=1>' } } })).rejects.toThrow(/Terminology/);
+    await expect(service.update(ADMIN, { ministryConfig: { structure: { gradeLabel: '"><b>' } } })).rejects.toThrow(/Terminology/);
+    const ok = await service.update(ADMIN, { ministryConfig: { labels: { service: "Kids' & Youth" } } });
+    expect(ok.ministryConfig.labels.service).toBe("Kids' & Youth");
+  });
+});
