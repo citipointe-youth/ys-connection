@@ -216,6 +216,16 @@ describe('F2 (review 2026-10-16): leader detail + self-service writes are limite
     expect([...(await s.updateGrades(G79, junior.id, [8, 11])).grades].sort((a, b) => a - b)).toEqual([8, 11]);
     expect((await s.updateSmsTemplate(G79, junior.id, 'hi <first name>')).smsTemplate).toBe('hi <first name>');
   });
+  it('QA 4: a junior leader saves its own template only, and gets no other leader write', async () => {
+    const s = await svc();
+    const me = await s.create(ADMIN, { fullName: 'Me', gender: 'female', grades: [9] });
+    const other = await s.create(ADMIN, { fullName: 'Other', gender: 'female', grades: [9] });
+    const LEADER = actor('leader', { leaderId: me.id } as any);
+    expect((await s.updateSmsTemplate(LEADER, me.id, 'hi')).smsTemplate).toBe('hi');
+    await expect(s.updateSmsTemplate(LEADER, other.id, 'hi')).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(s.updateGrades(LEADER, me.id, [9, 10])).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(s.update(LEADER, me.id, { fullName: 'New' })).rejects.toBeInstanceOf(ForbiddenError);
+  });
   it('a junior leader login reads its own record only', async () => {
     const s = await svc();
     const me = await s.create(ADMIN, { fullName: 'Me', gender: 'female', grades: [9] });
