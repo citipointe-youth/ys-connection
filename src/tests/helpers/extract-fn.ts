@@ -48,6 +48,8 @@ export function loadFns(names: string[], prelude = '', returns: string[] = names
   if (/\b_LK_RC\b/.test(body) && !/\b_LK_RC\s*=/.test(prelude)) prelude = 'const _LK_RC = {};\n' + prelude;
   // Rev 20: a door repaint (_lkSetSearch, _lkRefreshView) brings the door search's paint along (it paints nothing without #lk-es).
   if (/\b_lkEsPaint\(/.test(body) && !names.includes('_lkEsPaint')) body += '\n' + ES_FNS.filter((n) => !names.includes(n)).map((n) => extractFn(src, n)).join('\n');
+  // A door tap or row asks _lkSending (a stub prelude with no queue answers false).
+  if (/\b_lkSending\(/.test(body) && !names.includes('_lkSending')) body += '\n' + extractFn(src, '_lkSending');
   // Plain-language pass (2026-10-25): a function that reads _lkSay / _lkSys / _lkPlainStatus brings them (and _lkBoss) along.
   body = withPlain(body, names, prelude);
   if (/\b_lkBoss\(/.test(body) && !/\b(?:var|let|const) S\b/.test(prelude)) prelude = 'var S = {};\n' + prelude;
