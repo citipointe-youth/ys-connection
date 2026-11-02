@@ -22,7 +22,7 @@ import { computeQuad, groupQuadOf, type Quad } from '../core/types/enums';
 import { BadRequestError } from '../core/errors/app-error';
 import { computeStatus } from './atrisk.service';
 import { computeStudentAggregates, emptyStudentAggregate, type AggregateResult } from './aggregates';
-import { saturdayOf } from './terms';
+import { isRealDob, saturdayOf } from './terms';
 // Deliberate, narrow exception to "services depend on repo interfaces only":
 // atomicity requires a real DB transaction handle, which only the Supabase
 // layer can provide. Only used when `sql` is passed (PERSISTENCE=supabase);
@@ -115,10 +115,13 @@ function pickSameName<T extends { id: string; createdAt: string; dateOfBirth?: s
 export interface ImportReport {
   skippedRows: Array<{ row: number; reason: string }>;
   nameCollisions: Array<{ name: string; count: number }>;
+  warnings: Array<{ name: string; reason: string }>; // imported, but someone should look (QA #26, BRK-14)
 }
 
+const NO_GENDER = "no gender recorded (blank or not recognised), so the girls' and guys' logins can't see them. Fix it in the attendance file and import again.";
+
 function emptyImportReport(): ImportReport {
-  return { skippedRows: [], nameCollisions: [] };
+  return { skippedRows: [], nameCollisions: [], warnings: [] };
 }
 
 export interface ImportResult {
@@ -169,6 +172,10 @@ export interface ImportService {
 // point 3) — this is what lets a file mixing a few unambiguous dates not
 // misparse even under the "wrong" setting.
 function normalizeDob(raw: string | null | undefined, dateOrder: 'DMY' | 'MDY' = 'DMY'): string | null {
+  const d = parseDob(raw, dateOrder);
+  return d && isRealDob(d) ? d : null; // BRK-14: "32/13/2099" is no date; the existing value (or blank) stands
+}
+function parseDob(raw: string | null | undefined, dateOrder: 'DMY' | 'MDY'): string | null {
   if (!raw) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
   const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -394,6 +401,8 @@ export function makeImportService(
 
         const nameKey = `${row.first_name.toLowerCase()} ${row.last_name.toLowerCase()}`;
         const rowDob = normalizeDob(row.date_of_birth ?? row.birthday ?? null, settings.ministryConfig.import.dateOrder);
+        const rawDob = row.date_of_birth ?? row.birthday;
+        if (rawDob && !rowDob) report.warnings.push({ name: `${row.first_name} ${row.last_name}`, reason: `date of birth "${rawDob.slice(0, 20)}" is not a real date, so it was not saved.` });
         nameRows.set(nameKey, (nameRows.get(nameKey) ?? 0) + 1);
         const candidates = studentByName.get(nameKey) ?? [];
         const { pick: existing, ambiguous } = pickSameName(candidates, rowDob, (dobsByName.get(nameKey)?.size ?? 0) > 1);
@@ -411,13 +420,16 @@ export function makeImportService(
           const incomingMobile = row.mobile ?? row.phone ?? null;
           const incomingParentPhone = row.parent_phone ?? row.guardian_phone ?? null;
           const incomingDob = normalizeDob(row.date_of_birth ?? row.birthday ?? null, settings.ministryConfig.import.dateOrder);
+          // QA #26: a known gender in the file fills an unknown one; a blank cell never clears a known one.
+          const gender = existing.gender === 'other' ? normalGender : existing.gender;
           baseStudent = {
             ...existing,
+            gender,
             grade: row.grade ?? existing.grade,
             mobile: incomingMobile ?? existing.mobile ?? null,
             parentPhone: incomingParentPhone ?? existing.parentPhone ?? null,
             dateOfBirth: incomingDob ?? existing.dateOfBirth ?? null,
-            quad: computeQuad(row.grade ?? existing.grade, normalGender),
+            quad: computeQuad(row.grade ?? existing.grade, gender),
             updatedAt: now,
           };
           if (!studentsToSaveMap.has(studentId)) studentsUpdated++;
@@ -469,6 +481,11 @@ export function makeImportService(
         studentByName.set(nameKey, [...candidates.filter((c) => c.id !== studentId), baseStudent]);
       }
 
+      // QA #26: only a strict gender policy hides them.
+      if (settings.ministryConfig.structure.genderPolicy === 'strict') {
+        for (const s of studentsToSaveMap.values()) if (s.gender === 'other') report.warnings.push({ name: `${s.firstName} ${s.lastName}`, reason: NO_GENDER });
+      }
+
       // ── Second pass: which Fridays count as "valid services"? ──
       // A session counts only if the WHOLE-ministry attendance that week meets
       // the floor (default 100). Everything below — holidays, term breaks,
@@ -484,6 +501,12 @@ export function makeImportService(
         s.isValid = cnt >= minAttendance;
       }
       const attendanceRecords = [...attendanceMap.values()];
+
+      // QA #18: this import REPLACES all service attendance, so a file holding none (a roster, or dated columns nobody is
+      // marked in) would erase it. Refused only when there is attendance to lose; a first import with no dates still works.
+      if (sessionAttendedCount.size === 0 && (await attendanceRepo.findAll()).some((a) => a.attended)) {
+        throw new BadRequestError("Nothing was changed. This file has no attendance in it, and importing it would erase the attendance already saved. To update attendance, import the full Service Individual Attendance export, with its dated columns.");
+      }
 
       // ── Term split (this term vs previous) over BOTH streams. ──
       // Service-date gaps > termGapDays set the boundaries; the SAME boundaries
@@ -853,7 +876,11 @@ export function makeImportService(
       // — so there's no reliable same-upload duplicate-name signal here the
       // way there is for the service importer. Report shape kept consistent
       // with importServiceCsv for the SPA's report renderer either way.
-      return { importId, type: 'lifegroup', rowCount, groupsAdded, studentsAdded, studentsUpdated, weeksAdded, report: emptyImportReport() };
+      const report = emptyImportReport();
+      if (settings.ministryConfig.structure.genderPolicy === 'strict') { // QA #26: someone only on a group roll has no gender yet
+        for (const { obj } of grpByStudent.values()) if (obj.gender === 'other') report.warnings.push({ name: `${obj.firstName} ${obj.lastName}`, reason: NO_GENDER });
+      }
+      return { importId, type: 'lifegroup', rowCount, groupsAdded, studentsAdded, studentsUpdated, weeksAdded, report };
     },
 
     async deleteImport(actor, id) {

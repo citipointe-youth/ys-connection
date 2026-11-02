@@ -545,3 +545,23 @@ describe('bus consent check stamps are push-only (fix round 1)', () => {
     expect([b.consentLastChecked, b.consentLastNew, b.leaveTime]).toEqual(['2026-10-23T04:00:20.000Z', 3, '20:30']);
   });
 });
+
+describe('#19 Terminology on the server', () => {
+  it('refuses markup in a label or the grade word, and keeps ordinary words', async () => {
+    const { service } = await makeService();
+    await expect(service.update(ADMIN, { ministryConfig: { labels: { service: '<img src=x onerror=1>' } } })).rejects.toThrow(/Terminology/);
+    await expect(service.update(ADMIN, { ministryConfig: { structure: { gradeLabel: '"><b>' } } })).rejects.toThrow(/Terminology/);
+    const ok = await service.update(ADMIN, { ministryConfig: { labels: { service: "Kids' & Youth" } } });
+    expect(ok.ministryConfig.labels.service).toBe("Kids' & Youth");
+  });
+});
+
+describe('BRK-20 grade range', () => {
+  it('refuses an absurd range, keeps Include Grade 6 working', async () => {
+    const { service } = await makeService();
+    for (const s of [{ gradeMin: -5 }, { gradeMax: 500 }, { gradeMin: 12, gradeMax: 7 }]) {
+      await expect(service.update(ADMIN, { ministryConfig: { structure: s } })).rejects.toThrow(/Grades must run/);
+    }
+    expect((await service.update(ADMIN, { ministryConfig: { structure: { gradeMin: 6 } } })).ministryConfig.structure.gradeMin).toBe(6);
+  });
+});

@@ -8,6 +8,7 @@ import { computeQuad } from '../core/types/enums';
 import { MINISTRY_CONFIG_DEFAULTS, assertGradesInRange } from '../core/ministry-config';
 import { NotFoundError } from '../core/errors/app-error';
 import { makeDnc, type Dnc } from './dnc';
+import { isRealDob } from './terms';
 
 /** R1: every student read carries `dnc`; phones are null for a DNC student unless admin/oversight. */
 export type StudentView = Student & { dnc: boolean };
@@ -19,7 +20,7 @@ const CreateStudentSchema = z.object({
   grade: z.number().int().min(6).max(12).nullable().optional(),
   mobile: z.string().nullable().optional(),
   parentPhone: z.string().nullable().optional(),
-  dateOfBirth: z.string().nullable().optional(),
+  dateOfBirth: z.string().refine(isRealDob, 'Date of birth must be a real date').nullable().optional(),
   dataSource: z.string().nullable().optional(),
 });
 

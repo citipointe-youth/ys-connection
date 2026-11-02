@@ -6,7 +6,7 @@ import { MINISTRY_CONFIG_DEFAULTS, gradeRange, assertGradesInRange } from '../co
 import type { Leader } from '../core/entities/leader';
 import type { Actor } from '../core/entities/user';
 import type { Grade } from '../core/types/enums';
-import { NotFoundError, ForbiddenError, BadRequestError } from '../core/errors/app-error';
+import { NotFoundError, ForbiddenError, BadRequestError, ConflictError } from '../core/errors/app-error';
 
 const CreateLeaderSchema = z.object({
   fullName: z.string().min(1).max(100),
@@ -103,7 +103,14 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
 
     async create(actor, input) {
       assertCan(actor, 'leader:write');
-      const data = CreateLeaderSchema.parse(input);
+      // QA #3 (as Notices): the phone's id for this save. A resend returns the first leader, and Undo uses the removed
+      // leader's own id, so a login bound to it (users.leader_id is text with no FK) still finds it.
+      const data = CreateLeaderSchema.extend({ requestId: z.string().uuid().optional() }).parse(input);
+      if (data.requestId) {
+        const dup = await repo.findById(data.requestId);
+        if (dup && dup.fullName !== data.fullName) throw new ConflictError('This save id is already used. Save again.');
+        if (dup) return dup;
+      }
       await assertInRange(data.grades ?? []);
 
       // Grade login: leader is automatically scoped to their grade
@@ -115,7 +122,7 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
         grades = myGrades;
       } else if (actor.role === 'quad') {
         // Quad login: new leaders auto-set to the quad's gender; year focus limited to the bracket.
-        const bracket = quadGradesOf(actor.quad) as Grade[];
+        const bracket = quadGradesOf(actor.quad, await structureOf()) as Grade[]; // QA #15: this ministry's bracket, Grade 6 only when it's on
         if (!bracket.length) throw new BadRequestError('This Junior/Senior login has no group set');
         const requested = (data.grades ?? []) as Grade[];
         const scoped = requested.filter((g) => bracket.includes(g));
@@ -130,7 +137,7 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
 
       const now = new Date().toISOString();
       const leader: Leader = {
-        id: generateId(),
+        id: data.requestId ?? generateId(),
         fullName: data.fullName,
         gender: leaderGender,
         grades,
@@ -164,7 +171,7 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
       let nextGrades: Grade[] = patch.grades !== undefined ? (patch.grades as Grade[]) : existing.grades;
       // Quad cannot move a leader outside their gender + bracket
       if (actor.role === 'quad') {
-        const bracket = quadGradesOf(actor.quad) as Grade[];
+        const bracket = quadGradesOf(actor.quad, await structureOf()) as Grade[]; // QA #15
         nextGender = quadGenderOf(actor.quad);
         if (patch.grades !== undefined) {
           const scoped = nextGrades.filter((g) => bracket.includes(g));

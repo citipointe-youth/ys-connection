@@ -8,7 +8,7 @@ import type { IPrayerRepository, IStudentRepository, ISettingsRepository,
 import type { PrayerRequest, PrayerWithStudent } from '../core/entities/prayer';
 import type { Student } from '../core/entities/student';
 import type { Actor } from '../core/entities/user';
-import { NotFoundError, ForbiddenError, ModuleDisabledError } from '../core/errors/app-error';
+import { NotFoundError, ForbiddenError, ConflictError, ModuleDisabledError } from '../core/errors/app-error';
 import { buildPrayerCsvRows, parsePrayerRows, planPrayerImport,
   type PrayerCsvRow, type PrayerImportReport } from './prayer-allocations';
 
@@ -16,6 +16,7 @@ const CreateSchema = z.object({
   studentId: z.string().min(1).nullable().optional(),
   text: z.string().min(1).max(1000),
   createdByLabel: z.string().max(120).optional(),
+  requestId: z.string().uuid().optional(), // QA #3 (as Notices): a resend returns the first prayer
 });
 const UpdateSchema = z.object({
   text: z.string().min(1).max(1000).optional(),
@@ -140,6 +141,11 @@ export function makePrayerService(
       const structure = await cfg();
       assertCan(actor, 'prayer:write');
       const data = CreateSchema.parse(input);
+      if (data.requestId) {
+        const dup = await repo.findById(data.requestId);
+        if (dup && dup.text !== data.text) throw new ConflictError('This save id is already used. Save again.');
+        if (dup) return dup;
+      }
       const studentId = data.studentId ?? null;
       await studentInScope(actor, studentId, structure);
       // Captured for every prayer (cheap), but only read back for a general one
@@ -152,7 +158,7 @@ export function makePrayerService(
       const creatorScope = generalPrayerCreatorScope(actor, structure);
       const now = new Date().toISOString();
       const prayer: PrayerRequest = {
-        id: generateId(),
+        id: data.requestId ?? generateId(),
         studentId,
         text: data.text,
         status: 'open',
