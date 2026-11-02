@@ -1638,9 +1638,9 @@ function confirmType(opts) {
     <input class="fi" id="ct-input" autocomplete="off" ${exact ? '' : 'autocapitalize="characters"'}
       oninput="document.getElementById('ct-go').disabled = (window._confirmTypeExact ? this.value.trim() : this.value.trim().toUpperCase()) !== window._confirmTypeWord">
     <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn ${danger ? 'btn-danger' : 'btn-secondary'}" id="ct-go" style="flex:1" disabled
         onclick="closeModal(); const f=window._confirmTypeFn; window._confirmTypeFn=null; if(f)f();">Confirm</button>
-      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
   setTimeout(() => document.getElementById('ct-input')?.focus(), 60);
 }
@@ -4416,8 +4416,8 @@ function showAddLeader() {
     ${genderField}
     ${u.role!=='grade'?`<div class="fg"><label class="fl">Grade Focus${u.role==='quad'?' (your group)':' (leave blank = all)'}</label>${gcbs}</div>`:'<p style="font-size:12px;color:var(--ink-mid);margin-bottom:12px">Leader will be scoped to your grade automatically</p>'}
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="submitAddLeader()">Add Leader</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="submitAddLeader()">Add Leader</button>
     </div>`);
 }
 
@@ -4465,8 +4465,8 @@ async function showEditLeader(id) {
     <div class="fg"><label class="fl">Grade Focus</label>${gcbs}</div>
     <div class="fg"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px"><input type="checkbox" id="la" ${l.active?'checked':''}> Active</label></div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="submitEditLeader('${id}')">Save</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="submitEditLeader('${id}')">Save</button>
     </div>
     <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px;color:var(--danger)" onclick="closeModal();confirmDelLeader('${id}')">${icS('trash')} Remove leader</button>`);
 }
@@ -4505,8 +4505,8 @@ function confirmDelLeader(id) {
   modal(`<div class="mo-title">Remove leader?</div>
     <p style="color:var(--ink-mid);margin-bottom:20px"><strong>${esc(name)}</strong> will be removed${n ? ` and <strong>${n} student${n!==1?'s':''}</strong> disconnected` : ''}.</p>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-danger" style="flex:1" onclick="doDelLeader('${id}')">Remove</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" style="flex:1" onclick="doDelLeader('${id}')">Remove</button>
     </div>`);
 }
 
@@ -6895,8 +6895,8 @@ async function previewServiceImport(filename, rows) {
       <div>Grades seen: ${[...grades].sort((a,b)=>a-b).join(', ') || '—'}</div>
     </div>${warn}
     <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadServiceImport(${esc(JSON.stringify(filename))})">Import</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadServiceImport(${esc(JSON.stringify(filename))})">Import</button>
     </div>`);
   window._pendingServiceRows = rows;
 }
@@ -6910,8 +6910,8 @@ function previewGroupImport(filename, parsed) {
       <div><strong>${totalMembers}</strong> member row${totalMembers!==1?'s':''}</div>
     </div>
     <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadGroupImport(${esc(JSON.stringify(filename))})">Import</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();uploadGroupImport(${esc(JSON.stringify(filename))})">Import</button>
     </div>`);
   window._pendingGroups = parsed;
 }
@@ -8254,8 +8254,8 @@ function confirmSaveMinistrySetup() {
     ${risky}
     <div style="font-size:13px;color:var(--ink-mid);line-height:1.6">This updates live configuration (branding, terminology, structure, roles, modules) for everyone who uses the app. Some changes only fully appear for other users after they log out and back in.</div>
     <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-primary" style="flex:1" onclick="closeModal();saveMinistrySetup(${diff.includes('modules.intakeAdmin')})">Save</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();saveMinistrySetup(${diff.includes('modules.intakeAdmin')})">Save</button>
     </div>`);
 }
 // Modular setup: the server refuses a save that turns Intakes off (it deletes the waiting intake rows) without confirmIntakeOff.
@@ -8263,8 +8263,8 @@ function _setupIntakeOffConfirm() {
   modal(`<div class="mo-title">Turn Intakes off?</div>
     <div class="alert" style="margin-bottom:10px;background:#fef2f2;color:#b91c1c;border-left:3px solid #dc2626">Turning Intakes off deletes waiting intake rows.</div>
     <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-primary" style="flex:1" onclick="closeModal();saveMinistrySetup(true)">Turn off and save</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="closeModal();saveMinistrySetup(true)">Turn off and save</button>
     </div>`);
 }
 
@@ -8671,8 +8671,8 @@ async function showAddUser() {
       <select class="fs" id="u-leader">${_accLeaderOptions('')}</select>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="submitAddUser()">Create</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="submitAddUser()">Create</button>
     </div>`);
   toggleUserRoleFields();
   // Trigger initial email suggestion for the default role
@@ -8786,8 +8786,8 @@ async function showEditUser(id) {
       <select class="fs" id="u-leader">${_accLeaderOptions(u.leaderId)}</select>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="submitEditUser('${id}')">Save</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="submitEditUser('${id}')">Save</button>
     </div>`);
 }
 
@@ -8820,8 +8820,8 @@ function showSetPassword(id) {
     <div id="uerr"></div>
     <div class="fg"><label class="fl" for="u-newpw">New Password (min 8 chars)</label><input class="fi" id="u-newpw" type="password" placeholder="New password"></div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="submitSetPassword('${id}')">Set Password</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" style="flex:1" onclick="submitSetPassword('${id}')">Set Password</button>
     </div>`);
 }
 
@@ -8864,8 +8864,8 @@ function showChangeOwnPassword() {
       <div class="fg"><label class="fl" for="cpw-new">New Password (min 8 chars)</label><input class="fi" id="cpw-new" name="new-password" type="password" placeholder="New password" autocomplete="new-password"></div>
       <div class="fg"><label class="fl" for="cpw-new2">Confirm New Password</label><input class="fi" id="cpw-new2" name="new-password-confirm" type="password" placeholder="Confirm new password" autocomplete="new-password"></div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-primary" style="flex:1" type="submit">Change Password</button>
         <button class="btn btn-secondary" type="button" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" style="flex:1" type="submit">Change Password</button>
       </div>
     </form>`);
   document.getElementById('cpwform')?.addEventListener('submit', e => { e.preventDefault(); submitChangeOwnPassword(); });
