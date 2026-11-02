@@ -108,7 +108,7 @@ describe('S1.3 grade filter core', () => {
   it('no I am pick: null (whole bracket) and the hint', () => {
     const f = load({ me: null });
     expect(f._vgGrades()).toBeNull();
-    expect(f._vgBar()).toContain('Pick who you are on Home to use your grades');
+    expect(f._vgBar()).toContain('Answer "Who are you?" on Home to use your grades');
   });
   it('non-quad login: null and no bar', () => {
     const f = load({ me: 'L1', role: 'oversight', leaders: [{ id: 'L1', grades: [8] }] });

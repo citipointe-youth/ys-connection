@@ -265,8 +265,8 @@ describe('T7/T8 grade filter repaints from the cache', () => {
     const mk = (page: string) => loadFns(['_vgBar'], `const S = { page: '${page}', user: { role: 'quad', quad: 'b79' } };
       function _vgActive() { return true; } function quadGrades() { return [7, 8, 9]; } function getMyLeaderId() { return null; }
       const Cache = { getStale() { return []; } }; function _vgGrades() { return null; } function esc(s) { return String(s); } function _gradeWord() { return 'Year'; }`);
-    expect(mk('home')._vgBar()).toContain('Pick who you are below to use your grades');
-    expect(mk('at-risk')._vgBar()).toContain('Pick who you are on Home to use your grades');
+    expect(mk('home')._vgBar()).toContain('Answer "Who are you?" below to use your grades');
+    expect(mk('at-risk')._vgBar()).toContain('Answer "Who are you?" on Home to use your grades');
   });
   it('the bar is a labelled group; disabled chips are not shown as selected', () => {
     const f = loadFns(['_vgBar'], `const S = { page: 'home', user: { role: 'quad', quad: 'b79' } };

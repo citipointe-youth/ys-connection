@@ -2750,7 +2750,7 @@ function _vgBar() {
     const chips = bracket.map(g => `<button class="fc" style="opacity:.55" disabled>${g}</button>`).join('');
     const where = S.page === 'home' ? 'below' : 'on Home';
     return `<div class="filter-row vg-bar" role="group" aria-label="Filter by grade"><span style="font-size:11px;font-weight:700;color:var(--ink-mid)">${word}</span>${chips}</div>
-      <div class="help-text" style="margin:-4px 0 8px">Pick who you are ${where} to use your grades</div>`;
+      <div class="help-text" style="margin:-4px 0 8px">Answer "Who are you?" ${where} to use your grades</div>`;
   }
   const all = bracket.every(g => cur.includes(g));
   const chips = bracket.map(g => `<button class="fc ${cur.includes(g) ? 'on' : ''}" aria-pressed="${cur.includes(g)}" title="${esc(_gradeWord())} ${g}" onclick="_vgToggle(${g})">${g}</button>`).join('');
@@ -4037,6 +4037,7 @@ async function _renderHomeInner(stale, fromCache) {
     <td style="text-align:center;padding:5px 4px;border-radius:0 6px 6px 0"><span style="font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.01em;opacity:.82">${grpAvgWk}</span></td>
   </tr>`;
   body += `</tbody></table>`;
+  body += `<div style="font-size:11px;opacity:.7;margin-top:5px">Seen: different students who came at least once. Weekly: average per week.</div>`;
 
   // Previous-term summary
   const pSvcAtt = sc.reduce((a, s) => a + s.prevSvcAttended, 0), pSvcTot = sc.reduce((a, s) => a + s.prevSvcTotal, 0);
@@ -4276,7 +4277,7 @@ async function renderHomeFollowup(fromCache) {
     const opts = leaders.map(l => `<option value="${l.id}">${esc(l.fullName)}</option>`).join('');
     host.innerHTML = `<div class="sh" style="font-size:13px">Follow Up ${helpTip("These are students who've attended a service or lifegroup recently, but weren't here last service.")}</div>
       <div class="card" style="padding:14px">
-        <div style="font-size:13px;color:var(--ink-mid);margin-bottom:8px">Tell us who you are to see your students to follow up with this week.</div>
+        <div style="font-size:13px;color:var(--ink-mid);margin-bottom:8px">Who are you? Pick your name to see the students you follow up this week.</div>
         <select class="fs" id="home-leader-pick" aria-label="Choose your name" onchange="chooseHomeLeader()"><option value="">— Choose your name —</option>${opts}</select>
       </div>`;
     return;
@@ -4676,7 +4677,7 @@ function renderConnectView() {
         <div style="display:flex;gap:6px">
           ${canEdit?`<button class="btn btn-primary btn-sm" onclick="showAddLeader()">+ Add Leader</button>`:''}
           <button class="btn btn-secondary btn-sm" onclick="exportConnectCSV()" aria-label="Export connections to Excel">Export Excel</button>
-          <button class="btn btn-secondary btn-sm" onclick="showChangeOwnPassword()" aria-label="Change your password">Reset Password</button>
+          <button class="btn btn-secondary btn-sm" onclick="showChangeOwnPassword()" aria-label="Change your password">Change Password</button>
         </div>
       </div>
       <div class="ph-sub">${connectedCount}/${totalStudents} students connected · ${visLeaders.length} leader${visLeaders.length!==1?'s':''}</div>
@@ -5241,7 +5242,7 @@ async function renderMyStudents() {
   let body = _msHead(!_msLeader) + filters;
   const opts = visLeaders.map(l => `<option value="${l.id}" ${_msLeader === l.id ? 'selected' : ''}>${esc(l.fullName)} (Gr ${l.grades?.join(', ') || 'All'} · ${l.gender || 'any gender'})</option>`).join('');
   const msNotYouBtn = _msLeader ? `<button class="btn btn-secondary btn-sm" onclick="_msNotYou()">Not you?</button>` : '';
-  body += `<div class="fg"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><label class="fl" style="margin-bottom:0">I am…</label>${msNotYouBtn}</div><select class="fs" onchange="_msPickLeader(this.value)"><option value="">— Choose a leader —</option>${opts}</select></div>`;
+  body += `<div class="fg"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><label class="fl" style="margin-bottom:0">Who are you?</label>${msNotYouBtn}</div><select class="fs" onchange="_msPickLeader(this.value)"><option value="">— Choose a leader —</option>${opts}</select></div>`;
 
   if (_msLeader) {
     // The summary and the prayers load together (r22 U1). Prayers are best-effort: a failed fetch just means no prayer lines.
@@ -6361,7 +6362,7 @@ async function renderTrends() {
     if (['oversight', 'admin'].includes(u.role)) {
       const mn = (trends && trends.ministry) || {};
       body += `<div class="sh">Ministry Overview</div><div class="card">`;
-      body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term${_termNote ? ` (${_termNote})` : ''}</div>`;
+      body += `<div style="font-size:12px;color:var(--ink-mid);margin-bottom:8px">Whole-ministry service attendance · this term${_termNote ? ` (${_termNote})` : ''}. Seen: different students who came at least once. Weekly: average per week.</div>`;
       body += statCard([mn.uniqueAttenders || 0, Math.round(mn.averageAttendance || 0)], ['Seen', 'Weekly'],
         (mn.prevUniqueAttenders || mn.prevAverageAttendance) ? ['prev: ' + (mn.prevUniqueAttenders||0), 'prev: ' + (mn.prevAverageAttendance||0)] : null);
       body += '</div>';
@@ -10389,7 +10390,7 @@ function _nyHost() {
 }
 function _nyHostHtml() {
   const n = _nyHost(), bound = !!S.user && S.user.role === 'leader';
-  return `<div class="lk-svc-t">${n ? 'Host: ' + esc(n) : 'Host: pick who you are'}</div>`
+  return `<div class="lk-svc-t">${n ? 'Host: ' + esc(n) : 'Host: Who are you?'}</div>`
     + (bound && n ? '' : `<button type="button" class="btn btn-secondary btn-sm" onclick="_nyPickHost()">${n ? 'Change' : 'Pick'}</button>`);
 }
 function _nyHostDraw() { const el = document.getElementById('ny-hostc'); if (el) el.innerHTML = _nyHostHtml(); }
@@ -11838,7 +11839,7 @@ function _lkIamPick(then) {
   const show = (ls) => {
     const n = (ls || []).filter((l) => l && l.active !== false).length;
     // APP-65: a name filter above 12 leaders; Cancel sticks to the bottom of the sheet.
-    modal(`<div class="mo-title">Who are you?</div><p class="lk-sub">Pick your name first.${_lkSay(' Elvanto shows it on the report.', '')}</p>
+    modal(`<div class="mo-title">Who are you?</div><p class="lk-sub">Pick your name. Home and My Connections then show your own students. Cancel to do it later.${_lkSay(' Elvanto shows it on the report.', '')}</p>
       ${n > 12 ? '<input class="fi lk-mb" placeholder="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="_lkIamFilter(this.value)">' : ''}
       <div id="lk-iam-list">${_lkIamListHtml('', ls)}</div>
       <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Cancel</button></div>`, () => { LINK.iamThen = null; });
@@ -12315,7 +12316,7 @@ function _lkMembersHtml(g) {
     }).join('') || '<p class="lk-sub">No members.</p>';
     if (canAdd) body += `<div class="lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkMemPick(${a})">${icS('plus')} Add student</button></div>`;
     else if (!v.canEdit && !getMyLeaderId() && S.user && S.user.role !== 'admin' && S.user.role !== 'oversight') {
-      body += `<p class="lk-sub lk-mt">A leader of this group can add or remove students.</p><button type="button" class="btn btn-secondary btn-sm" onclick="_lkMemIam(${a})">Pick who you are</button>`;
+      body += `<p class="lk-sub lk-mt">A leader of this group can add or remove students.</p><button type="button" class="btn btn-secondary btn-sm" onclick="_lkMemIam(${a})">Who are you?</button>`;
     }
   }
   const n = v && v.members ? v.members.length : (g.members || []).length;
@@ -16684,9 +16685,9 @@ function _busMyCarHtml() {
   const opt = (l) => `<option value="${l.id}">${esc(l.name)}</option>`;
   const myName = (pickerLeaders.find((l) => l.id === mine) || v.leaders.find((l) => l.id === mine) || {}).name || '';
   const picker = mine
-    ? `<div class="mycar-id"><span class="fl">I am</span> <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_lkSwitchGuard(null).then((ok) => { if (ok) _busIdentityChanged(null); })">Not you?</button></div>`
+    ? `<div class="mycar-id"><span class="fl">Who are you?</span> <b>${esc(myName)}</b> <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="_lkSwitchGuard(null).then((ok) => { if (ok) _busIdentityChanged(null); })">Not you?</button></div>`
     : pickerLeaders.length
-      ? `<div class="mycar-id"><span class="fl">I am</span> <select class="fs" style="flex:1;min-width:0" onchange="_lkSwitchGuard(this.value || null).then((ok) => { if (ok) _busIdentityChanged(this.value); else this.value = getMyLeaderId() || ''; })"><option value="">— Choose your name —</option>${onCar.length && others.length
+      ? `<div class="mycar-id"><span class="fl">Who are you?</span> <select class="fs" style="flex:1;min-width:0" onchange="_lkSwitchGuard(this.value || null).then((ok) => { if (ok) _busIdentityChanged(this.value); else this.value = getMyLeaderId() || ''; })"><option value="">— Choose your name —</option>${onCar.length && others.length
         ? `<optgroup label="On a car tonight">${onCar.map(opt).join('')}</optgroup><optgroup label="Not on a car yet">${others.map(opt).join('')}</optgroup>`
         : pickerLeaders.map(opt).join('')}</select></div>`
       : `<div class="card-sub">No leaders found.</div>`;

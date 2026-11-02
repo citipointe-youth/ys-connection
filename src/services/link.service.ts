@@ -523,7 +523,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
   }
   async function resolveLeader(c: Ctx, given: string | null | undefined, required: boolean): Promise<{ id: string | null; name: string }> {
     const l = await scopedLeader(c, c.actor.role === 'leader' ? (c.actor.leaderId ?? null) : (given ?? null));
-    if (required && !l) throw new BadRequestError('Pick who you are first.');
+    if (required && !l) throw new BadRequestError('Answer "Who are you?" first.');
     return l ? { id: l.id, name: l.fullName } : { id: null, name: c.actor.displayName };
   }
 

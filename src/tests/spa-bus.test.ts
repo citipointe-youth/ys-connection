@@ -1862,7 +1862,7 @@ describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
   it('R19-U14 #16: "I am" and "Day" use the sheet label style', () => {
     const own = "{ id: 'rv', name: 'Car', seats: 5, plate: null, ownerLeaderId: 'L1', leaderIds: ['L1'], leaderNames: ['Amy'], endsAt: 'church', endsAddress: null }";
     const h = tripView(own);
-    expect(h).toContain('<span class="fl">I am</span>');
+    expect(h).toContain('<span class="fl">Who are you?</span>');
     expect(h).toContain('<label class="fl" for="bus-trip-date">Day</label>');
   });
   it('the empty Trip logging card says "No trip logged" and offers Log a trip', () => {

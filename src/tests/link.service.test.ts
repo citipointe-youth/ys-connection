@@ -499,7 +499,7 @@ describe('D2 enqueue', () => {
   it('"I am" is required for reports and flow steps', async () => {
     const h = await setup();
     for (const it of [report({}, { leaderId: null }), edit({}, { leaderId: u(995) }), step({}, { leaderId: undefined })]) {
-      expect(await enq(h.svc, OVERSIGHT, it, DEV)).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST', message: 'Pick who you are first.' });
+      expect(await enq(h.svc, OVERSIGHT, it, DEV)).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST', message: 'Answer "Who are you?" first.' });
     }
   });
 
@@ -1847,7 +1847,7 @@ describe('F1 (review 2026-10-16): "I am" is limited to leaders in scope', () => 
   it('a note type under an out-of-scope leader is refused like a missing "I am"', async () => {
     const h = await setup();
     expect(await enq(h.svc, GRADE, step({}, { note: 'Called mum', leaderId: L_CODY }), DEV))
-      .toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST', message: 'Pick who you are first.' });
+      .toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST', message: 'Answer "Who are you?" first.' });
   });
   it('a leader with no grades (CSV import shape) counts as no leader for a grade login, but admin may still act as them', async () => {
     const h = await setup();
