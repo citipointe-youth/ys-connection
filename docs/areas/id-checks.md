@@ -1,0 +1,10 @@
+# ID Checks (module `idChecks`, 2026-10-30, migration 0053, SW `ysc-v162`)
+
+Private catch-up checks and random notes that oversight logins keep about leaders. Spec `docs/superpowers/specs/2026-10-30-oversight-id-checks-design.md`; code `id-check.service.ts`, `id-check-rhythm.ts`, `core/id-check-questions.ts`, SPA block `/*IC-LIST*/` ... `/*IC-GRID*/` in `public/index.html`. Routes: see `src/api/CLAUDE.md`.
+
+- **Tables:** `id_check_access` (the tick grid: leader x oversight login) and `id_check_entries` (checks and notes; `leader_id` set null when the leader is deleted = archived, `leader_name` is the snapshot). `content` is encrypted JSON, bound to the entry id (AAD), and only `supabase.id-checks.ts` calls `maybeEncrypt`/`maybeDecrypt` (the encryption seam; `FIELD_ENCRYPTION_KEY` required). Entry ids are lower-case UUIDs made by the phone, so autosave is an idempotent PUT.
+- **Tick-only rule:** an oversight login reads and writes only the leaders ticked for it. An unticked, missing or inactive leader answers the same 404, so the API never confirms who has records. Only admin edits the grid (`PUT /id-checks/access`); a tick may name an active oversight or admin login, and admin sees only the leaders ticked for it, like anyone else.
+- **Privacy:** notes never go to any log (a test pins the service file); validation refusals carry fixed messages, never a submitted value; the Error log gets codes only. A draft lives on the phone as `ysc.ic.<login id>.<entry id>` and logout removes every `ysc.ic.` key.
+- **Archive:** deleting a leader keeps their entries; More > ID Checks > Archived leaders' history lists them by name (delete, or attach to a leader). Full Reset keeps ID-check history and the wizard says so.
+- **Export:** per leader, built in the browser from a fresh read: text file or Excel (`_icExportOpen`, `_icExportGo`); the file holds private notes, the sheet says so.
+- **Module Off:** `/id-checks` answers 404 and the SPA shows no entry. `_icAnswered` is the editor's helper; the export's is `_icExportAnswered` (a same-name pair once broke the editor).
