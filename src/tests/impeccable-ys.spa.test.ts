@@ -77,7 +77,7 @@ describe('#3 sheets are dialogs: focus in, background inert, focus back', () => 
     expect(t.log.pop()).toBe('opener');
   });
   it('Esc still closes the open sheet', () => {
-    expect(html).toMatch(/if \(e\.key === 'Escape'\) \{\s*const root = document\.getElementById\('modal-root'\);\s*if \(root && root\.innerHTML\) closeModal\(\);/);
+    expect(html).toMatch(/if \(e\.key === 'Escape'\) \{\s*const root = document\.getElementById\('modal-root'\);\s*if \(root && root\.innerHTML\) _moDismiss\(\);/);
   });
 });
 

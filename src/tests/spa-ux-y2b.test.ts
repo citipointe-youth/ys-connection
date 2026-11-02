@@ -71,7 +71,7 @@ describe('T12 the tab strip keeps its scroll across a same-page re-render', () =
       const S = { page: 'admin' };
       const window = { scrollY: 40, scrollTo() {} };
       const document = { getElementById: () => __main };
-      function _updateNavActive() {}`;
+      function _updateNavActive() {} function _loadFailedNow() { return false; }`;
     const fns = new Function('__main', `${pre}\n${extractFn(html, 'setApp')}\nreturn { setApp };`)(main);
     return { fns, bar: () => bar };
   };

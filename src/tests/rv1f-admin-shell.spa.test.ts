@@ -65,6 +65,7 @@ describe('B1: 6 Admin tabs, pills on every width, old ids as aliases', () => {
       let _setupFlowSteps, _setupDraft, _setupServiceMinAttendance, _setupTermGapDays, _setupOpen;
       const go = (p) => log.push('go:' + p); const API = { get: async (p) => (p === '/accounts/users' ? [] : {}) };
       async function renderAdminView() { log.push('render:' + _adminTab + ':' + _adminScroll); }
+      function _setupLeaveAsk() { return false; }
       ${extractFn(HTML, 'switchAdminTab')}
       return { sw: switchAdminTab, st: () => [_adminTab, _adminScroll] };`)(log);
     return { ...t, log };

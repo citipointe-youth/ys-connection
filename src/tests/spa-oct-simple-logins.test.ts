@@ -70,7 +70,8 @@ describe('S1.2 Youth Setup', () => {
 
   it('saveMinistrySetup reseeds _setupDraft from the saved config and toasts the renamed count', async () => {
     const f = loadFns(['_setupBaseOf', '_setupPatch', 'saveMinistrySetup'],
-      `let _setupDraft = { logins: { simple: true } }, _setupBase = { simple: false, prayers: true }, _setupServiceMinAttendance = 100, _setupTermGapDays = 14;
+      `let _setupDraft = { logins: { simple: true } }, _setupBase = { simple: false, prayers: true }, _setupServiceMinAttendance = 100, _setupTermGapDays = 14, _setupClean = null;
+       function _setupState() { return ''; }
        const toasts = []; function toast(m) { toasts.push(m); }
        const S = {}; let _shellReady = false; function _navSig() { return ''; } function _initShell() {} function applyTheme() {}
        const Cache = { del() {} }; let _adminData = { users: [], history: [] };

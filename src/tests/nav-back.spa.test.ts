@@ -20,6 +20,7 @@ function navWorld() {
     const history = { pushState() { env.pushed++; }, back() { env.histBack++; }, go() {} };
     const document = { querySelector: () => (env.modalOpen ? {} : null) };
     const localStorage = { setItem() {} };
+    function _moDismiss() { closeModal(); } function _setupDirty() { return false; } function _setupLeaveAsk() { return false; }
     function closeModal() { env.modalOpen = false; env.calls.push('closeModal'); }
     function _ikLeave() {} function _ikDraw() { env.calls.push('draw'); } function _ikLoad() { env.calls.push('load'); } function _hubLoad() { env.calls.push('hubLoad'); }
     function render() { env.calls.push('render'); } function _lkPaintGroups() {}

@@ -125,6 +125,7 @@ function navWorld(page: string) {
     var LINK = { gid: 'g1', rf: null, rfd: {}, ik: null };
     var history = { pushState() { env.pushed++; }, back() { env.pending++; }, go() {} };
     var document = { querySelector: () => null };
+    function _moDismiss() { closeModal(); } function _setupDirty() { return false; } function _setupLeaveAsk() { return false; }
     var render = () => { env.renders++; }, closeModal = () => {}, _lkPaintGroups = () => { env.renders++; };
     var _ikLeave = () => {}, _ikDraw = () => {}, _ikLoad = () => {};
     var _nyRaw = () => env.raw, nyReset = () => { env.resets++; env.raw = {}; };
