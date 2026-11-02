@@ -465,9 +465,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 @media(min-width:768px){#undo-toast{bottom:32px}}
 
 /* ── ROLE BADGE TOOLTIP ── */
-.role-badge{position:relative;cursor:help}
-.role-badge::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);right:0;background:#1e293b;color:#fff;font-size:11px;padding:4px 8px;border-radius:6px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;font-weight:400;text-transform:none;letter-spacing:0;z-index:200}
-.role-badge:hover::after{opacity:1}
+.role-badge{position:relative;cursor:pointer;border:0;color:inherit;font-family:inherit}
+.role-badge::before{content:'';position:absolute;inset:-9px -4px}
 
 /* ── FIRST-RUN CARD ── */
 .first-run{background:linear-gradient(135deg,var(--accent-light),#eff6ff);border-radius:var(--radius);padding:20px;margin-bottom:20px;border:1px solid rgba(37,99,235,.2)}
@@ -1835,7 +1834,7 @@ function _noticesHtml(list) {
   if (_noticeSender()) {
     h += `<div class="card"><div class="fg"><label class="fl" for="nt-title">Title</label><input class="fi" id="nt-title" maxlength="120" autocomplete="off"></div>
       <div class="fg"><label class="fl" for="nt-body">Message</label><textarea class="ft" id="nt-body" rows="4" maxlength="1000"></textarea></div>
-      <div class="fg"><label class="fl">Send to</label>${NOTICE_QUADS.map(q => `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer"><input type="checkbox" class="nt-q" value="${q[0]}"> <span>${esc(q[1])}</span></label>`).join('')}</div>
+      <div class="fg"><label class="fl">Send to</label>${NOTICE_QUADS.map(q => `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer"><input type="checkbox" class="nt-q" value="${q[0]}"> <span>${esc(q[1])}</span></label>`).join('')}<div class="help-text">Only the groups you tick see this notice. Admin and oversight see every notice.</div></div>
       <button type="button" class="btn btn-primary btn-full" id="nt-send" onclick="submitNotice()">Send notice</button></div>`;
   }
   h += (list || []).length ? list.map(n => _noticeCardHtml(n, _noticeSender())).join('')
@@ -2635,7 +2634,27 @@ function roleBadge(u) {
   else if (u.role === 'quad') { label = quadLabel(u.quad); }
   else { label = _roleLabel(u.role); }
   tip = (ROLE_TIPS[u.role]||(() => ''))(u);
-  return `<span class="role-badge" data-tip="${esc(tip)}">${esc(label)}</span>`;
+  return `<button type="button" class="role-badge" onclick="showScopeInfo()" aria-label="${esc(label + ': ' + tip + '. Tap for more.')}">${esc(label)}</button>`;
+}
+// What a login of this role sees, in short plain words (verified against access-control.ts, prayer/notice services).
+function _roleDesc(role) {
+  const gw = _gradeWord().toLowerCase() + 's';
+  return {
+    grade: 'Sees only its own ' + gw + ', boys or girls. Can connect same-gender students from other ' + gw + ' (no phone numbers).',
+    quad: 'Sees only its own group (' + gw + ', boys or girls). Can connect same-gender students from other ' + gw + ' (no phone numbers).',
+    oversight: 'Sees every student and leader. Can import data.',
+    admin: 'Sees everything. Also manages accounts and settings.',
+    leader: 'Sees only the students connected to its linked leader.',
+  }[role] || '';
+}
+// The header badge is a button (a hover tooltip does not work on a phone): tap it to read what this login can see.
+function showScopeInfo() {
+  const u = S.user;
+  if (!u) return;
+  modal(`<div class="mo-title">${esc(roleBadgeInner(u))} login</div>
+    <p class="lk-sub">${esc(_roleDesc(u.role))}</p>
+    <p class="lk-sub">Prayers follow the same limits. Notices reach only the groups they are sent to. If you cannot see something you need, ask your admin.</p>
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Close</button></div>`);
 }
 function roleBadgeInner(u) {
   // Returns just the label string for use inside shell() where we can't return HTML
@@ -5701,7 +5720,8 @@ function openPrayerModal(studentId, prayerId) {
   modal(`
     <div class="mo-title">${editing ? 'Edit Prayer' : 'Add Prayer'}</div>
     <div class="fg"><label class="fl">For</label>${forHtml}</div>
-    <div class="fg"><label class="fl" for="pr-text">Request</label><textarea class="ft" id="pr-text" rows="3" placeholder="What should we be praying for?">${esc(existing ? existing.text : '')}</textarea></div>
+    <div class="fg"><label class="fl" for="pr-text">Request</label><textarea class="ft" id="pr-text" rows="3" placeholder="What should we be praying for?">${esc(existing ? existing.text : '')}</textarea>
+      <div class="help-text" id="pr-who">${esc(_prayerWho(isGeneral))}</div></div>
     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
       <button class="btn btn-secondary btn-sm" onclick="closeModal()">Cancel</button>
       ${deleteBtn}
@@ -5734,8 +5754,15 @@ function _prayerPickStudent(id) {
 }
 // Student/General tab toggle — only reachable when the student picker (not a
 // locked chip) is showing, i.e. adding a brand new, not-yet-assigned prayer.
+// Who sees a prayer (prayer.service list + canAccessGeneralPrayer): a student's by scope; a general one by its author's scope.
+function _prayerWho(general) {
+  if (!general) return "Seen by admin and oversight, the logins for this student's " + _gradeWord().toLowerCase() + ' and gender, and leaders connected to them.';
+  const r = S.user && S.user.role;
+  return r === 'grade' || r === 'quad' ? 'A general prayer is seen by admin, oversight and the logins that share your ' + _gradeWord().toLowerCase() + 's and gender.' : 'A general prayer is seen by every login.';
+}
 function _prayerUseGeneral() {
   window._prayerPickStudentId = null;
+  const who = document.getElementById('pr-who'); if (who) who.textContent = _prayerWho(true);
   const picker = document.getElementById('pr-for-picker');
   const gen = document.getElementById('pr-for-general');
   const tabS = document.getElementById('pr-for-tab-student');
@@ -5747,6 +5774,7 @@ function _prayerUseGeneral() {
 }
 function _prayerUsePicker() {
   window._prayerPickStudentId = undefined;
+  const who = document.getElementById('pr-who'); if (who) who.textContent = _prayerWho(false);
   const picker = document.getElementById('pr-for-picker');
   const gen = document.getElementById('pr-for-general');
   const tabS = document.getElementById('pr-for-tab-student');
@@ -8684,6 +8712,7 @@ async function showAddUser() {
     <div class="fg"><label class="fl" for="u-pw">Password <span style="font-weight:400;color:var(--ink-mid)">(8 or more characters)</span></label><input class="fi" id="u-pw" type="password" autocomplete="new-password"></div>
     <div class="fg"><label class="fl" for="u-role">Role</label>
       <select class="fs" id="u-role" onchange="toggleUserRoleFields();suggestEmail()">${_accRoleOptions('')}</select>
+      <div class="help-text" id="u-role-desc"></div>
     </div>
     <div id="u-grade-f" class="fg">
       <label class="fl">Grade(s) ${helpTip('One or more grades this login manages. A login covering several grades keeps the lean grade-login view — for aggregate trends across grades, create a Junior/Senior account instead.')}</label>
@@ -8748,6 +8777,7 @@ function _accLeaderOptions(selectedId) {
 
 function toggleUserRoleFields() {
   const role = document.getElementById('u-role')?.value;
+  const rd = document.getElementById('u-role-desc'); if (rd) rd.textContent = _roleDesc(role);
   const g = document.getElementById('u-grade-f'); if (g) g.style.display = role==='grade'?'block':'none';
   const gen = document.getElementById('u-gender-f'); if (gen) gen.style.display = role==='grade'?'block':'none';
   const q = document.getElementById('u-quad-f'); if (q) q.style.display = role==='quad'?'block':'none';
