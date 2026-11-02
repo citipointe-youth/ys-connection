@@ -2635,9 +2635,21 @@ function setMyLeaderId(id) {
   let prev = null;
   try { prev = localStorage.getItem('yap_leader_id') || null; } catch {}
   try { if (id) localStorage.setItem('yap_leader_id', id); else localStorage.removeItem('yap_leader_id'); } catch {}
+  try { if (id && S.user) localStorage.setItem('yap_iam_login', S.user.id); } catch {} // whose pick it is (see _iamNewLogin)
   if (id && id !== prev) _vgSnap(); // R5: a new "I am" starts on that leader's own grades
   // Elvanto link (spec §6.2): log the "I am" switch with the next flush, only while the screens are on.
   try { if ((id || null) !== prev && _linkOn()) _lkPush({ kind: 'identity', id: _lkUuid(), at: new Date().toISOString(), from: prev, to: id || null }, false); } catch {}
+}
+
+// A pick belongs to the login that made it: the same login keeps it across sign-out (T4), but a DIFFERENT login signing in
+// on this phone starts with none (and its own skip clock). A pick with no owner yet (made before this) is given to this login.
+function _iamNewLogin(uid) {
+  try {
+    const own = localStorage.getItem('yap_iam_login');
+    if (own && own !== uid) { localStorage.removeItem('yap_leader_id'); localStorage.removeItem('yap_iam_skip'); }
+    localStorage.setItem('yap_iam_login', uid);
+  } catch {}
+  if (typeof LINK !== 'undefined') { LINK.iamPick = undefined; LINK.ldrs = null; } // the name lists were loaded for the last login
 }
 
 // ── GRADE FILTER (Junior/Senior logins) ──
@@ -3587,6 +3599,7 @@ async function doLogin() {
   try {
     const res = await API.post('/auth/login', { email, password, deviceId: _deviceId(), deviceLabel: _deviceLabel(navigator.userAgent) });
     API.setToken(res.token); S.user = res.user;
+    _iamNewLogin(res.user.id); // a different login than the last one starts with no "I am"
     _ikQLogin(); /*LINK: RV-I-M2/ruling 8 */
     _vgSnap(); // R5: every login starts on the remembered "I am" leader's own grades
     _offerSaveCredential(email, password);
