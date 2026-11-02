@@ -1069,6 +1069,7 @@ const API = (() => {
   // move to an httpOnly cookie. (See CLAUDE.md → Security notes.)
   let _t = _lsGet('yap_token') || null;
   const hdr = () => ({ 'Content-Type': 'application/json', ...(_t ? { Authorization: `Bearer ${_t}` } : {}) });
+  const _del = new Map(); // path -> the DELETE in flight
   // quiet: a background call (the link queue flush, status and 60 s refresh) never shows the loading bar (APP-75).
   // keepalive: small JSON saves only (<64 KB), never imports/audits; lets the request finish if the page closes.
   async function r(method, path, body, timeoutMs, quiet, keepalive) {
@@ -1169,7 +1170,8 @@ const API = (() => {
     post: (p, b, timeoutMs, quiet, keepalive) => r('POST', p, b, timeoutMs, quiet, keepalive),
     patch: (p, b) => r('PATCH', p, b),
     put: (p, b, timeoutMs, quiet, keepalive) => r('PUT', p, b, timeoutMs, quiet, keepalive),
-    del: (p) => r('DELETE', p),
+    // BRK-18: a second tap on the same row while its DELETE is running shares it, instead of answering "not found".
+    del: (p) => { if (!_del.has(p)) _del.set(p, r('DELETE', p).finally(() => _del.delete(p))); return _del.get(p); },
     /*BUS-HOOK*/ fresh: (p, quiet) => r('GET', p, undefined, undefined, quiet), // uncached GET — Bus Ministry data must never come from the 30s cache
   };
 })();
@@ -1580,6 +1582,22 @@ function _here() { return { s: _navSnap(), k: LINK.ik ? LINK.ik.key : null, n: N
 function _still(h) { return !!h && _navSame(h.s, _navSnap()) && h.k === (LINK.ik ? LINK.ik.key : null) && h.n === NAV.stack.length; }
 function _stillSheet(h) { return !!h && !!h.mo && h.mo === document.querySelector('#modal-root .mo'); }
 window.addEventListener('popstate', _navPop);
+// QA #3, the shared save guard. One press at a time, with a busy button. key = the button, or a string when there is none to show.
+const _inFlight = new Set();
+async function _once(key, fn) {
+  if (_inFlight.has(key)) return;
+  _inFlight.add(key);
+  const btn = key && key.nodeType ? key : null, was = btn && btn.innerHTML;
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+  try { return await fn(); }
+  finally { _inFlight.delete(key); if (btn) { btn.disabled = false; btn.innerHTML = was; } }
+}
+// One requestId per form content: a retry after a lost reply reuses it, so the server returns the first row (as Notices do).
+function _reqId(btn, content) {
+  const o = btn || _reqId, k = JSON.stringify(content);
+  if (o._reqKey !== k) { o._reqKey = k; o._reqId = _lkUuid(); }
+  return o._reqId;
+}
 function toast(msg, dur = 2500) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
@@ -3562,7 +3580,7 @@ function renderLogin() {
         ${/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? `<p style="text-align:center;font-size:12px;line-height:1.9;color:var(--ink-faint);margin-top:14px">Install as an app — <a href="/install.html" style="color:var(--accent)">how to add to Home Screen</a><br>Password not saving? — <a href="/save-password.html" style="color:var(--accent)">how to save it manually</a></p>` : ''}
       </div>
     </div>`;
-  document.getElementById('lform')?.addEventListener('submit', e => { e.preventDefault(); doLogin(); });
+  document.getElementById('lform')?.addEventListener('submit', e => { e.preventDefault(); _once('login', doLogin); });
   _positionNprog();
 }
 
@@ -4418,22 +4436,22 @@ function showAddLeader() {
     ${genderField}
     ${u.role!=='grade'?`<div class="fg"><label class="fl">Grade Focus${u.role==='quad'?' (your group)':' (leave blank = all)'}</label>${gcbs}</div>`:'<p style="font-size:12px;color:var(--ink-mid);margin-bottom:12px">Leader will be scoped to your grade automatically</p>'}
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="submitAddLeader()">Add Leader</button>
+      <button class="btn btn-primary" style="flex:1" onclick="submitAddLeader(this)">Add Leader</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
 }
 
-async function submitAddLeader() {
+async function submitAddLeader(btn) {
   const name = document.getElementById('ln')?.value?.trim();
   const gender = document.getElementById('lg')?.value || null;
   const grades = [...(document.querySelectorAll('.gcb:checked')||[])].map(el => parseInt(el.value,10));
   const errEl = document.getElementById('le');
   if (!name) { errEl.innerHTML='<div class="alert al-err">Name is required</div>'; return; }
-  try {
-    await API.post('/leaders', { fullName:name, gender, grades });
+  return _once(btn, async () => { try {
+    await API.post('/leaders', { fullName:name, gender, grades, requestId: _reqId(btn, [name, gender, grades]) });
     Cache.del('/leaders', '/connections', '/overview');
     closeModal(); toast('Leader added'); await renderConnect();
-  } catch (e) { errEl.innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; }
+  } catch (e) { errEl.innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; } });
 }
 
 // SY-01: the leader open in Edit leader. confirmDelLeader reads the name from here, never through onclick.
@@ -4505,7 +4523,7 @@ function confirmDelLeader(id) {
   const affected = Object.values(_aS.allocs || {}).filter(ids => (ids || []).includes(id));
   const n = affected.length;
   modal(`<div class="mo-title">Remove leader?</div>
-    <p style="color:var(--ink-mid);margin-bottom:20px"><strong>${esc(name)}</strong> will be removed${n ? ` and <strong>${n} student${n!==1?'s':''}</strong> disconnected` : ''}.</p>
+    <p style="color:var(--ink-mid);margin-bottom:20px"><strong>${esc(name)}</strong> will be removed${n ? ` and <strong>${n} student${n!==1?'s':''}</strong> disconnected` : ''}.${S.settings && S.settings.ministryConfig && S.settings.ministryConfig.roles && S.settings.ministryConfig.roles.enabled && S.settings.ministryConfig.roles.enabled.leader ? ' If this leader has a login, it will show nothing until you tap Undo or link it to another leader.' : ''}</p>
     <div style="display:flex;gap:8px">
       <button class="btn btn-danger" style="flex:1" onclick="doDelLeader('${id}')">Remove</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -4525,10 +4543,13 @@ async function doDelLeader(id) {
     renderConnect();
     showUndoToast(`Removed ${leader ? leader.fullName : 'leader'}`, async () => {
       try {
-        const recreated = await API.post('/leaders', { fullName: leader.fullName, gender: leader.gender || '', grades: leader.grades || [] });
-        for (const sid of studentIds) { try { await API.post('/connections', { studentId: sid, leaderId: recreated.id }); } catch {} }
+        // QA #20/#21: gender null = any gender. Same id (requestId), so a login linked to this leader still works.
+        const recreated = await API.post('/leaders', { requestId: leader.id, fullName: leader.fullName, gender: leader.gender || null, grades: leader.grades || [], smsTemplate: leader.smsTemplate || null });
+        let lost = 0;
+        for (const sid of studentIds) { try { await API.post('/connections', { studentId: sid, leaderId: recreated.id }); } catch { lost++; } }
         Cache.del('/leaders', '/connections', '/overview', '/at-risk');
         renderConnect();
+        if (lost) toast(`Leader back, but ${lost} student${lost!==1?'s':''} could not be reconnected`, 5000);
       } catch (e) { toast('Undo failed: ' + e.message); }
     });
   } catch (e) { toast(e.message); }
@@ -5671,7 +5692,7 @@ function openPrayerModal(studentId, prayerId) {
       <button class="btn btn-secondary btn-sm" onclick="closeModal()">Cancel</button>
       ${deleteBtn}
       ${archiveBtn}
-      <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="submitPrayer('${prayerId || ''}')">${editing ? 'Save' : 'Add Prayer'}</button>
+      <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="submitPrayer('${prayerId || ''}', this)">${editing ? 'Save' : 'Add Prayer'}</button>
     </div>`);
   if (!lockedStudent && !isGeneral) setTimeout(() => document.getElementById('pr-student-q')?.focus(), 60);
 }
@@ -5723,15 +5744,17 @@ function _prayerUsePicker() {
   const q = document.getElementById('pr-student-q');
   if (q) { q.value = ''; q.focus(); }
 }
-async function submitPrayer(prayerId) {
+async function submitPrayer(prayerId, btn) {
   const text = (document.getElementById('pr-text') || {}).value?.trim();
   const sid = window._prayerPickStudentId;
   if (!text) { toast('Enter a prayer request'); return; }
   if (!prayerId && sid === undefined) { toast('Choose a student, or mark it general'); return; }
-  try {
+  const saved = await _once(btn, async () => { try {
     if (prayerId) await API.patch('/prayers/' + prayerId, { text });
-    else await API.post('/prayers', { studentId: sid, text });
-  } catch (e) { toast(e.message || 'Could not save'); return; }
+    else await API.post('/prayers', { studentId: sid, text, requestId: _reqId(btn, [sid, text]) });
+    return true;
+  } catch (e) { toast(e.message || 'Could not save'); return false; } });
+  if (!saved) return;
   Cache.del('/prayers');
   closeModal();
   // Adding/editing a prayer from another screen (My Students, a student profile)
@@ -8673,7 +8696,7 @@ async function showAddUser() {
       <select class="fs" id="u-leader">${_accLeaderOptions('')}</select>
     </div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="submitAddUser()">Create</button>
+      <button class="btn btn-primary" style="flex:1" onclick="submitAddUser(this)">Create</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     </div>`);
   toggleUserRoleFields();
@@ -8719,7 +8742,7 @@ function toggleUserRoleFields() {
   const ld = document.getElementById('u-leader-f'); if (ld) ld.style.display = role==='leader'?'block':'none';
 }
 
-async function submitAddUser() {
+async function submitAddUser(btn) {
   const displayName = document.getElementById('u-name')?.value?.trim();
   const email = document.getElementById('u-email')?.value?.trim();
   const password = document.getElementById('u-pw')?.value;
@@ -8733,13 +8756,14 @@ async function submitAddUser() {
   if (role==='grade' && (!grades || !grades.length)) { errEl.innerHTML='<div class="alert al-err">Select at least one grade</div>'; return; }
   if (role==='grade' && !gender) { errEl.innerHTML='<div class="alert al-err">Select a gender scope</div>'; return; }
   if (role==='leader' && !leaderId) { errEl.innerHTML='<div class="alert al-err">Select the leader record this login is for</div>'; return; }
-  try {
-    const created = await API.post('/accounts/users', { displayName, email, password, role, grades, gender, quad, leaderId });
+  return _once(btn, async () => { try {
+    const body = { displayName, email, password, role, grades, gender, quad, leaderId };
+    const created = await API.post('/accounts/users', { ...body, requestId: _reqId(btn, body) });
     Cache.del('/accounts/users');
     _adminData.users = [..._adminData.users, created];
     closeModal(); toast('Account created');
     renderAdminView(_adminData.settings, _adminData.users);
-  } catch (e) { errEl.innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; }
+  } catch (e) { errEl.innerHTML=`<div class="alert al-err">${esc(e.message)}</div>`; } });
 }
 
 async function showEditUser(id) {
@@ -16133,7 +16157,7 @@ function busEditVehicle(vehicleId) {
       <div style="flex:1;min-width:0"><label class="fl" for="ve-plate">Plate (optional)</label><input class="fi" id="ve-plate" value="${esc(f.plate || '')}"></div></div>
     <label class="cbx-row"><input type="checkbox" id="ve-bus" ${f.kind === 'bus' ? 'checked' : ''} onchange="_busVeBusTick(this.checked)"> Charter bus: drops everyone at one address</label>    ${_busEndsAtField('ve', endsAt, endsAddress, rv ? false : undefined, endsPlaceId, tonightOverride)}
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="busSaveVehicle(${vehicleId ? `'${vehicleId}'` : 'null'})">Save</button></div>
+      <button class="btn btn-primary" onclick="busSaveVehicle(${vehicleId ? `'${vehicleId}'` : 'null'}, this)">Save</button></div>
     ${vehicleId ? `<button class="btn btn-ghost btn-full bus-danger" onclick="busConfirmArchiveVehicle('${vehicleId}')">Archive vehicle</button>` : ''}`);
 }
 // Review E9: ticking Charter bus sets Ends at → Address and focuses the address, so the first Save works.
@@ -16143,7 +16167,7 @@ function _busVeBusTick(on) {
   const wrap = document.getElementById('ve-ends-wrap'); if (wrap) wrap.hidden = false;
   const inp = document.getElementById('ve-ends-addr'); if (inp) inp.focus();
 }
-async function busSaveVehicle(vehicleId) {
+async function busSaveVehicle(vehicleId, btn) {
   const val = (id) => document.getElementById(id).value;
   const endsAt = val('ve-ends'), ends = _busAcValue('ve-ends-addr');
   if (endsAt === 'address' && !ends.placeId) { toast('Pick the address from the suggestions list'); return; }
@@ -16151,17 +16175,17 @@ async function busSaveVehicle(vehicleId) {
   if (kind === 'bus' && endsAt !== 'address') { toast('A bus needs its drop-off address'); return; }
   const endsAddress = endsAt === 'address' ? ends.address : null, endsPlaceId = endsAt === 'address' ? ends.placeId : null;
   const tonight = document.getElementById('ve-tonight'), tonightOnly = !!(tonight && tonight.checked);
-  try {
+  return _once(btn, async () => { try {
     const f = vehicleId ? BUS.view.fleet.find((x) => x.id === vehicleId) : null;
     const base = { name: val('ve-name').trim(), plate: val('ve-plate').trim() || null, seats: Number(val('ve-seats')), kind };
     const saved = await API[vehicleId ? 'patch' : 'post']((vehicleId ? '/bus/vehicles/' + vehicleId : '/bus/vehicles') + '?' + _busQs(),
-      tonightOnly && f ? { ...base, endsAt: f.endsAt, endsAddress: f.endsAddress, endsPlaceId: f.endsPlaceId } : { ...base, endsAt, endsAddress, endsPlaceId });
+      tonightOnly && f ? { ...base, endsAt: f.endsAt, endsAddress: f.endsAddress, endsPlaceId: f.endsPlaceId } : { ...base, endsAt, endsAddress, endsPlaceId, ...(vehicleId ? {} : { requestId: _reqId(btn, [base, endsAt, endsAddress]) }) });
     await busRefresh();
     // Leaders on tonight's car are set from the car card (busEditCarLeaders), not here.
     const rv = BUS.view.vehicles.find((x) => x.vehicleId === saved.id);
     if (rv && tonightOnly) await _busSend('PATCH', '/bus/run/vehicles/' + rv.id, { endsAt, endsAddress, endsPlaceId });
     closeModal(); toast('Saved');
-  } catch (e) { toast(e.message); }
+  } catch (e) { toast(e.message); } });
 }
 // Task 2: archiving a vehicle currently running with riders would bounce them to Unassigned
 // just like turning it off — confirm first when it has riders.

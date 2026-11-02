@@ -1983,7 +1983,7 @@ describe('BUS-2 Car setup', () => {
   });
   it('busSaveVehicle sends kind, and refuses a bus without a drop-off address', async () => {
     const run = async (bus: boolean, ends: string) => {
-      const { busSaveVehicle, __calls } = loadFns(['busSaveVehicle'], `
+      const { busSaveVehicle, __calls } = loadFns(['busSaveVehicle', '_once', '_reqId'], `const _inFlight = new Set(); function _lkUuid() { return 'u'; }
         const els = { 've-name': { value: 'Charter' }, 've-plate': { value: '' }, 've-seats': { value: '20' }, 've-ends': { value: '${ends}' }, 've-bus': { checked: ${bus} } };
         const document = { getElementById: (id) => els[id] || null, querySelectorAll: () => [] };
         const BUS = { view: { fleet: [], vehicles: [] } };
@@ -2008,7 +2008,7 @@ describe('BUS-2 Car setup', () => {
   it('every PATCH of an existing bus carries kind (edit, tonight-only edit, archive)', async () => {
     const fleet = [{ id: 'v1', name: 'Charter', kind: 'bus', seats: 20, plate: null, prefGrades: [], endsAt: 'address', endsAddress: '9 Hall St', endsPlaceId: 'P' }];
     const run = async (tonight: boolean, fn = 'busSaveVehicle') => {
-      const f = loadFns(['busSaveVehicle', 'busArchiveVehicle'], `
+      const f = loadFns(['busSaveVehicle', 'busArchiveVehicle', '_once', '_reqId'], `const _inFlight = new Set(); function _lkUuid() { return 'u'; }
         const els = { 've-name': { value: 'Charter' }, 've-plate': { value: '' }, 've-seats': { value: '20' }, 've-ends': { value: 'address' }, 've-bus': { checked: true }, 've-tonight': { checked: ${tonight} } };
         const document = { getElementById: (id) => els[id] || null, querySelectorAll: () => [] };
         const BUS = { view: { fleet: ${JSON.stringify(fleet)}, vehicles: [{ id: 'rv1', vehicleId: 'v1' }] } };

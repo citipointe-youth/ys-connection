@@ -129,11 +129,15 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
 
     async create(actor, input) {
       assertCan(actor, 'admin:manage');
-      const data = CreateUserSchema.parse(input);
+      // QA #3 (as Notices): a resend of the same new account returns the first one. Prod's unique users.email alone would
+      // answer "already in use" to a retry whose first try had worked.
+      const data = CreateUserSchema.extend({ requestId: z.string().uuid().optional() }).parse(input);
       assertGradesInRange((await settings.getSettings()).ministryConfig.structure, [data.grade, ...(data.grades ?? [])]);
       if (data.role === 'grade' && (await simpleOn())) throw new BadRequestError(SIMPLE_ON_MSG);
       const existing = await users.findByEmail(data.email);
+      if (existing && data.requestId && existing.id === data.requestId) return toSafe(existing);
       if (existing) throw new ConflictError('Username already in use');
+      if (data.requestId && (await users.findById(data.requestId))) throw new ConflictError('This save id is already used. Save again.'); // save() upserts by id
 
       const gradeSet = normaliseGrades(data.grade, data.grades);
       if (data.role === 'grade' && (!gradeSet || gradeSet.grades.length === 0)) {
@@ -152,7 +156,7 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
       const passwordHash = await hashPassword(data.password);
       const now = new Date().toISOString();
       const user: User = {
-        id: generateId(),
+        id: data.requestId ?? generateId(),
         displayName: data.displayName,
         email: data.email,
         role: data.role as UserRole,
