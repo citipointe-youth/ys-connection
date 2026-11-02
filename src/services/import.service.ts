@@ -504,7 +504,7 @@ export function makeImportService(
 
       // QA #18: this import REPLACES all service attendance, so a file holding none (a roster, or dated columns nobody is
       // marked in) would erase it. Refused only when there is attendance to lose; a first import with no dates still works.
-      if (sessionAttendedCount.size === 0 && (await sessionRepo.findAll()).some((s) => s.totalAttendance > 0)) {
+      if (sessionAttendedCount.size === 0 && (await attendanceRepo.findAll()).some((a) => a.attended)) {
         throw new BadRequestError("Nothing was changed. This file has no attendance in it, and importing it would erase the attendance already saved. To update attendance, import the full Service Individual Attendance export, with its dated columns.");
       }
 
