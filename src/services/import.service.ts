@@ -485,6 +485,12 @@ export function makeImportService(
       }
       const attendanceRecords = [...attendanceMap.values()];
 
+      // QA #18: this import REPLACES all service attendance, so a file holding none (a roster, or dated columns nobody is
+      // marked in) would erase it. Refused only when there is attendance to lose; a first import with no dates still works.
+      if (sessionAttendedCount.size === 0 && (await sessionRepo.findAll()).some((s) => s.totalAttendance > 0)) {
+        throw new BadRequestError("Nothing was changed. This file has no attendance in it, and importing it would erase the attendance already saved. To update attendance, import the full Service Individual Attendance export, with its dated columns.");
+      }
+
       // ── Term split (this term vs previous) over BOTH streams. ──
       // Service-date gaps > termGapDays set the boundaries; the SAME boundaries
       // are applied to the stored lifegroup weeks so service and group numbers
