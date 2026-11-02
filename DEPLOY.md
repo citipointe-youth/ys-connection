@@ -36,12 +36,12 @@ update app_settings set ministry_config = jsonb_set(ministry_config #- '{roles,e
 6. Rollback below Part 2 needs nothing: 0053 is additive and the tables stay unused. Rollback below Part 1 uses the SQL above, run before the Instant Rollback.
 
 <!-- live -->
-- master sha: 56098ea (docs/slim-merge)
-- last ship: 2026-11-02 22:14 EAST
+- master sha: a8dc6ce (qa/integrate)
+- last ship: 2026-11-03 06:45 EAST
 - migration: CLAU
-- SW version: ysc-v164
+- SW version: ysc-v165
 - promote: auto (Vercel promotes every master build); check /health after the build
-- pending branches: chore/ship qa/s qa/u ux17/bus 
+- pending branches: chore/ship ux17/bus 
 <!-- /live -->
 
 _The rel19/svc notes below predate auto-promote (2026-10-20): read "before the owner promotes" as "after the build"._
