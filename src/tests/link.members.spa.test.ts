@@ -104,9 +104,9 @@ describe('T5/T6 _lkMembersHtml', () => {
   });
   it('no edit right and no "I am": asks to pick who you are; an admin is never asked', () => {
     f.setState({ LINK: { gm: { [G]: view({ canEdit: false }) }, gmOpen: { [G]: true }, status: null }, Q: [], MY: null, role: 'grade' });
-    expect(f._lkMembersHtml(g)).toContain('Pick who you are');
+    expect(f._lkMembersHtml(g)).toContain('Who are you?');
     f.setState({ role: 'admin' });
-    expect(f._lkMembersHtml(g)).not.toContain('Pick who you are');
+    expect(f._lkMembersHtml(g)).not.toContain('Who are you?');
     f.setState({ role: 'grade' });
   });
   it('a queued remove is struck through with a Keep button and "Waiting to send."', () => {

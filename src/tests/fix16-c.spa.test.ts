@@ -52,7 +52,7 @@ describe('fix16 lane C', () => {
 
   it('F-48(e): Bus "I am" never wraps', () => {
     const src = fn('_busMyCarHtml');
-    expect(src.match(/<span class="fl">I am<\/span>/g)?.length).toBe(2);
+    expect(src.match(/<span class="fl">Who are you\?<\/span>/g)?.length).toBe(2);
     expect(loadIndexHtml()).toMatch(/\.mycar-id > \.fl\{[^}]*white-space:nowrap/); // R19-U14 #16 label style
   });
 

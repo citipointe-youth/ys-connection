@@ -1584,8 +1584,8 @@ describe('_busCarsHtml header totals (I12)', () => {
     expect(html).toContain('<b>3</b> students tonight');
     expect(html).not.toContain('short');
   });
-  it('shows "N short" when riders exceed seats', () => {
-    expect(mk(12)).toContain('1 short</span>');
+  it('shows "needs N more seats" when riders exceed seats', () => {
+    expect(mk(12)).toContain('needs 1 more seat</span>');
   });
 });
 
@@ -1862,7 +1862,7 @@ describe('BUS-1 Log a trip sheet (address optional, 4 taps)', () => {
   it('R19-U14 #16: "I am" and "Day" use the sheet label style', () => {
     const own = "{ id: 'rv', name: 'Car', seats: 5, plate: null, ownerLeaderId: 'L1', leaderIds: ['L1'], leaderNames: ['Amy'], endsAt: 'church', endsAddress: null }";
     const h = tripView(own);
-    expect(h).toContain('<span class="fl">I am</span>');
+    expect(h).toContain('<span class="fl">Who are you?</span>');
     expect(h).toContain('<label class="fl" for="bus-trip-date">Day</label>');
   });
   it('the empty Trip logging card says "No trip logged" and offers Log a trip', () => {
