@@ -555,3 +555,13 @@ describe('#19 Terminology on the server', () => {
     expect(ok.ministryConfig.labels.service).toBe("Kids' & Youth");
   });
 });
+
+describe('BRK-20 grade range', () => {
+  it('refuses an absurd range, keeps Include Grade 6 working', async () => {
+    const { service } = await makeService();
+    for (const s of [{ gradeMin: -5 }, { gradeMax: 500 }, { gradeMin: 12, gradeMax: 7 }]) {
+      await expect(service.update(ADMIN, { ministryConfig: { structure: s } })).rejects.toThrow(/Grades must run/);
+    }
+    expect((await service.update(ADMIN, { ministryConfig: { structure: { gradeMin: 6 } } })).ministryConfig.structure.gradeMin).toBe(6);
+  });
+});

@@ -82,3 +82,15 @@ describe('#3 #20 #21 requestId on saves', () => {
     expect((await bus.listVehicles()).filter((x) => x.name === 'Van')).toHaveLength(1);
   });
 });
+
+describe('#15 a blank-grade leader on a quad login', () => {
+  const quad = { id: 'q', role: 'quad', displayName: 'Junior Girls', grade: null, quad: 'g79' } as unknown as Actor;
+  it('gets 7-9 with Include Grade 6 off (the default), 6-9 with it on', async () => {
+    const settings = new InMemorySettingsRepository();
+    const svc = makeLeaderService(new InMemoryLeaderRepository(), settings);
+    expect((await svc.create(quad, { fullName: 'Blank' })).grades).toEqual([7, 8, 9]);
+    const cfg = (await settings.getSettings()).ministryConfig;
+    await settings.updateSettings({ ministryConfig: { ...cfg, structure: { ...cfg.structure, gradeMin: 6 } } });
+    expect((await svc.create(quad, { fullName: 'Blank 6' })).grades).toEqual([6, 7, 8, 9]);
+  });
+});

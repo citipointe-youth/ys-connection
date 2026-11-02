@@ -186,6 +186,12 @@ export function makeSettingsService(
           cleanPatch = { ...cleanPatch, busMinistry: rest };
         }
         const merged = mergeMinistryConfig(cur, cleanPatch);
+        // BRK-20: every grade rule (leaders, accounts, students) works in 6-12. Checked in the service, not the schema, so a
+        // stored value can never fail to parse (parseMinistryConfig would fall back to defaults).
+        const { gradeMin, gradeMax } = merged.structure;
+        if ((gradeMin !== cur.structure.gradeMin || gradeMax !== cur.structure.gradeMax) && (gradeMin < 6 || gradeMax > 12 || gradeMin > gradeMax)) {
+          throw new BadRequestError('Grades must run from 6 at the lowest to 12 at the highest.');
+        }
         // QA #19: the words in Terminology are shown to every login, so they can't carry markup.
         if ([...Object.values(merged.labels), merged.structure.gradeLabel].some((v) => typeof v === 'string' && /[<>"]/.test(v))) {
           throw new BadRequestError('Terminology words cannot contain < > or ". Change them in Youth Setup and save again.');

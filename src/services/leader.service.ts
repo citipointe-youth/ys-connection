@@ -122,7 +122,7 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
         grades = myGrades;
       } else if (actor.role === 'quad') {
         // Quad login: new leaders auto-set to the quad's gender; year focus limited to the bracket.
-        const bracket = quadGradesOf(actor.quad) as Grade[];
+        const bracket = quadGradesOf(actor.quad, await structureOf()) as Grade[]; // QA #15: this ministry's bracket, Grade 6 only when it's on
         if (!bracket.length) throw new BadRequestError('This Junior/Senior login has no group set');
         const requested = (data.grades ?? []) as Grade[];
         const scoped = requested.filter((g) => bracket.includes(g));
@@ -171,7 +171,7 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
       let nextGrades: Grade[] = patch.grades !== undefined ? (patch.grades as Grade[]) : existing.grades;
       // Quad cannot move a leader outside their gender + bracket
       if (actor.role === 'quad') {
-        const bracket = quadGradesOf(actor.quad) as Grade[];
+        const bracket = quadGradesOf(actor.quad, await structureOf()) as Grade[]; // QA #15
         nextGender = quadGenderOf(actor.quad);
         if (patch.grades !== undefined) {
           const scoped = nextGrades.filter((g) => bracket.includes(g));
