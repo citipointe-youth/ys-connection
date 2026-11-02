@@ -192,7 +192,10 @@ export function makeTrendsService(
       // ── Ministry-level trend — ALWAYS the WHOLE ministry, not scoped to the
       // actor. A grade/quad login still sees the ministry-wide unique + average
       // here (their own breakdown lives in byQuad/byGrade below). ──
-      const ministryWithOutliers = buildPoints(null, allStudents.length);
+      // QA 7: session validity above stays whole-Friday, but the figures count the students every other list counts
+      // (findAll leaves graduated Year 12s out), so the block agrees with Home and By group after graduation.
+      const listedIds = new Set(allStudents.map((s) => s.id));
+      const ministryWithOutliers = buildPoints(listedIds, allStudents.length);
       const validMinistry = ministryWithOutliers.filter((p) => !p.isOutlier);
       const avgMinistry = averageOf(ministryWithOutliers);
       const peakPoint = validMinistry.reduce((max, p) => p.totalAttended > (max?.totalAttended ?? 0) ? p : max, validMinistry[0]);
@@ -204,9 +207,9 @@ export function makeTrendsService(
       for (const sess of sortedSessions) {
         if (!isValidSession(sess.id)) continue;
         const term = classifyDate(saturdayOf(sess.sessionDate, svcDow), terms);
-        const attended = attendedBySession.get(sess.id) ?? new Set<string>();
+        const attended = [...(attendedBySession.get(sess.id) ?? [])].filter((id) => listedIds.has(id));
         if (term === 'current') { for (const id of attended) curUniq.add(id); }
-        else if (term === 'previous') { prevAtt += attended.size; prevWeeks++; for (const id of attended) prevUniq.add(id); }
+        else if (term === 'previous') { prevAtt += attended.length; prevWeeks++; for (const id of attended) prevUniq.add(id); }
       }
 
       const ministry: MinistryTrend = {

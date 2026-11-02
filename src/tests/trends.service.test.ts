@@ -59,6 +59,15 @@ async function makeServices() {
 
 describe('Trends Service', () => {
   // TC48 — trends endpoint returns session-level data
+  it('QA 7: ministry figures leave a graduated student out, but the session stays valid', async () => {
+    const { trendsSvc, studentRepo, settingsRepo, s1 } = await makeServices();
+    await settingsRepo.updateSettings({ serviceMinAttendance: 2 }); // sess-2 reaches 2 only with the graduate
+    await studentRepo.setGraduated(s1.id, '2024-03-01T00:00:00Z');
+    const m = (await trendsSvc.get(ADMIN)).ministry;
+    expect(m.uniqueAttenders).toBe(1);
+    expect(m.averageAttendance).toBe(1);
+    expect(m.sessions.filter((p) => !p.isOutlier).map((p) => p.sessionId)).toEqual(['sess-2']);
+  });
   it('TC48: trends returns one point per session', async () => {
     const { trendsSvc } = await makeServices();
     const data = await trendsSvc.get(ADMIN);

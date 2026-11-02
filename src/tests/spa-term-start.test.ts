@@ -165,6 +165,7 @@ describe('boot keeps the token on transient failures', () => {
       let _previewStash = null;
       const restoreConnectFilters = () => {}, restoreArFilter = () => {}, restorePrayerFilter = () => {}, applyTheme = () => {}, render = () => {}, _reloadViewportFix = () => {};
       function _isAuthExpired(e) { return !!e && e.status === 401; }
+      function _settingsFallback() { return {}; } function _bootOffline() {}
       function __calls() { return calls; }
     `;
     const f = loadFns(['boot'], prelude, ['boot', '__calls']);

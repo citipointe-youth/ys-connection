@@ -458,8 +458,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .picker-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
 /* ── UNDO TOAST ── */
-#undo-toast{position:fixed;bottom:calc(84px + var(--safe-b));left:50%;transform:translateX(-50%) translateY(10px);background:#1e293b;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;font-weight:500;pointer-events:all;opacity:0;transition:all .22s;z-index:301;display:flex;align-items:center;gap:12px;white-space:nowrap;max-width:92vw}
-#undo-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#undo-toast{position:fixed;bottom:calc(84px + var(--safe-b));left:50%;transform:translateX(-50%) translateY(10px);background:#1e293b;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;font-weight:500;pointer-events:none;opacity:0;transition:all .22s;z-index:301;display:flex;align-items:center;gap:12px;white-space:nowrap;max-width:92vw}
+#undo-toast.show{pointer-events:all;opacity:1;transform:translateX(-50%) translateY(0)}
 #undo-toast button{background:rgba(255,255,255,.2);border:none;color:#fff;padding:4px 10px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer}
 #undo-toast button:hover{background:rgba(255,255,255,.35)}
 @media(min-width:768px){#undo-toast{bottom:32px}}
@@ -1113,7 +1113,7 @@ const API = (() => {
         // Prayers was switched off after this login signed in: refresh settings and go home.
         if (e.code === 'MODULE_DISABLED') _moduleOffHit(path, err);
         if (e.code === 'MODULE_DISABLED' && /^\/bus/.test(path) && S.user) _moduleDisabledRefresh();
-        if (err.status === 401 && _t && path !== '/auth/login') _handleAuthExpired();
+        if (err.status === 401 && _t && path !== '/auth/login') { err.message = 'Your session ended. Sign in again.'; _handleAuthExpired(); }
         throw err;
       }
       return res.json();
@@ -1129,15 +1129,28 @@ const API = (() => {
     get: (p) => {
       const cached = Cache.get(p);
       if (cached !== null) return Promise.resolve(cached);
-      if (_inflight.has(p)) return _inflight.get(p);
+      // QA 5: a read that started before a Cache.del may hold pre-write data: not joined, not cached.
+      const gen = Cache.gen, live = _inflight.get(p);
+      if (live && live.gen === gen) return live;
       // A 503 here is the server's own request-timeout guard (a slow/cold DB connection
       // acquisition, not a real data or permission error) — explicitly retryable, and a
       // retry right after almost always succeeds. Retry once, transparently, before
       // surfacing a failure (GET only: safe to retry since reads are idempotent).
       const promise = r('GET', p)
         .catch(err => (err.status === 503 ? r('GET', p) : Promise.reject(err)))
-        .then(data => { Cache.set(p, data); _inflight.delete(p); return data; })
-        .catch(err => { _inflight.delete(p); throw err; });
+        // QA 5: a /batch reply is never cached under its own key. Cache.del could not reach it, so for 30 s it re-seeded
+        // the paths just invalidated with their pre-write values (Home's connection % after connecting a student).
+        .then(data => { if (gen === Cache.gen && !p.startsWith('/batch?')) Cache.set(p, data); if (_inflight.get(p) === promise) _inflight.delete(p); return data; })
+        .catch(err => {
+          if (_inflight.get(p) === promise) _inflight.delete(p);
+          // QA 22: no answer or a server failure is not "no data": the last-known copy if there is one, else remember the failure.
+          if (err.status && err.status < 500) throw err;
+          const stale = Cache.getStale(p);
+          if (stale !== null) return stale;
+          Cache.failed.add(p);
+          throw err;
+        });
+      promise.gen = gen;
       _inflight.set(p, promise);
       return promise;
     },
@@ -1150,13 +1163,14 @@ const API = (() => {
       const batchable = [], passthrough = [];
       for (const p of paths) (SECTION_OF[p] ? batchable : passthrough).push(p);
       const jobs = passthrough.map(p => API.get(p).catch(() => null));
+      const gen = Cache.gen;
       if (batchable.length) {
         const sections = [...new Set(batchable.map(p => SECTION_OF[p]))].sort();
         jobs.push(
           API.get('/batch?sections=' + sections.join(','))
             .then(res => {
               const results = (res && res.results) || {};
-              for (const p of batchable) {
+              if (gen === Cache.gen) for (const p of batchable) {
                 const k = SECTION_OF[p];
                 if (Object.prototype.hasOwnProperty.call(results, k)) Cache.set(p, results[k]);
               }
@@ -1217,6 +1231,8 @@ const Cache = (() => {
   const store = new Map();
   const TTL = 30_000;
   return {
+    gen: 0, // bumped by every del/clear (QA 5)
+    failed: new Set(), // paths whose last load got no answer or a 5xx (QA 22)
     get(key) {
       const e = store.get(key);
       return (e && Date.now() - e.ts < TTL) ? e.data : null;
@@ -1224,11 +1240,11 @@ const Cache = (() => {
     // Last-known value ignoring the TTL — powers stale-while-revalidate on Home so a
     // lapsed cache paints instantly instead of blocking on a (possibly cold) re-fetch.
     getStale(key) { const e = store.get(key); return e ? e.data : null; },
-    set(key, data) { store.set(key, { data, ts: Date.now() }); },
+    set(key, data) { store.set(key, { data, ts: Date.now() }); this.failed.delete(key); },
     // A '?'-suffixed match too, so del('/students') also drops '/students?crossGrade=1'
     // (Connect Setup's widened variant) without every call site needing to know it exists.
-    del(...keys) { for (const k of keys) { for (const sk of store.keys()) { if (sk === k || sk.startsWith(k + '/') || sk.startsWith(k + '?')) store.delete(sk); } } },
-    clear() { store.clear(); },
+    del(...keys) { this.gen++; for (const k of keys) { for (const sk of store.keys()) { if (sk === k || sk.startsWith(k + '/') || sk.startsWith(k + '?')) store.delete(sk); } } },
+    clear() { this.gen++; store.clear(); this.failed.clear(); },
   };
 })();
 
@@ -1504,6 +1520,7 @@ function _egTs(e) { _egTouchX = e.touches[0].clientX; }
 function _egTe(e) { if (_egTouchX == null) return; const dx = e.changedTouches[0].clientX - _egTouchX; _egTouchX = null; if (Math.abs(dx) > 48) _egGo(dx < 0 ? 1 : -1); }
 
 function go(page) {
+  if (page !== S.page && _setupLeaveAsk(() => go(page))) return; // QA 27
   if (page === 'at-risk' && S.page !== 'at-risk') _arNameFilter = '';
   if (page !== S.page) navPush();
   _navLanding(page);
@@ -1540,13 +1557,16 @@ function navReset() {
   if (n) { try { history.go(-n); } catch (e) {} }
 }
 function navBack() {
+  if (!NAV.stack.length && _setupLeaveAsk(navBack)) return; // QA 27
   if (NAV.stack.length) { try { history.back(); return; } catch (e) {} _navPop(); }
   else if (S.page !== 'home') { S.page = 'home'; render(); }
 }
 function _navPop() {
   if (!S.user) return;
+  // QA 24: the sign-in-again sheet holds the screen still, typed text included.
+  if (S.reauth) { try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {} return; }
   // A sheet is open: back closes it and stays on the screen (the entry the browser just popped is put back).
-  if (NAV.stack.length && document.querySelector('#modal-root .mo')) { closeModal(); try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {} return; }
+  if (NAV.stack.length && document.querySelector('#modal-root .mo')) { _moDismiss(); try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {} return; }
   // B25/B26: leaving a filled New person form or an unsent report asks first (the popped entry is put back meanwhile).
   // No loop: Discard sets the one-shot _navPop.leave before its navBack, so that one pop goes through.
   if (_navPop.leave) _navPop.leave = false;
@@ -1554,6 +1574,11 @@ function _navPop() {
     try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {}
     _lkAsk('The details on this form are not sent.', 'Discard', 'Keep editing', 'Discard this form?')
       .then((yes) => { if (yes) { nyReset(); _navPop.leave = !!NAV.stack.length; navBack(); } });
+    return;
+  }
+  if (NAV.stack.length && _setupDirty()) { // QA 27
+    try { history.pushState({ ysnav: NAV.stack.length }, ''); } catch (e) {}
+    _setupLeaveAsk(navBack);
     return;
   }
   // B26: an unsent report still kept as a draft. _lkRfBack asks "Discard report?"; its Discard drops the draft
@@ -1612,13 +1637,26 @@ function modal(html, onClose, opts) {
   if (!r.innerHTML) { const a = document.activeElement; r._opener = a && a !== document.body ? a : null; }
   r.innerHTML = `<div class="mo ${opts.overlayClass||''}" id="mo-overlay"><div class="mo-box ${opts.boxClass||''}" role="dialog" aria-modal="true" tabindex="-1"><div class="mo-handle"></div>${html}</div></div>`;
   r._onClose = onClose;
-  r.querySelector('#mo-overlay').addEventListener('click', e => { if (e.target.id === 'mo-overlay') closeModal(); });
+  r._typed = false; r._armed = 0;
+  r.querySelector('#mo-overlay').addEventListener('click', e => { if (e.target.id === 'mo-overlay') _moDismiss(); });
   const box = r.querySelector('.mo-box'), t = box.querySelector('.mo-title');
   if (t) { if (!t.id) t.id = 'mo-title'; box.setAttribute('aria-labelledby', t.id); }
   const app = document.getElementById('app');
   if (app) app.inert = true;
   try { box.focus({ preventScroll: true }); } catch (e) {} // the box, not a field: no phone keyboard pops up
   _moFitViewport();
+}
+// QA 11: backdrop, Back and Esc close an untouched sheet at once. A sheet the person typed in asks once: the same
+// gesture within 4 s discards. A real input event marks it, so a field a sheet fills itself never counts; searches don't.
+document.addEventListener('input', (e) => {
+  const t = e.target, r = t.closest && t.closest('#modal-root');
+  if (r && t.type !== 'search' && !t.closest('.sbar')) { r._typed = true; r._armed = 0; }
+});
+function _moDismiss() {
+  const r = document.getElementById('modal-root');
+  if (S.reauth) return;
+  if (r._typed && Date.now() - r._armed >= 4000) { r._armed = Date.now(); toast("What you typed isn't saved. Do that again to discard it.", 4000); return; }
+  closeModal();
 }
 // iOS Safari: the keyboard covers a position:fixed sheet instead of shrinking it, so fields and
 // address suggestions in the bottom half of a long sheet (e.g. Bus "Your car") were unreachable.
@@ -1669,8 +1707,17 @@ function confirmType(opts) {
 // in place, falling back to a full #app replacement (login page, first render).
 let _shellReady = false;
 let _lastRenderedPage = null;
+// QA 22: every screen paints through setApp, and its loaders turn a failed read into [] or null. So one check here stops
+// "Nothing flagged" / "No students" being drawn from a load that failed: no answer (or 5xx) and nothing last-known.
+function _pageNeeds(p) {
+  if (p === 'home') return S.user && S.user.role === 'leader' ? [] : HOME_PATHS().filter(x => x !== '/lifegroups/stats'); // Home has its own fallback for that one
+  if (p === 'my-students') return MYSTUDENTS_PATHS.concat(_msLeader ? [`/connections/leader/${_msLeader}/summary`] : []);
+  return { leaders: CONNECT_PATHS, 'at-risk': ATRISK_PATHS, prayers: PRAYER_PATHS, notices: ['/notices'], students: STUDENTS_PATHS, trends: TREND_PATHS, import: IMPORT_PATHS, birthdays: BIRTHDAYS_PATHS, admin: ADMIN_PATHS }[p] || [];
+}
+function _loadFailedNow() { return _pageNeeds(S.page).some(p => Cache.failed.has(p) && Cache.getStale(p) === null); }
 function setApp(h) {
   const main = document.getElementById('page-main');
+  if (h && _loadFailedNow()) h = `<div class="empty" id="load-failed"><div class="empty-title">Couldn't load this</div><div class="empty-sub">Check your signal and try again. Nothing here has changed.</div><button type="button" class="btn btn-secondary" onclick="render()">Try again</button></div>`;
   if (_shellReady && main) {
     // Preserve the scroll position when re-rendering the SAME page (e.g. opening a
     // dropdown), but reset to the top when navigating to a different page. The
@@ -1756,7 +1803,9 @@ function _prefetch() {
   // pooler the real problem is that a page's fan-out multiplies serverless instances ->
   // pooler client connections (the EMAXCONN / 200 ceiling). Collapsing login's prefetch
   // to a single request is the core of the 2026-07-05 incident fix (see CLAUDE.md).
-  API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats', '/import/history'].concat(_prayersOn() ? ['/prayers'] : []));
+  // QA 1: only the logins with import:run may read /import/history; anyone else got a 403 on every sign-in.
+  const canImport = !!S.user && ['admin', 'oversight'].includes(S.user.role);
+  API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats'].concat(canImport ? ['/import/history'] : [], _prayersOn() ? ['/prayers'] : []));
 }
 // Prayers module switch (ministryConfig.modules.prayers, default on).
 function _prayersOn() {
@@ -2826,7 +2875,7 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     const root = document.getElementById('modal-root');
-    if (root && root.innerHTML) closeModal();
+    if (root && root.innerHTML) _moDismiss();
   }
 });
 function quadChip(q) {
@@ -3402,6 +3451,7 @@ function _drop(id) { const el = document.getElementById(id); if (el) el.classLis
 // AUTH
 // ============================================================
 async function render() {
+  _settingsRetry(); // QA 23
   if (!S.user) { _lkSoftReset(); /*LINK: no login, no names in memory */ if (S.page === 'setup') renderSetup(); else renderLogin(); return; }
   if (S.user.mustChangePassword) { renderMustChangePassword(); return; }
   if (!_shellReady) _initShell();
@@ -3628,6 +3678,7 @@ async function doLogin() {
 }
 
 async function doLogout() {
+  if (_setupLeaveAsk(doLogout)) return; // QA 27
   if (!(await _lkLogoutGuard())) return; /*LINK*/
   const lkK = _lkKey(); /*LINK RV-I-m9: captured first: a dead token (401) in _ikQLogout nulls S.user */
   await _ikQLogout(5000); // R7: send the intake queue once (max 5 s), then clear it
@@ -7742,6 +7793,17 @@ function wizHandleAllocationImportFile(input) {
 let _setupDraft = null;
 let _setupServiceMinAttendance = null;
 let _setupTermGapDays = null;
+// QA 27: unsaved = the draft differs from the copy taken when it was seeded or saved. Leaving asks; the bar keeps Save in view.
+let _setupClean = null;
+function _setupState() { return JSON.stringify([_setupDraft, _setupServiceMinAttendance, _setupTermGapDays]); }
+function _setupDirty() { return S.page === 'admin' && _adminTab === 'youthsetup' && !!_setupDraft && _setupClean !== null && _setupState() !== _setupClean; }
+function _setupLeaveAsk(then) {
+  if (!_setupDirty()) return false;
+  _lkAsk('Your Youth Setup changes are not saved.', 'Discard', 'Keep editing', 'Discard changes?').then((yes) => {
+    if (yes) { _setupDraft = null; _setupClean = null; then(); }
+  });
+  return true;
+}
 // Which logo mode button was last clicked, even before its content field (SVG
 // text / uploaded image) is filled in — see the logoMode fallback comment
 // where this is read, in _youthSetupBody.
@@ -8022,11 +8084,12 @@ function _setupPatch(draft, base) {
   return Object.keys(expect).length ? { ministryConfig: mc, expect } : { ministryConfig: mc };
 }
 function _ensureSetupDraft(settings) {
-  if (_setupDraft == null) {
+  if (_setupDraft == null && settings && settings.ministryConfig) { // QA 22: a failed load must not seed an empty draft
     _setupBase = _setupBaseOf(settings && settings.ministryConfig);
     _setupDraft = JSON.parse(JSON.stringify((settings && settings.ministryConfig) || {}));
     _setupServiceMinAttendance = (settings && settings.serviceMinAttendance) ?? 100;
     _setupTermGapDays = (settings && settings.termGapDays) ?? 14;
+    _setupClean = _setupState();
     _logoModeOverride = null;
     _setupElv = null;
   }
@@ -8046,6 +8109,7 @@ async function saveMinistrySetup(confirmIntakeOff) {
     _setupDraft = JSON.parse(JSON.stringify(fresh.ministryConfig || {}));
     _setupBase = _setupBaseOf(fresh.ministryConfig);
     _setupElv = null;
+    _setupClean = _setupState();
     Cache.del('/settings');
     const navBefore = _navSig();
     S.settings = fresh;
@@ -8137,7 +8201,7 @@ function _youthSetupBody(settings, users) {
 
   // 2026-10-27: Login style replaces the cohort model, the Grade/Quad toggles, Junior/Senior logins, the presets row and
   // the account-layout button. The stored fields stay; _applyLoginStyle writes them.
-  let b = _setupCard('structure', 'Structure & Roles', `
+  let b = (_setupDirty() ? `<div style="position:sticky;top:var(--hdr-h,0);z-index:5;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--accent-light);border-radius:10px;padding:8px 12px;margin-bottom:10px"><b style="font-size:13px">Unsaved changes</b><button type="button" class="btn btn-primary btn-sm" onclick="confirmSaveMinistrySetup()">Save</button></div>` : '') + _setupCard('structure', 'Structure & Roles', `
     <div class="fg"><label class="fl" for="fl-login-style">Login style ${helpTip(loginStyleTip)}</label>
       <select id="fl-login-style" class="fs" onchange="_setupSetLoginStyle(this.value)">
         ${[['junior-senior', 'Junior/Senior'], ['oversight-leaders', 'Oversight and leaders']].map(([v, l]) => `<option value="${v}" ${style === v ? 'selected' : ''}>${l}</option>`).join('')}
@@ -8604,6 +8668,7 @@ function _downloadText(filename, text, mime) {
 let _adminData = { settings: {}, users: [], history: [] };
 
 async function switchAdminTab(tab) {
+  if (_setupLeaveAsk(() => switchAdminTab(tab))) return; // QA 27
   // 2026-10-14: Elvanto link is its own page (link-admin), reached from this tab list; any other tab from there goes back to Admin.
   if (tab === 'link') { go('link-admin'); return; }
   // 2026-10-22 (RV1 B1): an old id opens the tab that holds it (errors/unsent/system also scroll to their section).
@@ -17209,8 +17274,8 @@ async function busExportHist() {
 
 let _authExpiring = false;
 function _isAuthExpired(err) { return !!err && err.status === 401; }
-function _handleAuthExpired() {
-  if (_authExpiring) return;
+function _handleAuthExpired(signOutAnyway) { // signOutAnyway: the sign-in-again sheet's own Sign out (QA 24)
+  if (_authExpiring && !signOutAnyway) return;
   _authExpiring = true;
   setTimeout(() => { _authExpiring = false; }, 2000);
   if (_previewStash) {
@@ -17226,6 +17291,9 @@ function _handleAuthExpired() {
     go('home'); NAV.stack = [];
     return;
   }
+  // QA 24: typed text on screen: sign back in on top of it, so nothing is lost.
+  let typed = false; try { typed = !signOutAnyway && !!S.user && _swTyped(); } catch (e) {}
+  if (typed) { _reauthOpen(); return; }
   navReset();
   API.setToken(null);
   S.user = null;
@@ -17233,27 +17301,97 @@ function _handleAuthExpired() {
   _shellReady = false;
   _vgReset();
   _lkSoftReset(); // F-50c: drop the in-memory link lists; the tap queue stays under its own key for retry
+  try { if (document.getElementById('modal-root').innerHTML) closeModal(); } catch (e) {} // QA 24: never a sheet floating over the sign-in screen
   toast('Signed out. Please log in again.');
   render();
 }
+function _reauthOpen() {
+  if (S.reauth) return;
+  S.reauth = true;
+  API.setToken(null);
+  const d = document.createElement('div');
+  d.id = 'reauth'; d.className = 'mo'; d.style.zIndex = '250'; // above a sheet, below the toast
+  d.innerHTML = `<div class="mo-box" role="dialog" aria-modal="true" aria-labelledby="ra-title"><div class="mo-title" id="ra-title">Sign in again</div>
+    <p style="margin-bottom:12px">Your session ended. What you typed is still here.</p>
+    <div class="fg"><label class="fl" for="ra-pw">Password for ${esc(S.user.email)}</label><input class="fi" id="ra-pw" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')_reauthGo()"></div>
+    <div id="ra-err"></div>
+    <button type="button" class="btn btn-primary btn-full" id="ra-go" onclick="_reauthGo()">Sign in</button>
+    <button type="button" class="btn btn-secondary btn-full" style="margin-top:8px" onclick="_reauthDrop()">Sign out</button></div>`;
+  document.body.appendChild(d);
+}
+async function _reauthGo() {
+  const pw = document.getElementById('ra-pw').value, btn = document.getElementById('ra-go');
+  if (!pw || btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const res = await API.post('/auth/login', { email: S.user.email, password: pw, deviceId: _deviceId(), deviceLabel: _deviceLabel(navigator.userAgent) });
+    API.setToken(res.token); S.user = res.user;
+    S.reauth = false; document.getElementById('reauth').remove();
+    if (res.user.mustChangePassword) render(); else toast("You're signed in. Save again when ready.");
+  } catch (e) { btn.disabled = false; document.getElementById('ra-err').innerHTML = `<div class="alert al-err">${esc(e.message)}</div>`; }
+}
+function _reauthDrop() { S.reauth = false; document.getElementById('reauth').remove(); _handleAuthExpired(true); }
+// QA 23: /settings could not be read at start: use the copy applyTheme kept (the nav needs ministryConfig.modules), then fetch
+// the real one at the next screen change, signal return or reopen. Never redraws under someone typing; it waits for the next try.
+let _settingsMissing = false, _settingsBusy = false, _bootWaiting = false;
+function _settingsFallback() {
+  _settingsMissing = true;
+  try { const c = JSON.parse(localStorage.getItem(THEME_CACHE_KEY) || 'null'); return c ? { ministryConfig: c } : {}; } catch (e) { return {}; }
+}
+async function _settingsRetry() {
+  if (!_settingsMissing || _settingsBusy || _swTyped()) return;
+  _settingsBusy = true;
+  try {
+    const before = S.user ? _navSig() : '';
+    S.settings = await API.get('/settings');
+    _settingsMissing = false;
+    if (S.settings.ministryConfig) applyTheme(S.settings.ministryConfig);
+    if (S.user && _shellReady && _navSig() !== before) { _initShell(); render(); }
+  } catch (e) {} finally { _settingsBusy = false; }
+}
+// A saved session and no answer: not first-run and not signed out, so neither of those screens. The token stays.
+function _bootOffline() {
+  _bootWaiting = true;
+  setApp(`<div class="login-pg"><div class="login-card"><h2>No connection</h2>
+    <p style="margin:10px 0 16px">You're still signed in. The app opens as soon as it can reach the server.</p>
+    <button type="button" class="btn btn-primary btn-full" id="boot-retry" onclick="_bootRetry()">Try again</button></div></div>`);
+}
+function _bootRetry() {
+  if (!_bootWaiting) return;
+  _bootWaiting = false;
+  const b = document.getElementById('boot-retry');
+  if (b) { b.disabled = true; b.textContent = 'Trying...'; }
+  boot();
+}
+function _onSignalBack() {
+  if (document.visibilityState === 'hidden') return;
+  if (_bootWaiting) { _bootRetry(); return; }
+  _settingsRetry();
+  if (document.getElementById('load-failed')) render(); // QA 22
+}
+window.addEventListener('online', _onSignalBack);
+document.addEventListener('visibilitychange', _onSignalBack);
 async function boot() {
   let token = null;
   try { token = localStorage.getItem('yap_token'); } catch (e) {} // F-33
+  let meDown = false;
   if (token) {
     try {
       const user = await API.get('/auth/me');
       // Mid-preview, mustChangePassword must stay forced false — /auth/me reads the
       // raw DB record, which doesn't know this is a preview session (see enterPreview()).
       S.user = _previewStash ? { ...user, mustChangePassword: false } : user;
-    } catch (err) { if (_isAuthExpired(err)) API.setToken(null); }
+    } catch (err) { if (_isAuthExpired(err)) API.setToken(null); else meDown = true; }
   }
   restoreConnectFilters();
   restoreArFilter();
   restorePrayerFilter();
+  if (meDown) { S.settings = _settingsFallback(); _bootOffline(); return; } // QA 23
   // GET /settings is public (auth:false) so the login screen can be themed
   // pre-auth too — fetch it regardless of login state, not just once signed in.
   let settingsFailed = false;
-  try { S.settings = await API.get('/settings'); } catch { S.settings = {}; settingsFailed = true; }
+  // QA 23: only a server that answered with an error can mean an unfinished install. No answer = sign-in, with the kept settings.
+  try { S.settings = await API.get('/settings'); } catch (e) { S.settings = _settingsFallback(); settingsFailed = !!e.status; }
   if (!S.user && (settingsFailed || (S.settings && S.settings.needsAdmin))) S.page = 'setup';
   if (S.settings && S.settings.ministryConfig) applyTheme(S.settings.ministryConfig);
   if (S.user) {
@@ -17274,6 +17412,7 @@ let _swReloading = false, _swWaiting = false;
 // F1 (round 2026-10-22, CY-E2): unsaved typing on ANY screen holds the reload until it is saved or left: a lifegroup report or
 // kept draft with changes (its ticks redraw, so only LINK.rf knows), or a field that differs from what the screen drew (searches aside).
 function _swTyped() {
+  if (typeof _setupDirty === 'function' && _setupDirty()) return true; // QA 27: a redraw makes the draft's fields look untouched
   if (typeof LINK !== 'undefined' && LINK && ((LINK.rf && LINK.rf.dirty) || Object.values(LINK.rfd || {}).some((f) => f && f.dirty))) return true;
   for (const el of document.querySelectorAll('input, textarea, select')) {
     if (el.type === 'search' || el.type === 'hidden' || (el.closest && el.closest('.sbar'))) continue;

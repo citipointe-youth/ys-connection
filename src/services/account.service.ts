@@ -7,7 +7,7 @@ import type { IUserRepository, ISettingsRepository } from '../repositories/inter
 import type { User, SafeUser } from '../core/entities/user';
 import type { Actor } from '../core/entities/user';
 import type { UserRole, Grade, Quad } from '../core/types/enums';
-import { NotFoundError, BadRequestError, ConflictError, UnauthorizedError } from '../core/errors/app-error';
+import { AppError, NotFoundError, BadRequestError, ConflictError } from '../core/errors/app-error';
 import { assertGradesInRange } from '../core/ministry-config';
 import { planCohortAccountLayout, type CohortLayoutPlan } from './cohort-account-layout';
 
@@ -242,7 +242,8 @@ export function makeAccountService(users: IUserRepository, settings: ISettingsRe
       const existing = await users.findById(actor.id);
       if (!existing) throw new NotFoundError('User not found');
       if (!existing.passwordHash || !(await verifyPassword(currentPassword, existing.passwordHash))) {
-        throw new UnauthorizedError('Current password is incorrect');
+        // QA 8: not a 401. The session is fine, and a 401 tells the client it has expired and signs the person out.
+        throw new AppError('WRONG_CURRENT_PASSWORD', 'Current password is incorrect', 400);
       }
       if (newPassword.length < 8) throw new BadRequestError('Password must be at least 8 characters');
       // Audit C1: re-entering the current (e.g. seeded) password must not clear the flag.

@@ -18,6 +18,7 @@ function world(page = 'home') {
     const history = { pushState() {}, back() { env.calls.push('back'); }, go() {} };
     const document = { querySelector: () => null };
     const localStorage = { setItem() {} };
+    function _moDismiss() { closeModal(); } function _setupDirty() { return false; } function _setupLeaveAsk() { return false; }
     function closeModal() {} function _ikDraw() {} function _ikLoad() {} function _lkPaintGroups() {} function _nyRaw() { return {}; }
     function _ikLeave() { env.calls.push('ikLeave'); }
     function render() { env.calls.push('render:' + S.page); }

@@ -215,7 +215,8 @@ export function makeLeaderService(repo: ILeaderRepository, settings?: ISettingsR
     // is a low-stakes preference field — it doesn't affect grade/gender/active
     // scoping — so only a leader inside leaderInScope may have it set (F2, review 2026-10-16).
     async updateSmsTemplate(actor, id, smsTemplate) {
-      assertCan(actor, 'leader:write');
+      // QA 4: a junior leader has no leader:write, but this preference is theirs: leaderInScope below is "itself only".
+      if (actor.role !== 'leader') assertCan(actor, 'leader:write');
       const existing = await repo.findById(id);
       if (!existing) throw new NotFoundError('Leader not found');
       assertLeaderInScope(actor, existing, await structureOf()); // F2

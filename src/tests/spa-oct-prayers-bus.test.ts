@@ -23,7 +23,7 @@ function _prayersOn() { return ${p}; } function _busOn() { return true; } functi
   it('_prefetch drops /prayers when off', () => {
     const calls: string[][] = [];
     (globalThis as any).__c = calls;
-    const mk = (on: boolean) => loadFns(['_prefetch'], `const API = { batch: (a) => { globalThis.__c.push(a); } }; function _prayersOn() { return ${on}; }`);
+    const mk = (on: boolean) => loadFns(['_prefetch'], `const S = { user: { role: 'admin' } }; const API = { batch: (a) => { globalThis.__c.push(a); } }; function _prayersOn() { return ${on}; }`);
     mk(true)._prefetch();
     mk(false)._prefetch();
     expect(calls[0]).toContain('/prayers');

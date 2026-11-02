@@ -56,7 +56,7 @@ describe('JS4 (2026-10-27): Youth Setup draws no Start-from row and no layout bu
     const f = loadFns(fnsOf, `
       const S = { user: { role: 'admin' }, settings: { ministryConfig: ${JSON.stringify(cfg)} } };
       let _setupDraft = S.settings.ministryConfig; function _ensureSetupDraft() {} const _setupOpen = {}; const _setupFlowSteps = []; let _logoModeOverride = null; let _setupElv = null;
-      let _setupServiceMinAttendance = 100, _setupTermGapDays = 14;
+      let _setupServiceMinAttendance = 100, _setupTermGapDays = 14; function _setupDirty() { return false; }
       const MINISTRY_CONFIG_DEFAULTS_CLIENT = ${JSON.stringify(MinistryConfigSchema.parse({}))};
       const _setupElvantoModulesHtml = () => '', _setupFlowHiddenHtml = () => '', _setupIntakeHtml = () => '', _setupElvCardHtml = () => '';
       const _DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];

@@ -48,7 +48,7 @@ describe('T1 Youth Setup sends a risky switch only when it changed, with expect'
   });
   it('_ensureSetupDraft records the base the page opened with', () => {
     const g = loadFns(['_setupBaseOf', '_ensureSetupDraft'],
-      `let _setupDraft = null, _setupBase = null, _setupServiceMinAttendance, _setupTermGapDays, _logoModeOverride; function __b() { return _setupBase; }`,
+      `let _setupDraft = null, _setupBase = null, _setupServiceMinAttendance, _setupTermGapDays, _logoModeOverride, _setupClean; function _setupState() { return ''; } function __b() { return _setupBase; }`,
       ['_ensureSetupDraft', '__b']);
     g._ensureSetupDraft({ ministryConfig: { logins: { simple: true }, modules: { prayers: false } } });
     expect(g.__b()).toEqual({ simple: true, prayers: false });
@@ -366,6 +366,7 @@ describe('T1 admin tabs: one shared list, pills on every width (2026-10-22: the 
     const gone: string[] = [];
     const S = { page: 'admin' };
     const t = new Function('S', 'go', `let _adminTab = 'import', _adminScroll = null; const ADMIN_TAB_HOME = { errors: 'problems' };
+function _setupLeaveAsk() { return false; }
 ${extractFn(src, 'switchAdminTab')}
 return { sw: switchAdminTab, tab: () => _adminTab };`)(S, (p: string) => gone.push(p));
     await t.sw('link');
