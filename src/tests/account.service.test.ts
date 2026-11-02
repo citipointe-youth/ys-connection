@@ -3,7 +3,7 @@ import { makeAccountService } from '../services/account.service';
 import { InMemoryUserRepository, InMemorySettingsRepository } from '../repositories/in-memory';
 import { hashPassword } from '../utils/crypto';
 import type { Actor } from '../core/entities/user';
-import { BadRequestError, UnauthorizedError, NotFoundError, ForbiddenError } from '../core/errors/app-error';
+import { BadRequestError, NotFoundError, ForbiddenError } from '../core/errors/app-error';
 
 function actorFor(id: string, role: string): Actor {
   return { id, role: role as any, displayName: 'Test', grade: null as any, quad: null as any };
@@ -36,7 +36,7 @@ describe('Account Service — self-service password change', () => {
     const { svc, grade } = await buildService();
     await expect(
       svc.changeOwnPassword(actorFor(grade.id, 'grade'), 'wrongpassword', 'newpassword1'),
-    ).rejects.toBeInstanceOf(UnauthorizedError);
+    ).rejects.toMatchObject({ code: 'WRONG_CURRENT_PASSWORD', statusCode: 400 }); // QA 8: never a 401, which signs the person out
   });
 
   it('rejects a new password under 8 characters', async () => {
@@ -73,7 +73,7 @@ describe('Account Service — self-service password change', () => {
     const { svc, users, grade } = await buildService();
     await expect(
       svc.changeOwnPassword(actorFor(grade.id, 'grade'), 'wrongpassword', 'newpassword1'),
-    ).rejects.toBeInstanceOf(UnauthorizedError);
+    ).rejects.toMatchObject({ code: 'WRONG_CURRENT_PASSWORD' });
     const unchanged = await users.findById(grade.id);
     expect(unchanged?.mustChangePassword).toBe(true);
   });
