@@ -255,7 +255,7 @@ describe('rev 6: consentLookup + push + GET, consentFix (R2 b/c)', () => {
   });
   it('waiting -> working -> ready with the pushed rows; a push for another page, or a row not leased, is not applied', async () => {
     const h = await setup();
-    const p = formsPush(), id = p.requestId as string;
+    const p = { ...formsPush(), takenAt: NOW.toISOString() }, id = p.requestId as string;
     await h.one(ADMIN, lookup(id));
     expect((await h.svc.consentLookup(ADMIN, { id })).status).toBe('waiting');
     await expect(h.svc.consentLookup(OVERSIGHT, { id })).rejects.toMatchObject({ code: 'FORBIDDEN' });
@@ -302,7 +302,7 @@ describe('rev 6: consentLookup + push + GET, consentFix (R2 b/c)', () => {
     const un = { ...link, id: nid(), payload: { subId: sub, personId: null } };
     expect(h.oc(await h.one(ADMIN, un))).toBe('saved'); // unlinking is its own request
     expect(h.oc(await h.one(ADMIN, { ...un, id: nid() }))).toBe('duplicate'); // one open unlink per form
-    const p = JSON.parse(readFileSync(join(fixtures, 'push-consent-lookup-unlinked.json'), 'utf8')), id = p.requestId as string;
+    const p = { ...JSON.parse(readFileSync(join(fixtures, 'push-consent-lookup-unlinked.json'), 'utf8')), takenAt: NOW.toISOString() }, id = p.requestId as string;
     await h.one(ADMIN, { ...lookup(id, null), payload: { kind: 'unlinked', page: 1, ref: id } });
     await h.claim();
     expect(await h.sync.push('consentLookup', { ...p, consoleId: CONSOLE })).toEqual({ applied: true, rows: 2 });
@@ -311,7 +311,7 @@ describe('rev 6: consentLookup + push + GET, consentFix (R2 b/c)', () => {
   });
   it('Consents Other (rev 8): an other lookup queues, is claimed, stored and read back (display only: no person, no dedupe on a person)', async () => {
     const h = await setup();
-    const p = JSON.parse(readFileSync(join(fixtures, 'push-consent-lookup-other.json'), 'utf8')), id = p.requestId as string;
+    const p = { ...JSON.parse(readFileSync(join(fixtures, 'push-consent-lookup-other.json'), 'utf8')), takenAt: NOW.toISOString() }, id = p.requestId as string;
     expect(h.oc(await h.one(ADMIN, { ...lookup(id, null), payload: { kind: 'other', page: 1, ref: id } }))).toBe('saved');
     const got = (await h.claim()).rows.find((r) => r.id === id)!;
     expect(got.payload).toEqual({ kind: 'other', page: 1, ref: id });
@@ -500,11 +500,11 @@ describe('rev 10: the consent Friday counts from the parent-texted date (R8); Ma
   it('rev 13: the flows push stores serviceVisits and GET /link/flows carries it (0 stays 0, absent reads null)', async () => {
     const h = await rev10();
     const fx = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'elvanto-link', 'push-flows-rev13.json'), 'utf8'));
-    expect(await h.sync.push('flows', { ...fx, consoleId: CONSOLE, takenAt: '2026-10-20T10:50:00.000Z' })).toMatchObject({ applied: true });
+    expect(await h.sync.push('flows', { ...fx, consoleId: CONSOLE, takenAt: '2026-10-16T08:57:00.000Z' })).toMatchObject({ applied: true });
     const v = async () => (await h.svc.flows(ADMIN)).rows.map((x) => [x.rowId, x.serviceVisits] as const);
     expect(new Map(await v())).toEqual(new Map(fx.rows.map((r: any) => [r.rowId, r.serviceVisits])));
     const { serviceVisits: _s, ...old } = fx.rows[0];
-    expect(await h.sync.push('flows', { ...fx, consoleId: CONSOLE, takenAt: '2026-10-20T10:55:00.000Z', rows: [old] })).toMatchObject({ applied: true });
+    expect(await h.sync.push('flows', { ...fx, consoleId: CONSOLE, takenAt: '2026-10-16T08:58:00.000Z', rows: [old] })).toMatchObject({ applied: true });
     expect((await h.svc.flows(ADMIN)).rows[0]!.serviceVisits).toBeNull();
   });
   it('GET /link/flows and the batch use the same date: waiting by the text, eligible by the text, by the due date, with no due date', async () => {

@@ -6857,6 +6857,7 @@ async function readXlsx(buf){
   const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:""});
   return aoa.map(r=>(r||[]).map(c=>c instanceof Date?(c.getFullYear()+"-"+p2(c.getMonth()+1)+"-"+p2(c.getDate())):(c==null?"":String(c))));
 }
+// Raw on purpose (review 2026-11-04, LC-04): the Excel imports and prayers.csv round-trip through this, so a formula guard here would change imported values. Export-only guard: caCsvRows.
 function rowsToCsv(rows){return rows.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n');}
 
 // Generic CSV -> array of objects keyed by lowercased header. Unlike parseCSV
@@ -9986,7 +9987,7 @@ function plist(){
     const tail=s
       ?''
       :'<div style="font-size:.6rem;color:var(--ca-muted);margin-top:3px">From '+(p.dec?'Decision':'Connect')+' upload'+(p.connect||p.decision?' · '+fmtD(p.connect||p.decision):'')+'</div>';
-    b+='<div class="li" style="cursor:pointer;padding:8px 13px'+(p.caOnly?';border:1px dashed var(--ca-line)':'')+'" onclick="CA.showPerson(\''+p.id+'\')"><div class="li-body"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:14px;font-weight:600">'+esc(p.name)+'</span>'+stChip+meta+declChip+'</div>'+tail+'</div><div class="ca-scr">'+p.score+'<small>score</small></div></div>';
+    b+='<div class="li" style="cursor:pointer;padding:8px 13px'+(p.caOnly?';border:1px dashed var(--ca-line)':'')+'" onclick="CA.showPerson('+_icJs(p.id)+')"><div class="li-body"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:14px;font-weight:600">'+esc(p.name)+'</span>'+stChip+meta+declChip+'</div>'+tail+'</div><div class="ca-scr">'+p.score+'<small>score</small></div></div>';
   }
   if(!list.length)b+='<div class="card" style="text-align:center;color:var(--ca-muted);font-size:.78rem">No people match</div>';
   if(list.length>PF.cap)b+='<button class="btn btn-secondary btn-full" onclick="CA.pmore()">Show more ('+(list.length-PF.cap)+' remaining)</button>';

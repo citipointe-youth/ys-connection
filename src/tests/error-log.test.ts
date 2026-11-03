@@ -477,7 +477,7 @@ describe('capture: sync claim + result', () => {
     const { link, svc, record } = await setup();
     for (const n of [1, 2, 3]) link._backdate('link_outbox', id(n), 'created_at', new Date(Date.now() - 4 * DAY).toISOString());
     await svc.claim(claimReq);
-    expect(record.mock.calls).toEqual([[{ category: 'link', code: 'too-old', route: 'checkIn', role: 'console', count: 3 }]]);
+    expect(record.mock.calls.filter((c: any) => c[0].code !== 'link-new-console')).toEqual([[{ category: 'link', code: 'too-old', route: 'checkIn', role: 'console', count: 3 }]]);
   });
 
   it('refused results are recorded once each; unclear (D1: the sweep counts it) and sent are not', async () => {

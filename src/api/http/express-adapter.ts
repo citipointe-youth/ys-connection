@@ -180,6 +180,10 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
           await errorLog.record({ category: categoryForCode(r.body.code), code: r.body.code, route: routeLabel, status: r.status,
             role: ctx?.role ?? (route.sync ? 'console' : null) });
         }
+        // SY-06: a wrong /sync token leaves a row (code + route only). Session 401s are normal traffic.
+        else if (r.status === 401 && route.sync && errorLog) {
+          await errorLog.record({ category: 'link', code: 'sync-bad-token', route: routeLabel, status: 401, role: 'console' });
+        }
         res.status(r.status).json(r.body);
       }
       });

@@ -48,6 +48,25 @@ afterAll(() => {
 });
 afterEach(() => { vi.restoreAllMocks(); resolveToken.mockClear(); seen.sync.length = 0; seen.session.length = 0; });
 
+describe('SY-06: a wrong /sync token leaves an Error log row', () => {
+  it('logs code and route only, never the token; session 401s and good tokens log nothing', async () => {
+    process.env['LINK_SYNC_TOKEN'] = TOKEN;
+    const record = vi.fn(async () => {});
+    const srv = createApp(routes, auth, undefined, { record } as never).listen(0);
+    const url = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    const guess = 'Guess_' + 'y7'.repeat(20);
+    try {
+      expect((await fetch(`${url}/sync/ping`, { method: 'POST', headers: { authorization: `Bearer ${guess}` } })).status).toBe(401);
+      expect(record.mock.calls).toEqual([[{ category: 'link', code: 'sync-bad-token', route: 'POST /sync/ping', status: 401, role: 'console' }]]);
+      expect(JSON.stringify(record.mock.calls)).not.toContain(guess);
+      record.mockClear();
+      expect((await fetch(`${url}/sync/ping`, { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` } })).status).toBe(200);
+      expect((await fetch(`${url}/s`)).status).toBe(401);
+      expect(record).not.toHaveBeenCalled();
+    } finally { srv.close(); }
+  });
+});
+
 const sync = (authz: string | null, path = '/sync/ping') => fetch(base + path, {
   method: 'POST',
   headers: { 'content-type': 'application/json', ...(authz === null ? {} : { authorization: authz }) },

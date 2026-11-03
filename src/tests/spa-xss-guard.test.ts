@@ -130,6 +130,67 @@ export function scanHandlerArgs(src: string): { line: number; expr: string }[] {
   return hits;
 }
 
+// Security review 2026-11-04 (LC-01): every value interpolated or concatenated inside an on*= attribute on one line must be
+// _icJs(...) (or esc(JSON.stringify(...)), the same thing), Number(...), or a template id. A concatenated `.id` is NOT accepted by
+// name: LC-01 was `'+p.id+'` where an audit person's id is built from a name ('n:' + fold). Multi-line handlers are out of reach, as above.
+const HANDLER_ALLOW = new Set([
+  // Loop indexes and numbers
+  'i', 'k', 'j', 'fi', 'ii', 'oi', 'vi', 'ul', 'g', 'gap - k', 'num',
+  // Server-made ids (a, b: esc()d UUIDs quoted at :12560) and fixed keys from this file's own tables, not user text
+  'a', 'b', 'id', 'pid', 'rid', 'sid', 'qid', 'gid', 'key', 'kind', 'wk', 'm', 'v', 't[0]', 'prefix', 'prayerId || \'\'', 'u.status', 'l.gender||\'\'',
+  'wk ? ", \'" + wk + "\'" : \'\'', 'isParent ? \'true\' : \'false\'', 'anyPlaced ? \'fit\' : \'all\'', '!r.ignored', "diff.includes('modules.intakeAdmin')",
+  'g.id', 'r.id', 'to[x.kind]', // CA module: g.id is co-<grade><f/m>, r.id is lg<n> or a UUID (lane C section 3); to = a fixed table
+  // Whole handler bodies built from code, never data
+  'act', 'click', 'on', 'opts.click(s)', '_navClick(it)', "here && m.id === 'new-youth' ? '' : m.open",
+  'resetText', "_busOn() ? ' Bus Ministry past nights are kept as a safeguarding record.' : ''",
+  // phoneLink cleans its own (quote and backslash stripped, then escaped; _smsHref encodes ')
+  'd', 'fn', '_smsHref(d, defaultMsg)', '_smsHref(d, _fillSmsTemplate(customTpl, firstName))',
+  // A nested template is one value to this scan: these were read by hand (ids only)
+  "mine ? `_icEdit(${_icJs(mine.id)})` : \"_icNew('check')\"", "warn ? `busMoveArm(this,'${riderId}','${x.id}')` : `busMove('${riderId}','${x.id}')`",
+  "vehicleId ? `'${vehicleId}'` : 'null'",
+]);
+const safeHandlerValue = (e: string, concat: boolean) => /^(_icJs|Number)\(/.test(e) || /^esc\(JSON\.stringify\(/.test(e) || HANDLER_ALLOW.has(e)
+  || (!concat && isIdExpr(e.replace(/^esc\((.*)\)$/, '$1')));
+
+export function scanHandlerValues(src: string): { line: number; expr: string }[] {
+  const hits: { line: number; expr: string }[] = [];
+  src.split('\n').forEach((text, idx) => {
+    const check = (e: string, concat: boolean) => { if (!safeHandlerValue(e.trim(), concat)) hits.push({ line: idx + 1, expr: e.trim() }); };
+    const attrRe = /\son[a-z]+=(\\?")/g; let m: RegExpExecArray | null;
+    while ((m = attrRe.exec(text))) {
+      const q = m[1]!, start = m.index + m[0].length; let k = start;
+      for (; k < text.length && !text.startsWith(q, k); k++) {
+        if (!text.startsWith('${', k)) continue;
+        let depth = 1; const s = (k += 2);
+        while (k < text.length && depth) { if (text[k] === '{') depth++; else if (text[k] === '}') depth--; k++; }
+        check(text.slice(s, k - 1), false);
+        k--;
+      }
+      const concatRe = /['"]\s*\+\s*(.+?)\s*\+\s*\\?['"]/g; let c: RegExpExecArray | null;
+      const attr = text.slice(start, k);
+      while ((c = concatRe.exec(attr))) check(c[1]!, true);
+    }
+  });
+  return hits;
+}
+
+describe('XSS guard: values inside on*= handlers (LC-01)', () => {
+  it('flags LC-01 and free text, accepts _icJs, numbers and template ids (self-test)', () => {
+    const line = (s: string) => scanHandlerValues(s).map((h) => h.expr);
+    expect(line(`b+='<div onclick="CA.showPerson(\\''+p.id+'\\')">';`)).toEqual(['p.id']);
+    expect(line('h=`<b onclick="del(\'${s.name}\')">`;')).toEqual(['s.name']);
+    expect(line('h=`<b onclick="del(\'${esc(s.name)}\')">`;')).toEqual(['esc(s.name)']);
+    expect(line(`b+='<div onclick="CA.showPerson('+_icJs(p.id)+')">';`)).toEqual([]);
+    expect(line('h=`<b onclick="del(${_icJs(s.name)},${Number(n)},\'${esc(s.id)}\',\'${s.leaderId}\')">`;')).toEqual([]);
+  });
+
+  it('index.html has no unsafe value in an on*= handler', () => {
+    const hits = scanHandlerValues(loadIndexHtml());
+    const report = hits.map((h) => `  line ${h.line}: ${h.expr}`).join('\n');
+    expect(hits, `use _icJs(value), or review it and add it to HANDLER_ALLOW:\n${report}`).toEqual([]);
+  });
+});
+
 describe('XSS guard: on*= handlers pass ids only (SY-01)', () => {
   it('flags esc()d free text in a handler and accepts an id (self-test)', () => {
     expect(scanHandlerArgs(`<b onclick="del('\${esc(l.id)}','\${esc(l.fullName).replace(/'/g,"\\'")}')">`)).toHaveLength(1);

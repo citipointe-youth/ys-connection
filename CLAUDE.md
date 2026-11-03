@@ -46,7 +46,7 @@ Full gate (ship.sh + CI): `npx tsc --noEmit && npx vitest run && node scripts/ch
 - Link contract: bump `LINK_REV` in `core/link-contract.ts`; ship YS first, then the console; frozen fixtures in `src/tests/fixtures/elvanto-link/` (11.1 keeps byte copies). `MIN_CONSOLE_REV` (12) rises only once every console runs the new rev.
 - New writers ship live: no practice/shadow stage, no operator first-click lock (operator 2026-10-15). Claude still never writes to live Elvanto or the prod DB itself, never applies migrations with the Supabase MCP, and never tests destructive admin actions against prod (use `PERSISTENCE=memory`).
 
-**Migrations**: next is `0054` (check `ls supabase/migrations/*.sql | tail -1`); 4-digit, additive only, never edit a shipped file, no `create index concurrently`, bump `LATEST_MIGRATION` in `src/core/schema-version.ts` (a test enforces it). 3-digit numbers in old docs are folded into `0001`.
+**Migrations**: next is `0055` (check `ls supabase/migrations/*.sql | tail -1`); 4-digit, additive only, never edit a shipped file, no `create index concurrently`, bump `LATEST_MIGRATION` in `src/core/schema-version.ts` (a test enforces it). 3-digit numbers in old docs are folded into `0001`.
 
 **New top-level API route**: register in all three of `router.ts`, `vercel.json` `routes[]` regex, `public/sw.js` `API_RE` (`route-registration.test.ts` checks), then `curl` it after deploy for a JSON 401.
 

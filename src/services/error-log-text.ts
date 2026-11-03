@@ -55,6 +55,12 @@ export const TEXT: Record<string, Entry> = {
   // D1 (2026-10-24): unclear and lease-lost are live counts per type (setCount), so they carry {n}.
   unclear: ['now', ['{type} sent but Elvanto never confirmed it', '{n} {type} actions sent but Elvanto never confirmed them'], UNCLEAR_FIX],
   'lease-lost': ['now', ['{type}: the console stopped mid-send, result unknown', '{n} {type} actions: the console stopped mid-send, results unknown'], UNCLEAR_FIX],
+  // Security review 2026-11-04, D3 + D6 + SY-06. A token may be stolen if nobody can explain the row; rotating it stops the link until the console has the new one.
+  'link-new-console': ['later', 'A new console connected to this app', `Expected after a console is set up or moved. If nobody did, LINK_SYNC_TOKEN needs replacing.${TELL}`],
+  'push-future-time': ['now', 'A console sent {route} data dated in the future, so it was refused', `Check the console PC's clock. If it is right, LINK_SYNC_TOKEN needs replacing.${TELL}`],
+  'push-roster-shrink': ['now', 'A console sent a roster under half the current size, so it was refused', `The app kept its roster. If nobody touched the console, LINK_SYNC_TOKEN needs replacing.${TELL}`],
+  'push-dnc-held': ['now', 'A roster tried to lift over 5 Do Not Contact flags at once, so they stayed on', `Check them in Elvanto. If the lifts are not real, LINK_SYNC_TOKEN needs replacing.${TELL}`],
+  'sync-bad-token': ['later', 'A request to the console link used a wrong token', 'Expected just after the token changes, or from a console holding an old one. If no console is failing, someone is guessing.'],
   'too-old': ['later', '{type} expired before the console sent it', 'The leader was told to do it in Elvanto. Check the console was running then (Advanced › Setup › YS link in the console).'],
   'note-unreadable': ['later', 'A queued note could not be decrypted', `FIELD_ENCRYPTION_KEY and FIELD_ENCRYPTION_KEY_PREV in Vercel must match the key it was saved with.${TELL}`],
   'intake-unreadable': ['later', 'A saved intake plan could not be decrypted', `Press Refresh in More > New youth & consent. If it stays, the Vercel encryption keys need checking.${TELL}`],

@@ -148,7 +148,7 @@ describe('0053 migration', () => {
     const body = SQL.split('\n').filter((l) => !l.trimStart().startsWith('--')).join('\n');
     expect(body).not.toMatch(/\b(drop|delete from|update|truncate|rename)\b/i);
   });
-  it('LATEST_MIGRATION is 0053', () => { expect(LATEST_MIGRATION).toBe('0053'); });
+  it('LATEST_MIGRATION is at least 0053', () => { expect(LATEST_MIGRATION >= '0053').toBe(true); });
   it('leaders.deleteAll never truncates (TRUNCATE CASCADE ignores SET NULL and would empty id_check_entries)', () => {
     const src = readFileSync(join(__dirname, '..', 'repositories', 'supabase', 'supabase.leaders.ts'), 'utf8');
     expect(src).not.toMatch(/sql`\s*truncate/i);

@@ -332,7 +332,7 @@ describe('quad filter consistency', () => {
 const CA_BLOCK = HTML.slice(HTML.indexOf('/* ── CA MODULE START ── */'), HTML.indexOf('/* ── CA MODULE END ── */'));
 const XLSX_SRC = readFileSync(join(__dirname, '..', '..', 'public', 'vendor', 'xlsx.full.min.js'), 'utf8');
 const loadXlsx = () => new Function(`var module, define, window; ${XLSX_SRC}; return XLSX;`)();
-const HELPERS = ['esc', 'fmtDay', 'quadLabel', '_simpleLoginsOn', 'gradeBands', '_juniorMin', '_gradeList', '_gradeWord', 'rowsToCsv', 'readXlsx', 'phoneLink', 'fmtPhone'];
+const HELPERS = ['esc', '_icJs', 'fmtDay', 'quadLabel', '_simpleLoginsOn', 'gradeBands', '_juniorMin', '_gradeList', '_gradeWord', 'rowsToCsv', 'readXlsx', 'phoneLink', 'fmtPhone'];
 function caWorld(audit: any, o: { role?: string; gradeMin?: number } = {}) {
   const env: any = { audit, app: '', posts: [] as any[], toasts: [] as string[], downloads: [] as any[], went: [] as string[], dom: {} as any, reply: null, X: loadXlsx() };
   const { CA, S } = new Function('env', `

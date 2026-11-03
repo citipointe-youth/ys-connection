@@ -659,7 +659,7 @@ describe('sync.service: the error-log sweep (D1, ruling e)', () => {
     await link.insertAction(checkIn(1));
     await svc.claim({ ...claimReq, max: 5 });
     await svc.result({ contractVersion: 1, consoleId: CONSOLE, results: [{ id: rid(1), outcome: 'unclear', sentLogKey: 'k1', detail: 'x' }] });
-    expect(await repo.list()).toMatchObject([{ category: 'link', code: 'unclear', route: 'checkIn', count: 1, foldKey: null }]);
+    expect((await repo.list()).filter((r) => r.code !== 'link-new-console')).toMatchObject([{ category: 'link', code: 'unclear', route: 'checkIn', count: 1, foldKey: null }]);
   });
   it('a swept lease-lost writes no windowed row; the sweep counts it', async () => {
     const { InMemoryErrorLogRepository } = await import('../repositories/in-memory/error-log.repository');
@@ -674,6 +674,6 @@ describe('sync.service: the error-log sweep (D1, ruling e)', () => {
     await svc.claim({ ...claimReq, consoleId: '8f5a1c2e-0000-4000-8000-0000000000ff', max: 5 });
     expect((await link.getAction(rid(1)))?.reason).toBe('lease-lost');
     await errorLog.sweep();
-    expect(await repo.list()).toMatchObject([{ category: 'link', code: 'lease-lost', route: 'checkIn', count: 1, foldKey: null }]);
+    expect((await repo.list()).filter((r) => r.code !== 'link-new-console')).toMatchObject([{ category: 'link', code: 'lease-lost', route: 'checkIn', count: 1, foldKey: null }]);
   });
 });

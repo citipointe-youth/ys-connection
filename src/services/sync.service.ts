@@ -2,7 +2,7 @@
 // (spec docs/superpowers/specs/2026-10-12-elvanto-link-app-design.md §8.1; contract §3).
 // Called after the sync-token check. Never logs a body or a note: claimed notes are decrypted.
 import type { z } from 'zod';
-import { CONSENT_LOOKUP_KINDS, CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, MIN_CONSOLE_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest } from '../core/link-contract';
+import { CONSENT_LOOKUP_KINDS, CONSENT_TYPES, ClaimRequest, INTAKE_TYPES, LINK_CONTRACT_VERSION, LINK_REV, LeadersRequest, MIN_CONSOLE_REV, PUSH_KINDS, PUSH_SCHEMAS, ResultRequest, isDnc } from '../core/link-contract';
 import type { ClaimResponse, LeadersResponse, PushResponse } from '../core/link-contract';
 import { LinkContractMismatch, SyncValidation } from '../core/errors/link-errors';
 import { ModuleDisabledError } from '../core/errors/app-error';
@@ -24,6 +24,10 @@ const NO_DATE = /has no consent date field/;
 const NO_TOTAL = /has no TOTAL non-consent date field/;
 // anchored: a bare /consent date/ would also match the TOTAL text
 const noFieldCode = (d: string) => (NO_DATE.test(d) ? 'fix-no-date' : NO_TOTAL.test(d) ? 'fix-no-total' : null);
+// D3 (security review 2026-11-04): the bounds on a push made with a stolen token. Real pushes carry the server's clock (or a synced PC's).
+const FUTURE_LIMIT_MS = 5 * 60_000;
+const SHRINK_MIN_ACTIVE = 20; // a roster under half of this many active rows is a fault or an attack, not a change
+const DNC_LIFT_LIMIT = 5;
 
 /** r25: grade follows Elvanto (gradeFixes, quad recomputed), THEN gender fixes on the updated grades (genderFixes needs
  *  the grades to agree), in one write. Idempotent. `all` must include graduated students. Never logs a name. */
@@ -100,12 +104,25 @@ export function makeSyncService(d: SyncDeps) {
     const ask = now().getTime() - a <= SNAP_ASK_MS && (taken.length < CONSENT_LOOKUP_KINDS.length || taken.some((x) => Date.parse(x.takenAt) < a));
     return { ask, ...(withAt && ask && askedAt ? { askedAt } : {}) };
   };
+  // D3/D6: one Error log row (code + route only; never the id or a value). record() never throws.
+  const flag = async (code: string, route: string) => { await d.errorLog?.record({ category: 'link', code, route, role: 'console' }); };
+  // D6: an id with no link_console row is logged, never refused: a hand-over legitimately adds a console.
+  // ponytail: per-instance memo so a poll costs no read; each serverless instance may log the same stranger once.
+  const known = new Set<string>();
+  const noteConsole = async (id: unknown, route: string) => {
+    if (!d.errorLog || typeof id !== 'string' || known.has(id)) return;
+    const consoles = await d.link.listConsoles().catch(() => null);
+    if (!consoles) return; // log only: a failed read never fails the call
+    if (!consoles.some((c) => c.consoleId === id)) await flag('link-new-console', route);
+    known.add(id);
+  };
   return {
     async claim(body: unknown): Promise<z.infer<typeof ClaimResponse>> {
       const req = parseBody(ClaimRequest, body);
       // X-1: a console below MIN_CONSOLE_REV (missing = 1) is refused before the heartbeat: it must be updated first.
       const linkRev = req.linkRev ?? 1;
       if (linkRev < MIN_CONSOLE_REV) throw new LinkContractMismatch();
+      await noteConsole(req.consoleId, 'claim');
       const settings = await d.settings.getSettings();
       // Off is the stop button: heartbeat + sweep still run, nothing is leased while every link screen is off (T10).
       // ponytail: one screen on leases every type; rows of an off screen cannot be queued, only ones from before.
@@ -238,6 +255,15 @@ export function makeSyncService(d: SyncDeps) {
     async push(kind: string, body: unknown): Promise<z.infer<typeof PushResponse> | IngestResult | z.infer<typeof BusConsentFormsResponse>> {
       if (!(PUSH_KINDS as readonly string[]).includes(kind)) throw new SyncValidation([{ path: 'kind', message: 'Unknown kind' }]);
       const pk = kind as PushKind;
+      // D3: a takenAt far ahead would make every real push stale for good (the mirror and snapshot compares), so nothing that far ahead lands.
+      const taken = Date.parse(String((body as { takenAt?: unknown } | null)?.takenAt));
+      if (taken > now().getTime() + FUTURE_LIMIT_MS) {
+        const req = parseBody(PUSH_SCHEMAS[pk], body) as { source?: AuditPushBody['source'] }; // version and shape errors answer as usual
+        await flag('push-future-time', pk);
+        if (pk === 'audit') return { applied: false, source: req.source!, status: 'stale' };
+        return pk === 'busConsentForms' ? { applied: false, rows: 0, new: 0, unmatched: 0 } : { applied: false };
+      }
+      await noteConsole((body as { consoleId?: unknown } | null)?.consoleId, pk);
       if (pk === 'intakePlan' || pk === 'consentPlan') { // X19: one (mode, date) per push
         const req = parseBody(PUSH_SCHEMAS[pk], body) as z.infer<typeof IntakePush> | z.infer<typeof ConsentPush>;
         if (!d.intake) return { applied: false };
@@ -285,11 +311,24 @@ export function makeSyncService(d: SyncDeps) {
       }
       const k = pk as MirrorKind;
       const req = parseBody(PUSH_SCHEMAS[k], body) as { consoleId: string; takenAt: string; rows: unknown[]; steps?: LinkFlowStep[] };
-      const rows = k === 'groups'
+      let rows = k === 'groups'
         ? (req.rows as { name: string }[]).map((g) => ({ ...g, ...parseGroupName(g.name) }))
         : req.rows;
       // r25: the stored roster before this push, to see a Year 12 whose grade Elvanto has just blanked (graduations).
       const before = k === 'roster' ? await d.link.roster() : [];
+      if (k === 'roster') {
+        // D3: January graduates stay as rows (grade blank), and the console only sends a complete build, so a real roster does not halve.
+        const active = before.filter((r) => r.active).length;
+        if (active >= SHRINK_MIN_ACTIVE && rows.length < active / 2) { await flag('push-roster-shrink', pk); return { applied: false }; }
+        // D3: only a readable 'ok' lifts a flag (stickyConsent keeps it on unknown or missing). Over the limit, those rows keep it; the rest applies.
+        const old = new Map(before.map((r) => [r.personId, r.consent]));
+        const lifts = (r: { personId: string; consent?: string }) => r.consent === 'ok' && isDnc(old.get(r.personId));
+        const pushed = rows as { personId: string; consent?: string }[];
+        if (pushed.filter(lifts).length > DNC_LIFT_LIMIT) {
+          rows = pushed.map((r) => (lifts(r) ? { ...r, consent: old.get(r.personId) } : r));
+          await flag('push-dnc-held', pk);
+        }
+      }
       const res = await d.link.replaceMirror(k, rows, { takenAt: req.takenAt, consoleId: req.consoleId, ...(req.steps ? { steps: req.steps } : {}) });
       if (!res.applied) return { applied: false };
       if (k !== 'roster') return { applied: true, rows: res.rows };

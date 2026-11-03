@@ -8,6 +8,14 @@ import type { StoredAuditSource } from '../core/entities/connection-audit';
 
 const ROOT = join(__dirname, '..', '..');
 
+describe('migration 0054', () => {
+  it('drops the 0043 safety copy and nothing else; no code reads it', () => {
+    const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0054_drop_connection_audits_bak.sql'), 'utf8');
+    expect(sql.split('\n').filter((l) => l.trim() && !l.startsWith('--'))).toEqual(['drop table if exists connection_audits_bak_0043;']);
+  });
+});
+
+// 0043 still makes the copy on a fresh database (a shipped file is never edited); 0054 removes it.
 describe('migration 0043', () => {
   const m = readFileSync(join(ROOT, 'supabase', 'migrations', '0043_connection_audit_sources.sql'), 'utf8');
   it('adds connection_audit_sources with RLS, a safety copy of connection_audits, and the audit category; additive only', () => {

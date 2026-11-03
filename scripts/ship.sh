@@ -3,7 +3,11 @@
 # Usage: bash scripts/ship.sh [--dry-run] [--promote] <branch>   (run from a clean worktree on <branch>)
 set -euo pipefail
 DRY= PROMOTE= BR=
-for a in "$@"; do case $a in --dry-run) DRY=1;; --promote) PROMOTE=1;; *) BR=$a;; esac; done
+for a in "$@"; do case $a in   # an unknown argument stops here, before anything runs (same rule as the console's release.sh). src/tests/ship-args.test.ts
+  --dry-run) DRY=1;; --promote) PROMOTE=1;;
+  -*) echo "ship: unknown argument $a" >&2; exit 2;;
+  *) [ -z "$BR" ] || { echo "ship: unexpected argument $a" >&2; exit 2; }; BR=$a;;
+esac; done
 [ -n "$BR" ] || { echo "usage: ship.sh [--dry-run] [--promote] <branch>"; exit 2; }
 run() { if [ -n "$DRY" ]; then echo "dry: $*"; else "$@"; fi; }
 cd "$(git rev-parse --show-toplevel)"
