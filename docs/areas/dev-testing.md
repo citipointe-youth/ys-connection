@@ -18,7 +18,7 @@ Default port: **4300**. Set `PORT=xxxx` to override.
 - `node scripts/check-spa-syntax.js` parses the inline script (run after every SPA edit). `src/tests/helpers/extract-fn.ts` (`extractFn`/`loadFns`) evaluates real function bodies from the HTML, so SPA logic can be unit-tested.
 - **`src/tests/route-registration.test.ts`** fails when a router top-level segment is missing from `vercel.json` or `sw.js` `API_RE` (the 2026-07-18 `/prayers` misroute class).
 - Bus routing is Fake when any Google env var is missing or `PERSISTENCE=memory`; set `BUS_ROUTING=google` to test a real key in memory mode.
-- Never run `npm audit fix --force` (it wants @vercel/node 17, a breaking change). Plain `npm audit fix` is fine.
+- Never run `npm audit fix --force`. Plain `npm audit fix` is fine.
 
 ### Seed demo accounts (memory mode)
 
