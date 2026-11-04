@@ -143,7 +143,6 @@ export function can(actor: Actor, action: Action): boolean {
   return ROLE_PERMISSIONS[actor.role]?.has(action) ?? false;
 }
 
-/** Who a notice's alert goes to: active admin/oversight (every notice) and the active quad logins it is addressed to. */
 /** ID Checks (spec 2026-10-30 §7.4): the role must allow it AND the caller must be ticked. No admin short-cut;
  *  a tick held by an account that is no longer oversight/admin is inert. */
 export function canSeeIdChecks(actor: Actor, tickedUserIds: Set<string>): boolean {
@@ -155,6 +154,7 @@ export function isIdCheckTickTarget(u: { role: UserRole; status: string }): bool
   return u.status === 'active' && (u.role === 'oversight' || u.role === 'admin');
 }
 
+/** Who a notice's alert goes to: active admin/oversight (every notice) and the active quad logins it is addressed to. */
 export function receivesNoticePush(u: { role: UserRole; quad?: string | null; status: string }, recipients: readonly string[]): boolean {
   if (u.status !== 'active') return false;
   if (u.role === 'admin' || u.role === 'oversight') return true;
