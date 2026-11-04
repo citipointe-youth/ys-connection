@@ -389,6 +389,23 @@ export function graduations<S extends MatchStudent>(before: LinkRosterRow[], inc
   return [...out.values()];
 }
 
+/** Below this many active student rows the stored roster is not a real one (same floor as the D3 shrink guard). */
+export const OFF_ROSTER_MIN_ACTIVE = 20;
+
+/**
+ * Import > Not on the Elvanto roster: not graduated, no roster row holds the student, and no active row (any kind) has
+ * that name. `held` = nothing to trust yet, so nobody is listed: no roster push, a small roster, or over half of the
+ * students would count (the same "this looks like a glitch" rule as gradeGlitch), because a bad roster makes everyone look off it.
+ */
+export function offRoster<S extends MatchStudent>(pushed: boolean, roster: LinkRosterRow[], students: S[]): { rows: S[]; held: boolean } {
+  if (!pushed || roster.filter((r) => r.active && r.kind === 'student').length < OFF_ROSTER_MIN_ACTIVE) return { rows: [], held: true };
+  const linked = new Set(roster.map((r) => r.studentId));
+  const named = new Set(roster.filter((r) => r.active).map((r) => nameKey(r.firstName, r.lastName)));
+  const current = students.filter((s) => !s.graduatedAt);
+  const rows = current.filter((s) => !linked.has(s.id) && !named.has(nameKey(s.firstName, s.lastName)));
+  return rows.length * 2 > current.length ? { rows: [], held: true } : { rows, held: false };
+}
+
 /**
  * Operator 2026-10-14: a matched pair (auto or manual, after `changes`) whose folded first + last name and grade agree
  * takes Elvanto's gender, only when Elvanto says male/female and the YS student differs. Nothing to write = empty.

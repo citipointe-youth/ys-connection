@@ -33,6 +33,14 @@ export function makeStudentController(deps: { student: StudentService }) {
       return { ok: true };
     },
 
+    async offRoster(req: AuthedRequest) {
+      return deps.student.listOffRoster(req.ctx);
+    },
+
+    async graduateOffRoster(req: AuthedRequest) {
+      return deps.student.graduateOffRoster(req.ctx, req.body);
+    },
+
     async remove(req: AuthedRequest) {
       await deps.student.remove(req.ctx, req.params['id']!);
       return { ok: true };

@@ -270,7 +270,8 @@ export async function buildContainer(): Promise<Container> {
   // ----- Services -----
   const auth = makeAuthService(users);
   const dnc = makeDnc(link); // R1: one shared DO NOT CONTACT cache for every student read
-  const student = makeStudentService(students, settings, connections, prayers, dnc);
+  const student = makeStudentService(students, settings, connections, prayers, dnc,
+    { link, sessions: serviceSessions, serviceAttendance, weeks: lifegroupWeeks, lifegroupAttendance });
   const leader = makeLeaderService(leaders, settings);
   const prayer = makePrayerService(prayers, students, settings, connections);
   const connection = makeConnectionService(connections, students, leaders, settings, dnc);

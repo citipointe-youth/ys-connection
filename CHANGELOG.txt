@@ -4,6 +4,15 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+CLOSE-OUT 2026-11-04  (ysc-v167, not yet live)
+-------------------------------------------------------------------------------
+- Import (admin): "Not on the Elvanto roster" lists students with no Elvanto
+  link and no active roster entry, most recently attended first. Graduate one,
+  or all shown (a page of up to 50). Their data stays; Undo is under
+  Students > Graduated. Nobody is listed until a full roster is stored.
+- No migration; rollback = Instant Rollback, then Undo anyone graduated if needed.
+
+-------------------------------------------------------------------------------
 ROUND 2026-10-30  (link rev 21, ysc-v160, 2026-10-30, not yet live)
 -------------------------------------------------------------------------------
 - Admin > Elvanto link: the Activity list stays closed until you open it.

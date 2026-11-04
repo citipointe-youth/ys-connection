@@ -95,6 +95,8 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'GET',    path: '/students',                    auth: true, handler: (r) => student.list(r) },
     { method: 'POST',   path: '/students',                    auth: true, handler: (r) => student.create(r) },
     { method: 'GET',    path: '/students/graduated',          auth: true, handler: (r) => student.graduated(r) }, // r25, before /:id
+    { method: 'GET',    path: '/students/off-roster',         auth: true, handler: (r) => student.offRoster(r) }, // before /:id
+    { method: 'POST',   path: '/students/off-roster/graduate', auth: true, handler: (r) => student.graduateOffRoster(r) },
     { method: 'GET',    path: '/students/:id',                auth: true, handler: (r) => student.get(r) },
     { method: 'POST',   path: '/students/:id/ungraduate',     auth: true, handler: (r) => student.ungraduate(r) },
     { method: 'PATCH',  path: '/students/:id',                auth: true, handler: (r) => student.update(r) },

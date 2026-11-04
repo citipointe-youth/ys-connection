@@ -6112,7 +6112,7 @@ async function _stuGradLoad() {
 function _stuGradHtml(rows) {
   if (!rows || !rows.length) return '';
   return `<details class="card"><summary>Graduated (${rows.length})</summary>
-    <p class="li-sub">Elvanto cleared their Year 12 grade, so they are hidden from every list. Undo puts one back.</p>
+    <p class="li-sub">Hidden from every list, because Elvanto cleared their Year 12 grade or an admin graduated them from Import. Undo puts one back.</p>
     ${rows.map(r => `<div class="li"><div class="li-body"><span class="li-title">${esc(r.name)}</span>
       <div class="li-sub">${esc('Graduated ' + new Date(r.graduatedAt).toLocaleDateString('en-AU'))}</div></div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_stuUngrad('${esc(r.id)}')">Undo</button></div>`).join('')}</details>`;
@@ -6794,7 +6794,8 @@ function _importBodyHtml(history) {
       <input type="file" id="csv-file" accept=".csv,.xlsx" style="display:none" onchange="handleUnifiedFile(this)">
       ${_exportGuidesOn() ? `<button class="btn btn-secondary btn-full" style="margin-top:12px" onclick="openExportGuide('import')">${icS('info')} How do I export these files from Elvanto?</button>` : ''}
       <div id="import-status" style="margin-top:12px"></div>
-    </div>`;
+    </div>
+    ${S.user && S.user.role === 'admin' ? '<div id="imp-off"></div>' : ''}`;
 
   if (history.length) {
     // r22 B5: no Clear All or per-row delete; the log is the console's duplicate check. Newest 6, the rest folded.
@@ -6825,6 +6826,68 @@ async function renderImport() {
     if (S.page !== _pg) return;
   }
   setApp(shell(_importBodyHtml(history)));
+  _offLoad();
+}
+
+// Admin only. Import > Not on the Elvanto roster: students with no Elvanto link and no active roster row, to review and
+// graduate one at a time or a page at a time. Graduating only sets graduated_at; Undo is under Students > Graduated.
+const _OFF_PAGE = 50; // every bulk path caps at 50, so "all shown" is one page
+let _offS = { rows: [], held: false, rosterAt: null, from: 0, ids: [] };
+async function _offLoad() {
+  if (!document.getElementById('imp-off')) return;
+  let r;
+  try { r = await API.fresh('/students/off-roster', true); } catch (e) { return; }
+  _offS = { rows: (r && r.rows) || [], held: !!(r && r.held), rosterAt: (r && r.rosterAt) || null, from: 0, ids: _offS.ids }; // ids: a confirm may be open
+  _offPaint();
+}
+function _offPaint() {
+  const el = document.getElementById('imp-off');
+  if (!el) return;
+  const was = el.querySelector('details');
+  el.innerHTML = _offHtml(_offS, !!(was && was.open));
+}
+function _offHtml(s, open) {
+  if (s.held) return `<div class="card"><div class="card-title">Not on the Elvanto roster</div>
+    <p class="li-sub">Nobody is listed, because no full Elvanto roster is stored here yet.</p></div>`;
+  const n = s.rows.length;
+  if (!n) return '';
+  const page = s.rows.slice(s.from, s.from + _OFF_PAGE);
+  const row = r => `<div class="li" style="cursor:default"><div class="li-body"><span class="li-title" style="display:block;white-space:normal;overflow-wrap:anywhere">${esc(r.name)}</span>
+      <div class="li-sub">${r.grade == null ? 'No ' + esc(_gradeWord().toLowerCase()) : esc(_gradeWord() + ' ' + r.grade)} · ${r.lastAttended ? 'Last attended ' + esc(fmtDay(r.lastAttended)) : 'No attendance on file'}</div></div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="_offGrad(this, ${_icJs(r.id)})">Graduate</button></div>`;
+  const pager = n > _OFF_PAGE ? `<div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <button type="button" class="btn btn-secondary btn-sm" ${s.from ? '' : 'disabled'} onclick="_offPage(-1)">Back</button>
+      <span class="li-sub" style="flex:1;text-align:center">${s.from + 1}-${s.from + page.length} of ${n}</span>
+      <button type="button" class="btn btn-secondary btn-sm" ${s.from + _OFF_PAGE < n ? '' : 'disabled'} onclick="_offPage(1)">Next</button></div>` : '';
+  return `<details class="card"${open ? ' open' : ''}><summary>Not on the Elvanto roster (${n})</summary>
+    <p class="li-sub" style="margin:8px 0">No Elvanto link and no active entry on the roster${s.rosterAt ? ' from ' + esc(fmtDay(s.rosterAt)) : ''}. Most recently attended first: check these ones, as they are the likeliest not to belong here. Graduating hides a student from every list and keeps their data.</p>
+    <button type="button" class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="_offAll()">Graduate all shown (${page.length})</button>
+    ${page.map(row).join('')}${pager}</details>`;
+}
+function _offPage(d) {
+  _offS.from = Math.max(0, _offS.from + d * _OFF_PAGE);
+  _offPaint();
+}
+function _offAll() {
+  _offS.ids = _offS.rows.slice(_offS.from, _offS.from + _OFF_PAGE).map(r => r.id);
+  const n = _offS.ids.length, who = n === 1 ? '1 student' : n + ' students';
+  modal(`<div class="mo-title">Graduate ${who}?</div>
+    <p style="color:var(--ink-mid);margin-bottom:14px">They disappear from every list. Their data stays, and Undo is under Students > Graduated, one student at a time.</p>
+    <div style="display:flex;gap:8px"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button type="button" class="btn btn-primary" style="flex:1" onclick="closeModal(); _offPost(_offS.ids)">Graduate ${who}</button></div>`);
+}
+function _offGrad(btn, id) { return _once(btn, () => _offPost([id])); }
+async function _offPost(ids) {
+  let r;
+  try { r = await API.post('/students/off-roster/graduate', { ids }); } catch (e) { toast(e.message || 'Could not graduate'); _offLoad(); return; }
+  // A skipped id is no longer a candidate (now on the roster, or already graduated), so it leaves the list too.
+  const gone = new Set(ids);
+  _offS.rows = _offS.rows.filter(x => !gone.has(x.id));
+  if (_offS.from >= _offS.rows.length) _offS.from = Math.max(0, _offS.from - _OFF_PAGE);
+  Cache.clear();
+  _offPaint();
+  const done = r.graduated.length, left = r.skipped.length;
+  toast(`Graduated ${done}.${left ? ` ${left} left alone: no longer on this list.` : ''} Undo is under Students > Graduated.`, 5000);
 }
 
 // ── XLSX READER (lazy SheetJS) ────────────────────────────────
@@ -7450,6 +7513,7 @@ async function renderAdminView(settings, users, history) {
   if (_adminTab === 'problems') body += '<div id="unsent-list"></div><div id="err-log">' + progBar('Loading') + '</div><div id="sys-check"></div>';
 
   setApp(shell(body));
+  if (_adminTab === 'import') _offLoad();
   if (_adminTab === 'problems') {
     _usLoad(); _elLoad(); renderSystemCheck();
   }

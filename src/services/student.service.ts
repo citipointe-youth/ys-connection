@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { generateId } from '../utils/id';
 import { assertCan, can, canAccessGender, canAccessGrade, canAccessStudent, studentRecordVisible, type StructureScope } from './access-control';
-import type { IStudentRepository, ISettingsRepository, IConnectionRepository, IPrayerRepository } from '../repositories/interfaces/entity-repositories';
+import type { IStudentRepository, ISettingsRepository, IConnectionRepository, IPrayerRepository, IServiceSessionRepository, IServiceAttendanceRepository, ILifegroupWeekRepository, ILifegroupAttendanceRepository } from '../repositories/interfaces/entity-repositories';
+import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { Student } from '../core/entities/student';
 import type { Actor } from '../core/entities/user';
 import { computeQuad } from '../core/types/enums';
@@ -9,6 +10,7 @@ import { MINISTRY_CONFIG_DEFAULTS, assertGradesInRange } from '../core/ministry-
 import { NotFoundError } from '../core/errors/app-error';
 import { makeDnc, type Dnc } from './dnc';
 import { isRealDob } from './terms';
+import { offRoster } from './link-rules';
 
 /** R1: every student read carries `dnc`; phones are null for a DNC student unless admin/oversight. */
 export type StudentView = Student & { dnc: boolean };
@@ -24,6 +26,18 @@ const CreateStudentSchema = z.object({
   dataSource: z.string().nullable().optional(),
 });
 
+// Every bulk path caps at 50 (CLAUDE.md).
+const GraduateOffRosterSchema = z.object({ ids: z.array(z.string().min(1).max(64)).min(1).max(50) });
+
+/** Import > Not on the Elvanto roster: what it reads. Absent (test constructors) = held, nobody listed. */
+export interface OffRosterDeps {
+  link: Pick<ILinkRepository, 'roster' | 'mirrorState'>;
+  sessions: Pick<IServiceSessionRepository, 'findAll'>;
+  serviceAttendance: Pick<IServiceAttendanceRepository, 'findAll'>;
+  weeks: Pick<ILifegroupWeekRepository, 'findAll'>;
+  lifegroupAttendance: Pick<ILifegroupAttendanceRepository, 'findAll'>;
+}
+export interface OffRosterRow { id: string; name: string; grade: number | null; lastAttended: string | null }
 
 export interface StudentService {
   list(actor: Actor, filter?: { grade?: number; gender?: string; query?: string; unconnected?: boolean; crossGrade?: boolean }): Promise<StudentView[]>;
@@ -35,6 +49,10 @@ export interface StudentService {
   listGraduated(actor: Actor): Promise<{ id: string; name: string; graduatedAt: string }[]>;
   /** r25: admin only. Puts a graduated student back in every list. */
   ungraduate(actor: Actor, id: string): Promise<void>;
+  /** Admin only. Students with no Elvanto link and not on the active roster, most recently attended first. `held` = no roster to trust, so none. */
+  listOffRoster(actor: Actor): Promise<{ held: boolean; rosterAt: string | null; rows: OffRosterRow[] }>;
+  /** Admin only. Graduates the ids that are still candidates now; the rest come back in `skipped`. */
+  graduateOffRoster(actor: Actor, input: unknown): Promise<{ graduated: string[]; skipped: string[] }>;
 }
 
 function stripSensitive(s: Student): Student {
@@ -51,6 +69,7 @@ export function makeStudentService(
   // doesn't cascade-delete prayers (today's pre-M1 behaviour).
   prayerRepo?: IPrayerRepository,
   dnc: Dnc = makeDnc(), // R1: optional; absent = nobody is DNC
+  offRosterDeps?: OffRosterDeps,
 ): StudentService {
   // Structure config for scoping (cohortModel/genderPolicy, §5). Optional repo so
   // existing test harnesses constructing makeStudentService(repo) keep today's
@@ -71,6 +90,25 @@ export function makeStudentService(
   const phonesHidden = (actor: Actor, s: Student, structure: StructureScope) =>
     !can(actor, 'student:read:sensitive') ||
     ((actor.role === 'grade' || actor.role === 'quad') && !canAccessGrade(actor, s.grade, structure));
+  async function offRosterNow() {
+    if (!offRosterDeps) return { rows: [] as Student[], held: true, rosterAt: null };
+    const [mirrors, roster, students] = await Promise.all([offRosterDeps.link.mirrorState(), offRosterDeps.link.roster(), repo.findAll()]);
+    const push = mirrors.find((m) => m.kind === 'roster');
+    return { ...offRoster(!!push, roster, students), rosterAt: push?.takenAt ?? null };
+  }
+  // The newest attended date per candidate: services and lifegroups, from the imported attendance. Dates are YYYY-MM-DD.
+  async function lastAttendedOf(ids: Set<string>) {
+    const d = offRosterDeps!;
+    const [sessions, svc, weeks, grp] = await Promise.all([d.sessions.findAll(), d.serviceAttendance.findAll(), d.weeks.findAll(), d.lifegroupAttendance.findAll()]);
+    const dayOf = new Map<string, string>([...sessions.map((s) => [s.id, s.sessionDate] as const), ...weeks.map((w) => [w.id, w.weekStart] as const)]);
+    const last = new Map<string, string>();
+    const see = (studentId: string, day: string | undefined) => {
+      if (day && ids.has(studentId) && day > (last.get(studentId) ?? '')) last.set(studentId, day);
+    };
+    for (const a of svc) if (a.attended) see(a.studentId, dayOf.get(a.sessionId));
+    for (const a of grp) if (a.attended) see(a.studentId, dayOf.get(a.weekId));
+    return last;
+  }
   return {
     async list(actor, filter) {
       assertCan(actor, 'student:read');
@@ -201,6 +239,27 @@ export function makeStudentService(
     async ungraduate(actor, id) {
       assertCan(actor, 'admin:manage');
       if (!(await repo.setGraduated(id, null))) throw new NotFoundError('Student not found');
+    },
+
+    async listOffRoster(actor) {
+      assertCan(actor, 'admin:manage');
+      const { rows, held, rosterAt } = await offRosterNow();
+      if (!rows.length) return { held, rosterAt, rows: [] };
+      const last = await lastAttendedOf(new Set(rows.map((s) => s.id)));
+      return { held, rosterAt, rows: rows
+        .map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName}`.trim(), grade: s.grade ?? null, lastAttended: last.get(s.id) ?? null }))
+        .sort((a, b) => (b.lastAttended ?? '').localeCompare(a.lastAttended ?? '') || a.name.localeCompare(b.name)) };
+    },
+
+    async graduateOffRoster(actor, input) {
+      assertCan(actor, 'admin:manage');
+      const { ids } = GraduateOffRosterSchema.parse(input);
+      const still = new Set((await offRosterNow()).rows.map((s) => s.id));
+      const at = new Date().toISOString(), graduated: string[] = [], skipped: string[] = [];
+      for (const id of new Set(ids)) {
+        if (still.has(id) && await repo.setGraduated(id, at)) graduated.push(id); else skipped.push(id);
+      }
+      return { graduated, skipped };
     },
   };
 }

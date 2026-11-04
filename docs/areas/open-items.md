@@ -5,7 +5,7 @@
 Cutover planned Sun 25 Oct night (fallback Mon 26 / Wed 28). Do these first, in this order:
 
 1. **Replace the Admin "New Year" wizard with a data export + backup** (operator ruling). Since r25 (YS 3159fd6, ysc-v153) `students.grade`/`quad` follow the matched Elvanto roster grade on every roster push (`gradeFixes`/`saveRosterFixes`, link-rules/link.service), and Year 12s get `students.graduated_at` (migration 0048) when Elvanto's grade goes 12 -> blank (skipped when >50% of pushed grades are blank, `gradeGlitch`). So the Full Reset (step 4) is no longer needed for rollover: it wipes students and cascades (lifegroups, import history, bus consents/addresses, My car, flow assignments, connections, attendance, prayers). Keep the exports (allocations, prayers, Connection Audit), add a full data export/backup, remove or hide Full Reset from the year-end path (server route may stay).
-2. Unlinked legacy students (~326, no active roster row) never roll grade or graduate: decide mark graduated vs a one-off +1 grade.
+2. Unlinked legacy students (about 201 on 30 Oct, no active roster row) never roll grade or graduate: the admin reviews them in Import > Not on the Elvanto roster and graduates them there (2026-11-04, `offRoster` in `link-rules.ts`).
 3. Confirm the door "Slow: Search Elvanto" Brisbane location filter on live Elvanto (phone test); run `spike/e2e-ys-link.js` (ship.sh warned it was not run for LINK_REV 20).
 4. Console side: the weekly digest does not exclude graduated students yet (see the console CLAUDE.md).
 
