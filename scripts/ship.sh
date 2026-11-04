@@ -37,7 +37,7 @@ if [ -n "$DRY" ]; then echo "dry: npm test > $LOG"
 elif npm test >"$LOG" 2>&1; then echo "tests: $(sed 's/\x1b\[[0-9;]*m//g' "$LOG" | grep -E '^\s*Tests ' | tr -s ' ' | tail -1)"
 else echo "FAIL tests (log $LOG):"; { grep -E 'FAIL|AssertionError|Error:' "$LOG" | sort -u | head -15 || tail -5 "$LOG"; }; exit 1; fi
 
-MIG=$(ls supabase/migrations | tail -1 | cut -c1-4)
+MIG=$(basename "$(ls supabase/migrations/*.sql | tail -1)" | cut -c1-4)
 SW=$(grep -oE "ysc-v[0-9]+" public/sw.js | head -1)
 PEND=$(git branch --no-merged "$SHA" --format='%(refname:short)' | tr '\n' ' ')
 NOW=$(date '+%Y-%m-%d %H:%M %Z')
