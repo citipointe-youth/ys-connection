@@ -141,6 +141,9 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
             : '';
           const rlKey = isSetup ? `setup:${ip}` : email ? `${ip}:${email}` : ip;
           if (loginRateLimiter.isBlocked(rlKey)) {
+            // Security review 2026-11-04: code + route only, never the username or IP. record() never throws and folds repeats.
+            // ponytail: not awaited, so a frozen serverless instance can lose a row; the next throttled attempt writes again.
+            void errorLog?.record({ category: 'server', code: 'login-throttled', route: routeLabel, status: 429 });
             res.status(429).setHeader('Retry-After', String(loginRateLimiter.retryAfterSeconds(rlKey)));
             res.json({
               code: 'RATE_LIMITED',

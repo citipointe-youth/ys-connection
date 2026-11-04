@@ -803,6 +803,7 @@
      "push-roster-shrink": "now",
      "sync-bad-token": "later",
      "locked": "later",
+     "login-throttled": "now",
      "member-left": "fyi",
      "multi-service": "fyi",
      "needs-you": "later",

@@ -35,6 +35,7 @@ export const TEXT: Record<string, Entry> = {
   INTERNAL: ['later', '{a_type} from a phone crashed on the server and was not queued', `The leader was told to do it in Elvanto. The bug is under "batch item failed" in Vercel logs.${TELL}`],
   SERVICE_UNAVAILABLE: ['fyi', 'The database was busy for a moment', `Nothing to do; phones retry. If it happens most days, the Supabase pooler needs a look.${TELL}`],
   REQUEST_TIMEOUT: ['fyi', 'A screen took over 20 seconds to load ({route})', `Nothing to do if rare. If it repeats, that route's queries need speeding up.${TELL}`],
+  'login-throttled': ['now', 'Too many login attempts, so that sign-in was paused ({route})', 'Normal if someone forgot their password; it clears in 15 minutes. If it keeps coming back, someone may be guessing.'],
   LINK_OFF: ['now', 'The Elvanto link is off: no sync token in Vercel', `Set LINK_SYNC_TOKEN (32+ characters) in Vercel, redeploy, and save it in the console.${TELL}`],
   ROUTING_FAILED: ['later', 'Bus route planning failed at Google', `Replan the run later. GOOGLE_MAPS_API_KEY or its quota in Google Cloud needs a look.${TELL}`],
   PUSH_FAILED: ['fyi', 'Some phone alerts for a notice failed', 'Nothing to do; the notice is in the app.'],

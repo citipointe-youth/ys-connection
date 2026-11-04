@@ -67,6 +67,24 @@ describe('SY-06: a wrong /sync token leaves an Error log row', () => {
   });
 });
 
+describe('security review 2026-11-04: a throttled login leaves an Error log row', () => {
+  it('logs code and route only, and the 429 does not wait for the write', async () => {
+    const record = vi.fn(() => new Promise<void>(() => {})); // never settles: the reply must not wait for it
+    const login = vi.fn(async () => ({ ok: true }));
+    const srv = createApp([{ method: 'POST', path: '/auth/login', auth: false, handler: login }], auth, undefined, { record } as never).listen(0);
+    const url = `http://127.0.0.1:${(srv.address() as AddressInfo).port}/auth/login`;
+    const email = 'sample.dummyton.throttle@example.test';
+    const attempt = () => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }) });
+    try {
+      for (let i = 0; i < 30; i++) expect((await attempt()).status).toBe(200);
+      expect(record).not.toHaveBeenCalled();
+      expect((await attempt()).status).toBe(429);
+      expect(login).toHaveBeenCalledTimes(30);
+      expect(record.mock.calls).toEqual([[{ category: 'server', code: 'login-throttled', route: 'POST /auth/login', status: 429 }]]);
+    } finally { srv.close(); }
+  });
+});
+
 const sync = (authz: string | null, path = '/sync/ping') => fetch(base + path, {
   method: 'POST',
   headers: { 'content-type': 'application/json', ...(authz === null ? {} : { authorization: authz }) },
