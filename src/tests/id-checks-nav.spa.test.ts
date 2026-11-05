@@ -154,10 +154,26 @@ describe('module switched off mid-session (final review minor 7)', () => {
     expect(extractFn(HTML, '_moduleDisabledRefresh')).toContain("/^idcheck/.test(S.page || '')) go('home')");
   });
   it('the admin start-date link opens Youth Setup > Modules at the start date field', () => {
-    const fn = extractFn(HTML, '_icSetStart');
-    expect(fn).toContain("_setupOpen = { modules: true }");
-    expect(fn).toContain("_adminScroll = 'setup-idchecks-start'");
-    expect(fn).toContain("switchAdminTab('youthsetup')");
     expect(HTML).toContain('id="setup-idchecks-start"');
+    expect(extractFn(HTML, '_icSetStart')).toContain("switchAdminTab('youthsetup', 'setup-idchecks-start')");
+  });
+  // go('admin') can render before a later line runs, so the scroll target rides in as a parameter and is set before go().
+  const adminNav = () => loadFns(['_icSetStart', 'switchAdminTab'],
+    `var S = { page: 'home' }; var _adminScroll = null, _adminTab = null, _setupOpen = {}; var _seen = null;
+     const ADMIN_TAB_HOME = { errors:'problems', unsent:'problems', system:'problems', loginActivity:'accounts', data:'newyear' };
+     function _setupLeaveAsk() { return false; }
+     function go(p) { _seen = { p, _adminScroll, _setupOpen }; }
+     function peek() { return _seen; }`, ['_icSetStart', 'switchAdminTab', 'peek']);
+  it('the start-date link: the scroll target is still set when the admin page opens', () => {
+    const f = adminNav();
+    f._icSetStart();
+    expect(f.peek()).toEqual({ p: 'admin', _adminScroll: 'setup-idchecks-start', _setupOpen: { modules: true } });
+  });
+  it('the other tabs keep their own scroll targets', () => {
+    const f = adminNav();
+    f.switchAdminTab('errors');
+    expect(f.peek()._adminScroll).toBe('err-log');
+    f.switchAdminTab('accounts');
+    expect(f.peek()._adminScroll).toBeNull();
   });
 });

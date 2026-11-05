@@ -2157,7 +2157,7 @@ async function renderIdChecks() {
   if (_still(h)) setApp(shell(_icListHtml(d, S.user.role === 'admin')));
 }
 // Admin: open Youth Setup > Modules at the ID Checks start date field.
-function _icSetStart() { _setupOpen = { modules: true }; _adminScroll = 'setup-idchecks-start'; switchAdminTab('youthsetup'); }
+function _icSetStart() { _setupOpen = { modules: true }; switchAdminTab('youthsetup', 'setup-idchecks-start'); }
 function _icOpenLeader(id) { _IC.leaderId = id; _IC.leader = null; go('idcheck-leader'); }
 // "Last time" for one question: the newest OTHER check (finished or not) where it was ticked or has a note.
 function _icLastTime(entries, currentId, qKey) {
@@ -8863,12 +8863,12 @@ function _downloadText(filename, text, mime) {
 
 let _adminData = { settings: {}, users: [], history: [] };
 
-async function switchAdminTab(tab) {
-  if (_setupLeaveAsk(() => switchAdminTab(tab))) return; // QA 27
+async function switchAdminTab(tab, scrollTo) {
+  if (_setupLeaveAsk(() => switchAdminTab(tab, scrollTo))) return; // QA 27
   // 2026-10-14: Elvanto link is its own page (link-admin), reached from this tab list; any other tab from there goes back to Admin.
   if (tab === 'link') { go('link-admin'); return; }
   // 2026-10-22 (RV1 B1): an old id opens the tab that holds it (errors/unsent/system also scroll to their section).
-  _adminScroll = { errors:'err-log', unsent:'unsent-list', system:'sys-check' }[tab] || null;
+  _adminScroll = scrollTo || { errors:'err-log', unsent:'unsent-list', system:'sys-check' }[tab] || null;
   _adminTab = tab === 'loginActivity' ? tab : ADMIN_TAB_HOME[tab] || tab;
   if (S.page !== 'admin') { go('admin'); return; }
   // Re-entering Youth Setup always starts from the server's current state, not
