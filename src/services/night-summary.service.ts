@@ -3,15 +3,17 @@
 // result is parsed through its schema before it is returned, so an added field or a bad format fails the section, not the privacy rule.
 import type { z } from 'zod';
 import { LINK_CONTRACT_VERSION, NightSummaryRequest, NightOutbox, NightTaps, NightErrors, NightImports, NightReconcile, NightConsole, NightServices,
-  type NIGHT_SECTIONS } from '../core/link-contract';
+  NightRoster, NightPeople, type NIGHT_SECTIONS } from '../core/link-contract';
 import { parseBody } from './sync.service';
 import { toView } from './error-log.service';
 import { brisbaneToday } from './link-rules';
-import { iso, aggregateOutbox, aggregateTaps, aggregateErrors, aggregateImports, aggregateConsole, aggregateServices } from './night-summary-aggregate';
+import { iso, aggregateOutbox, aggregateTaps, aggregateErrors, aggregateImports, aggregateConsole, aggregateServices,
+  aggregateRoster, aggregatePeople } from './night-summary-aggregate';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { IErrorLogRepository } from '../repositories/interfaces/error-log.repository';
 import type { IReconcileRunRepository } from '../repositories/interfaces/reconcile-run.repository';
 import type { IImportRepository, ISettingsRepository } from '../repositories/interfaces/entity-repositories';
+import type { ILinkIntakeRepository } from '../repositories/interfaces/link-intake.repository';
 import type { INightSummaryRepository } from '../repositories/interfaces/night-summary.repository';
 
 /** The most link_log rows one taps read returns; more than this sets `truncated`. */
@@ -20,6 +22,8 @@ export const NIGHT_TAPS_MAX = 5000;
 export interface NightSummaryDeps {
   night: INightSummaryRepository;
   link: Pick<ILinkRepository, 'listConsoles' | 'mirrorState' | 'services'>;
+  /** Reused for the plan dates; the rows come from `night`. */
+  intake: Pick<ILinkIntakeRepository, 'dates'>;
   errorRows: Pick<IErrorLogRepository, 'list'>;
   runs: Pick<IReconcileRunRepository, 'latest'>;
   imports: Pick<IImportRepository, 'findByType'>;
@@ -75,6 +79,15 @@ export function makeNightSummaryService(d: NightSummaryDeps): NightSummaryServic
     services: async (r) => {
       const { fromYmd, toYmd } = await days(r.from, r.to);
       return shaped(NightServices, aggregateServices(await d.link.services(), fromYmd, toYmd));
+    },
+    roster: async () => shaped(NightRoster, aggregateRoster(await d.night.roster())),
+    people: async () => {
+      const tz = (await d.settings.getSettings()).ministryConfig.structure.timeZone;
+      const intakeRows = await d.night.intakeRows();
+      const dates = await d.intake.dates();
+      const notFound = await d.night.notFoundHeldInIntake();
+      const unsent = await d.night.unsent();
+      return shaped(NightPeople, aggregatePeople(brisbaneToday(now(), tz), intakeRows, dates, notFound, unsent, now()));
     },
   };
 

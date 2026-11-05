@@ -425,7 +425,7 @@ export const ReconcileLatestResponse = z.object({
 
 // ---- POST /sync/night-summary (Friday night check, 2026-11-05): read only, counts and closed values only, never a name or text.
 // Additive; an older console never calls it. No LINK_REV change.
-export const NIGHT_SECTIONS = ['outbox', 'taps', 'errors', 'imports', 'reconcile', 'console', 'services'] as const;
+export const NIGHT_SECTIONS = ['outbox', 'taps', 'errors', 'imports', 'reconcile', 'console', 'services', 'roster', 'people'] as const;
 const NIGHT_MAX_MS = 48 * 3_600_000;
 export const NightSummaryRequest = z.object({ contractVersion: Version, consoleId: Uuid, section: z.enum(NIGHT_SECTIONS), from: Iso, to: Iso }).strict()
   .refine((r) => Date.parse(r.from) < Date.parse(r.to), 'from must be before to')
@@ -473,6 +473,25 @@ export type NightImports = z.infer<typeof NightImports>;
 export type NightReconcile = z.infer<typeof NightReconcile>;
 export type NightConsole = z.infer<typeof NightConsole>;
 export type NightServices = z.infer<typeof NightServices>;
+
+/** Appendix H: the codes the classifier (services/night-summary-holds) may return for a plan row's first hold, plus 'other' in the schema. */
+export const HOLD_CODES = ['waiting-parent-form', 'possible-existing', 'same-person', 'flagged-items', 'check-match', 'siblings', 'unreadable-date', 'both-forms',
+  'two-student-forms', 'unclear-save', 'saved-not-in-elvanto', 'form-list-long', 'profile-archived', 'approved-not-linked', 'approved-elsewhere', 'linked-unclear',
+  'linked-unreadable', 'linked-differs', 'linked-unconfirmed', 'duplicate-search-failed', 'too-many-profiles', 'picked-no-match', 'profile-unreadable',
+  'parent-category-unknown', 'location-not-on-form', 'location-not-set', 'notes-unreadable', 'parent-mobile', 'step-list-long', 'not-in-step-1', 'no-student-form',
+  'not-in-consent-step', 'two-consent-forms', 'unsure-consent-form', 'late-consent-form', 'consent-unreadable', 'unmatched-consent-form', 'parent-not-texted',
+  'parent-texted-unreadable', 'parent-texted-no-record', 'parent-texted-late', 'cannot-edit', 'waiting-replies', 'profile-in', 'first-child-pending'] as const;
+export type HoldCode = (typeof HOLD_CODES)[number];
+export const NightRoster = z.object({ groups: z.array(z.object({ kind: z.enum(['student', 'leader', 'other']), match: z.enum(['auto', 'manual', 'none', 'ambiguous', 'ignored']),
+  active: z.boolean(), hasGrade: z.boolean(), n: N }).strict()) }).strict();
+const PlanMode = z.enum(['intake', 'consent']);
+export const NightPeople = z.object({ siteToday: Ymd,
+  rows: z.array(z.object({ mode: PlanMode, date: Ymd, status: z.enum(['needs-you', 'ready', 'done']), code: z.enum([...HOLD_CODES, 'other']), n: N }).strict()),
+  dates: z.array(z.object({ mode: PlanMode, date: Ymd, takenAt: Iso.nullable(), rowCount: N, cut: z.boolean(), refreshAsked: z.boolean() }).strict()),
+  notFoundHeldInIntake: N,
+  unsent: z.array(z.object({ reason: z.enum(['unreachable', 'form-changed', 'failed', 'unconfirmed']), n: N, nearPurge: N, oldestS: N }).strict()) }).strict();
+export type NightRoster = z.infer<typeof NightRoster>;
+export type NightPeople = z.infer<typeof NightPeople>;
 
 // ---- Error bodies (spec 3.1); extra fields (expected, details) pass through.
 export const ErrorBody = z.object({ code: z.enum(SYNC_ERROR_CODES), message: z.string() }).passthrough();

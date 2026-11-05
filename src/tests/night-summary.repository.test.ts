@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import { InMemoryNightSummaryRepository } from '../repositories/in-memory/night-summary.repository';
+import { InMemoryLinkIntakeRepository } from '../repositories/in-memory/link-intake.repository';
+import { InMemoryUnsentRepository } from '../repositories/in-memory/unsent.repository';
 import { newRow } from './helpers/link-repo-suite';
 import type { LinkLogRow } from '../core/link-types';
 
@@ -23,7 +25,7 @@ const tap = (at: string, over: Partial<LinkLogRow> = {}): LinkLogRow => ({ id: r
 
 describe('night-summary repository (twin)', () => {
   it('twin outbox: window on service_date plus open rows of any date, each once, flagged', async () => {
-    const link = new InMemoryLinkRepository(); const repo = new InMemoryNightSummaryRepository(link);
+    const link = new InMemoryLinkRepository(); const repo = new InMemoryNightSummaryRepository(link, new InMemoryLinkIntakeRepository(), new InMemoryUnsentRepository());
     await seed(link, '2026-11-05', 'sent');          // in window, closed
     await seed(link, '2026-11-06', 'pending');       // in window, open: once, not twice
     await seed(link, '2026-11-07', 'claimed');       // in window (to inclusive)
@@ -39,7 +41,7 @@ describe('night-summary repository (twin)', () => {
   });
 
   it('twin rows carry exactly the allow-listed keys', async () => {
-    const link = new InMemoryLinkRepository(); const repo = new InMemoryNightSummaryRepository(link);
+    const link = new InMemoryLinkRepository(); const repo = new InMemoryNightSummaryRepository(link, new InMemoryLinkIntakeRepository(), new InMemoryUnsentRepository());
     await seed(link, '2026-11-05');
     const [r] = await repo.outbox('2026-11-05', '2026-11-05');
     expect(Object.keys(r!).sort()).toEqual(OUTBOX_KEYS);
@@ -48,7 +50,7 @@ describe('night-summary repository (twin)', () => {
   });
 
   it('twin taps: from inclusive, to exclusive, at most limit; keys exactly at, event, outcome, deviceId', async () => {
-    const link = new InMemoryLinkRepository(); const repo = new InMemoryNightSummaryRepository(link);
+    const link = new InMemoryLinkRepository(); const repo = new InMemoryNightSummaryRepository(link, new InMemoryLinkIntakeRepository(), new InMemoryUnsentRepository());
     await link.addLog([tap('2026-11-05T09:59:59.000Z'), tap('2026-11-05T10:00:00.000Z'), tap('2026-11-05T11:00:00.000Z'),
       tap('2026-11-05T12:00:00.000Z'), tap('2026-11-05T13:00:00.000Z', { event: 'undo', outcome: 'refused:X', deviceId: null })]);
     const all = await repo.taps('2026-11-05T10:00:00.000Z', '2026-11-05T13:00:00.000Z', 10);

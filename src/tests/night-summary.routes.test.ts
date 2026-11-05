@@ -49,7 +49,7 @@ describe('POST /sync/night-summary', () => {
     expect((await r.json() as any).code).toBe('LINK_CONTRACT_MISMATCH');
   });
   it('an unknown section gives 400', async () => {
-    const r = await post(body({ section: 'roster' }));
+    const r = await post(body({ section: 'bogus' }));
     expect(r.status).toBe(400);
     expect((await r.json() as any).code).toBe('VALIDATION_ERROR');
   });

@@ -8,6 +8,8 @@ import { NIGHT_SECTIONS, LINK_CONTRACT_VERSION } from '../core/link-contract';
 import { MODULE_TREE } from '../core/module-tree';
 import { InMemoryLinkRepository } from '../repositories/in-memory/link.repository';
 import { InMemoryNightSummaryRepository } from '../repositories/in-memory/night-summary.repository';
+import { InMemoryLinkIntakeRepository } from '../repositories/in-memory/link-intake.repository';
+import { InMemoryUnsentRepository } from '../repositories/in-memory/unsent.repository';
 import { InMemoryErrorLogRepository } from '../repositories/in-memory/error-log.repository';
 import { InMemoryReconcileRunRepository } from '../repositories/in-memory/reconcile-run.repository';
 import { InMemoryImportRepository, InMemorySettingsRepository } from '../repositories/in-memory';
@@ -28,15 +30,19 @@ const tap = (at: string, o: Partial<LinkLogRow> = {}): LinkLogRow => ({ id: rand
   deviceLabel: 'Codeman', event: 'checkIn', leaderId: null, leaderName: 'Sample', prevLeaderId: null, prevLeaderName: 'Dummyton',
   targetKind: 'person', targetId: randomUUID(), targetName: 'Dummyton', outboxId: null, outcome: 'saved', ...o });
 
+/** The repository members a test stub below does not care about (the roster and people reads). */
+const NO_PEOPLE = { intakeRows: async () => [], notFoundHeldInIntake: async () => 0, unsent: async () => [], roster: async () => [] };
+
 async function harness() {
   const link = new InMemoryLinkRepository();
-  const night = new InMemoryNightSummaryRepository(link);
+  const intake = new InMemoryLinkIntakeRepository();
+  const night = new InMemoryNightSummaryRepository(link, intake, new InMemoryUnsentRepository());
   const errors = new InMemoryErrorLogRepository();
   const runs = new InMemoryReconcileRunRepository();
   const imports = new InMemoryImportRepository();
   const settings = new InMemorySettingsRepository(); await settings.init();
-  const deps: NightSummaryDeps = { night, link, errorRows: errors, runs, imports, settings, now: () => NOW };
-  return { link, night, errors, runs, imports, settings, deps, svc: makeNightSummaryService(deps) };
+  const deps: NightSummaryDeps = { night, link, intake, errorRows: errors, runs, imports, settings, now: () => NOW };
+  return { link, intake, night, errors, runs, imports, settings, deps, svc: makeNightSummaryService(deps) };
 }
 
 describe('night-summary service', () => {
@@ -48,7 +54,7 @@ describe('night-summary service', () => {
       if (typeof f !== 'function') return f;
       return async (...a: unknown[]) => { inFlight++; max = Math.max(max, inFlight); await new Promise((r) => setTimeout(r, 2)); try { return await f.apply(t, a); } finally { inFlight--; } };
     } });
-    const svc = makeNightSummaryService({ night: spy(h.night), link: spy(h.link), errorRows: spy(h.errors), runs: spy(h.runs),
+    const svc = makeNightSummaryService({ night: spy(h.night), link: spy(h.link), intake: spy(h.intake), errorRows: spy(h.errors), runs: spy(h.runs),
       imports: spy(h.imports), settings: spy(h.settings), now: () => NOW });
     for (const s of NIGHT_SECTIONS) {
       await svc.get(req(s));
@@ -63,7 +69,7 @@ describe('night-summary service', () => {
   it('outbox window uses site dates: from and to become site-time days through brisbaneToday', async () => {
     const h = await harness();
     const seen: [string, string][] = [];
-    const night = { outbox: async (a: string, b: string) => { seen.push([a, b]); return []; }, taps: h.night.taps.bind(h.night) };
+    const night = { ...NO_PEOPLE, outbox: async (a: string, b: string) => { seen.push([a, b]); return []; }, taps: h.night.taps.bind(h.night) };
     const withTz = (timeZone: string) => makeNightSummaryService({ ...h.deps, night,
       settings: { getSettings: async () => ({ ministryConfig: { structure: { timeZone } } }) as any } });
     await withTz('Australia/Brisbane').get(req('outbox', { from: '2026-11-13T12:00:00.000Z', to: '2026-11-13T20:00:00.000Z' }));
@@ -131,7 +137,7 @@ describe('night-summary service', () => {
   // taps has no case: its aggregate maps every outcome to a closed value or 'other', so no repository value can fail its schema.
   const REFUSED = 'night-summary: section shape refused';
   const BAD: [string, (h: Awaited<ReturnType<typeof harness>>) => Promise<NightSummaryDeps>][] = [
-    ['outbox', async (h) => ({ ...h.deps, night: { taps: async () => [], outbox: async () => [{ type: 'checkIn', status: 'Sample', reason: null,
+    ['outbox', async (h) => ({ ...h.deps, night: { ...NO_PEOPLE, taps: async () => [], outbox: async () => [{ type: 'checkIn', status: 'Sample', reason: null,
       serviceDate: '2026-11-13', createdAt: '2026-11-13T08:00:00.000Z', resultAt: null, attempts: 1, inWindow: true }] } })],
     ['errors', async (h) => { await h.errors.record(errEntry({})); return { ...h.deps, errorRows: { list: async () => [...(await h.errors.list())].map((r) => ({ ...r, category: 'Sample' as any })) } }; }],
     ['imports', async (h) => ({ ...h.deps, imports: { findByType: async (t) => (t === 'service' ? [{ type: 'service', filename: '', fileHash: '', rowCount: 1,
@@ -158,7 +164,7 @@ describe('night-summary service', () => {
       if (status !== 'pending') h.link._backdate('link_outbox', r.id, 'status', status);
     }
     const rows = await h.night.outbox('2026-11-13', '2026-11-14');
-    const shaped = (rs: typeof rows) => makeNightSummaryService({ ...h.deps, night: { outbox: async () => rs, taps: async () => [] } }).get(req('outbox'));
+    const shaped = (rs: typeof rows) => makeNightSummaryService({ ...h.deps, night: { ...NO_PEOPLE, outbox: async () => rs, taps: async () => [] } }).get(req('outbox'));
     const a = (await shaped(rows)).data as any, b = (await shaped([...rows].reverse())).data as any;
     const key = (g: any) => JSON.stringify(g);
     expect(a.groups.map(key).sort()).toEqual(b.groups.map(key).sort());
@@ -181,7 +187,7 @@ describe('night-summary service', () => {
     const h = await harness();
     let asked = 0;
     const rows = Array.from({ length: NIGHT_TAPS_MAX }, () => ({ at: '2026-11-13T10:00:00.000Z', event: 'checkIn' as const, outcome: 'saved', deviceId: 'd' }));
-    const svc = makeNightSummaryService({ ...h.deps, night: { outbox: async () => [], taps: async (_f, _t, limit) => { asked = limit; return rows; } } });
+    const svc = makeNightSummaryService({ ...h.deps, night: { ...NO_PEOPLE, outbox: async () => [], taps: async (_f, _t, limit) => { asked = limit; return rows; } } });
     expect(((await svc.get(req('taps'))).data as any).truncated).toBe(true);
     expect(asked).toBe(5000);
   });

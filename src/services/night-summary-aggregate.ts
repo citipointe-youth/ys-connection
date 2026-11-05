@@ -1,8 +1,10 @@
 // Friday night check: pure aggregates behind POST /sync/night-summary. Counts and closed values only; a value outside its
 // closed list becomes 'other', so a name in a column can never reach the output. Every result is parsed by its schema upstream.
 import { ACTION_TYPES, INTAKE_TYPES, LINK_REV, REASONS, REFUSAL_CODES, ERROR_CODE_RE,
-  type NightOutbox, type NightTaps, type NightErrors, type NightImports, type NightConsole, type NightServices } from '../core/link-contract';
-import type { NightOutboxRow, NightTapRow } from '../repositories/interfaces/night-summary.repository';
+  type NightOutbox, type NightTaps, type NightErrors, type NightImports, type NightConsole, type NightServices, type NightRoster, type NightPeople } from '../core/link-contract';
+import type { NightOutboxRow, NightTapRow, NightIntakeRow, NightUnsentRow, NightRosterRow } from '../repositories/interfaces/night-summary.repository';
+import type { IntakeDateRow } from '../repositories/interfaces/link-intake.repository';
+import { classifyHold } from './night-summary-holds';
 import type { ErrorLogView } from './error-log.service';
 import type { ImportRecord } from '../core/entities/attendance';
 import type { ConsoleRow, MirrorStateRow, LinkServiceRow } from '../core/link-types';
@@ -114,4 +116,36 @@ export function aggregateConsole(consoles: ConsoleRow[], mirror: MirrorStateRow[
 export function aggregateServices(rows: LinkServiceRow[], fromYmd: string, toYmd: string): NightServices {
   return { rows: rows.filter((r) => r.ymd >= fromYmd && r.ymd <= toYmd)
     .map((r) => ({ ymd: r.ymd, startsAt: iso(r.startsAt), rooms: r.rooms.length, checkedIn: r.checkedIn.length })) };
+}
+
+/** The roster's predicate fields, as grouped by the repository. Nothing else of a roster row is read. */
+export function aggregateRoster(rows: NightRosterRow[]): NightRoster {
+  return { groups: rows.map((r) => ({ kind: r.kind, match: r.match, active: r.active, hasGrade: r.hasGrade, n: r.n })) };
+}
+
+/** The unsent queue is purged 14 days after created_at; a row older than 6 days is within 8 days of it (nearPurge). */
+export const UNSENT_NEAR_PURGE_DAYS = 6;
+
+/** The raw hold text is turned into a code here; two texts with one code (and one mode, date, status) sum. */
+export function aggregatePeople(siteToday: string, intakeRows: NightIntakeRow[], dates: IntakeDateRow[], notFoundHeldInIntake: number,
+  unsent: NightUnsentRow[], now: Date): NightPeople {
+  const rows = new Map<string, NightPeople['rows'][number]>();
+  for (const r of intakeRows) {
+    const code = classifyHold(r.reason);
+    const k = `${r.mode}|${r.date}|${r.status}|${code}`;
+    const g = rows.get(k);
+    if (g) g.n += r.n; else rows.set(k, { mode: r.mode, date: r.date, status: r.status, code, n: r.n });
+  }
+  const byReason = new Map<string, NightPeople['unsent'][number]>();
+  const nearAt = now.getTime() - UNSENT_NEAR_PURGE_DAYS * 86_400_000;
+  for (const u of unsent) {
+    const t = Date.parse(u.createdAt);
+    const age = Math.max(0, Math.round((now.getTime() - t) / 1000));
+    const g = byReason.get(u.reason) ?? { reason: u.reason, n: 0, nearPurge: 0, oldestS: 0 };
+    g.n++; if (t < nearAt) g.nearPurge++; g.oldestS = Math.max(g.oldestS, age);
+    byReason.set(u.reason, g);
+  }
+  return { siteToday, rows: [...rows.values()],
+    dates: dates.map((d) => ({ mode: d.mode, date: d.date, takenAt: d.takenAt === null ? null : iso(d.takenAt), rowCount: d.rowCount, cut: d.cut, refreshAsked: d.refreshAskedAt !== null })),
+    notFoundHeldInIntake, unsent: [...byReason.values()] };
 }

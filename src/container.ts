@@ -233,7 +233,6 @@ export async function buildContainer(): Promise<Container> {
   const link: ILinkRepository = useSupabase ? new SupabaseLinkRepository(sql) : new InMemoryLinkRepository();
   const errorLogRepo: IErrorLogRepository = useSupabase ? new SupabaseErrorLogRepository(sql) : new InMemoryErrorLogRepository();
   const reconcileRuns: IReconcileRunRepository = useSupabase ? new SupabaseReconcileRunRepository(sql) : new InMemoryReconcileRunRepository();
-  const nightRepo: INightSummaryRepository = useSupabase ? new SupabaseNightSummaryRepository(sql) : new InMemoryNightSummaryRepository(link);
   const intakeRepo: ILinkIntakeRepository = useSupabase ? new SupabaseLinkIntakeRepository(sql) : new InMemoryLinkIntakeRepository();
   // Memory has no FK: an entry whose leader is gone reads as archived (Postgres: ON DELETE SET NULL).
   const idChecks: IIdCheckRepository = useSupabase
@@ -326,7 +325,8 @@ export async function buildContainer(): Promise<Container> {
   const reconcile = makeReconcileService({ link, students, lifegroups, lifegroupWeeks, lifegroupAttendance, serviceSessions,
     serviceAttendance, imports, settings, errorLog, errorRows: errorLogRepo, runs: reconcileRuns,
     auditFeed: () => connectionAudit.checkFeed() });
-  const nightSummary = makeNightSummaryService({ night: nightRepo, link, errorRows: errorLogRepo, runs: reconcileRuns, imports, settings });
+  const nightRepo: INightSummaryRepository = useSupabase ? new SupabaseNightSummaryRepository(sql) : new InMemoryNightSummaryRepository(link, intakeRepo, unsent);
+  const nightSummary = makeNightSummaryService({ night: nightRepo, link, intake: intakeRepo, errorRows: errorLogRepo, runs: reconcileRuns, imports, settings });
   // Never throws: the bus step is caught here, rematch/run catch internally and run() is bounded (10 s).
   afterImport = async (kind) => {
     await busSvc.linkGuestsAfterImport().catch(() => undefined);

@@ -212,7 +212,7 @@ describe('request', () => {
   it('over 48 h refused; unknown section refused; extra key refused; upper-case uuid refused', () => {
     expect(NightSummaryRequest.safeParse({ ...ok, to: '2026-11-15T02:00:00.001Z' }).success).toBe(false);
     expect(NightSummaryRequest.safeParse({ ...ok, to: ok.from }).success).toBe(false);
-    expect(NightSummaryRequest.safeParse({ ...ok, section: 'roster' }).success).toBe(false);
+    expect(NightSummaryRequest.safeParse({ ...ok, section: 'bogus' }).success).toBe(false);
     expect(NightSummaryRequest.safeParse({ ...ok, extra: 1 }).success).toBe(false);
     expect(NightSummaryRequest.safeParse({ ...ok, consoleId: 'ABCDEF01-0000-4000-8000-000000000001' }).success).toBe(false);
   });
