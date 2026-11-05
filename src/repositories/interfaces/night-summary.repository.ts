@@ -17,8 +17,8 @@ export interface INightSummaryRepository {
   taps(fromIso: string, toIso: string, limit: number): Promise<NightTapRow[]>;
   /** Plan rows grouped by (mode, date, status, reason); no title, detail or id. */
   intakeRows(): Promise<NightIntakeRow[]>;
-  /** Consent rows held 'Not found in consent step' whose student also has a needs-you intake row. */
-  notFoundHeldInIntake(): Promise<number>;
+  /** Needs-you consent rows dated on or before siteToday, held 'Not found in consent step', whose student also has a needs-you intake row. */
+  notFoundHeldInIntake(siteToday: string): Promise<number>;
   /** The New person sends that did not land: the reason and the age only. */
   unsent(): Promise<NightUnsentRow[]>;
   /** Roster rows grouped by the predicate fields only. */

@@ -85,9 +85,10 @@ export function makeNightSummaryService(d: NightSummaryDeps): NightSummaryServic
       const tz = (await d.settings.getSettings()).ministryConfig.structure.timeZone;
       const intakeRows = await d.night.intakeRows();
       const dates = await d.intake.dates();
-      const notFound = await d.night.notFoundHeldInIntake();
+      const siteToday = brisbaneToday(now(), tz);
+      const notFound = await d.night.notFoundHeldInIntake(siteToday);
       const unsent = await d.night.unsent();
-      return shaped(NightPeople, aggregatePeople(brisbaneToday(now(), tz), intakeRows, dates, notFound, unsent, now()));
+      return shaped(NightPeople, aggregatePeople(siteToday, intakeRows, dates, notFound, unsent, now()));
     },
   };
 

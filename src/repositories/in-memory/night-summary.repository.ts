@@ -38,11 +38,11 @@ export class InMemoryNightSummaryRepository implements INightSummaryRepository {
     return [...groups.values()];
   }
 
-  // The same rule as the Supabase query: exact reason, and an intake row of the same person that is needs-you.
-  async notFoundHeldInIntake(): Promise<number> {
+  // The same rule as the Supabase query: needs-you consent row dated <= siteToday, exact reason, and an intake row of the same person that is needs-you.
+  async notFoundHeldInIntake(siteToday: string): Promise<number> {
     const rows = await this.planRows();
     const held = new Set(rows.filter((r) => r.mode === 'intake' && r.status === 'needs-you' && r.personId).map((r) => r.personId));
-    return rows.filter((r) => r.mode === 'consent' && r.reason === 'Not found in consent step' && r.personId && held.has(r.personId)).length;
+    return rows.filter((r) => r.mode === 'consent' && r.status === 'needs-you' && r.date <= siteToday && r.reason === 'Not found in consent step' && r.personId && held.has(r.personId)).length;
   }
 
   async unsent(): Promise<NightUnsentRow[]> {

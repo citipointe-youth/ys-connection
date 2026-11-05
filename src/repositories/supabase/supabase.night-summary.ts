@@ -39,10 +39,10 @@ export class SupabaseNightSummaryRepository implements INightSummaryRepository {
     return rows.map((r: any) => ({ mode: r.mode, date: ymd(r.date), status: r.status, reason: r.reason ?? '', n: r.n }));
   }
 
-  async notFoundHeldInIntake(): Promise<number> {
+  async notFoundHeldInIntake(siteToday: string): Promise<number> {
     const rows = await this.sql`
       select count(*)::int n from link_intake_rows c
-      where c.mode = 'consent' and c.reason = 'Not found in consent step'
+      where c.mode = 'consent' and c.status = 'needs-you' and c.date <= ${siteToday} and c.reason = 'Not found in consent step'
         and exists (select 1 from link_intake_rows i where i.mode = 'intake' and i.person_id = c.person_id and i.status = 'needs-you')`;
     return rows[0]?.n ?? 0;
   }

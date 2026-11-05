@@ -141,7 +141,19 @@ describe('night-summary people and roster sections', () => {
     await push(h, 'intake', '2026-11-13', [row('needs-you', 'Waiting for parent form', { personId: a }), row('ready', '', { personId: b }),
       row('needs-you', 'Waiting for parent form', { personId: c })]);
     expect((await people(h)).notFoundHeldInIntake).toBe(1);
-    expect(await h.night.notFoundHeldInIntake()).toBe(1);
+    expect(await h.night.notFoundHeldInIntake('2026-11-13')).toBe(1);
+  });
+
+  it('notFoundHeldInIntake: only needs-you consent rows dated on or before siteToday (same scope as the console notInConsentStep)', async () => {
+    const h = await harness();
+    const a = randomUUID(), b = randomUUID(), c = randomUUID();
+    await push(h, 'consent', '2026-11-13', [row('needs-you', 'Not found in consent step', { key: a, personId: a })]);   // counted
+    await push(h, 'consent', '2026-11-20', [row('needs-you', 'Not found in consent step', { key: b, personId: b })]);   // future-dated: not counted
+    await push(h, 'consent', '2026-11-06', [row('ready', 'Not found in consent step', { key: c, personId: c })]);       // ready: not counted
+    await push(h, 'intake', '2026-11-13', [row('needs-you', 'Waiting for parent form', { personId: a }),
+      row('needs-you', 'Waiting for parent form', { personId: b }), row('needs-you', 'Waiting for parent form', { personId: c })]);
+    expect(await h.night.notFoundHeldInIntake('2026-11-13')).toBe(1);
+    expect((await people(h)).notFoundHeldInIntake).toBe(1);
   });
 
   it('siteToday in site time', async () => {
@@ -191,7 +203,7 @@ describe('night-summary people (supabase source)', () => {
     expect(src.match(/\bperson_id\b/g)!.length).toBe(2);   // both inside the one exists: c.person_id and i.person_id
     expect(src).toMatch(/select mode, date, status, reason, count\(\*\)::int n\s+from link_intake_rows\s+group by 1, ?2, ?3, ?4/);
     // the one exists: a consent row held 'Not found in consent step' whose person has a needs-you intake row
-    expect(src).toMatch(/c\.mode = 'consent' and c\.reason = 'Not found in consent step'\s+and exists \(select 1 from link_intake_rows i where i\.mode = 'intake' and i\.person_id = c\.person_id and i\.status = 'needs-you'\)/);
+    expect(src).toMatch(/c\.mode = 'consent' and c\.status = 'needs-you' and c\.date <= \$\{siteToday\} and c\.reason = 'Not found in consent step'\s+and exists \(select 1 from link_intake_rows i where i\.mode = 'intake' and i\.person_id = c\.person_id and i\.status = 'needs-you'\)/);
     expect(src).toMatch(/select reason, created_at\s+from newperson_unsent/);
     expect(src).toMatch(/select kind, match, active, grade is not null as has_grade, count\(\*\)::int n\s+from link_roster\s+group by 1, ?2, ?3, ?4/);
   });
