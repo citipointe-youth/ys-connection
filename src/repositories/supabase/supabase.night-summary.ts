@@ -26,7 +26,7 @@ export class SupabaseNightSummaryRepository implements INightSummaryRepository {
 
   async taps(fromIso: string, toIso_: string, limit: number): Promise<NightTapRow[]> {
     const rows = await this.sql`
-      select at, event, outcome, device_id from link_log where at >= ${fromIso} and at < ${toIso_} order by at desc limit ${limit}`;
+      select at, event, outcome, device_id from link_log where at >= ${fromIso} and at < ${toIso_} order by at desc, id desc limit ${limit}`;
     return rows.map((r: any) => ({ at: toIso(r.at), event: r.event as LogEvent, outcome: r.outcome, deviceId: r.device_id ?? null }));
   }
 }

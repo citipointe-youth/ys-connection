@@ -55,7 +55,8 @@ describe('night-summary repository (twin)', () => {
     expect(all.map((t) => t.at).sort()).toEqual(['2026-11-05T10:00:00.000Z', '2026-11-05T11:00:00.000Z', '2026-11-05T12:00:00.000Z']);
     expect(Object.keys(all[0]!).sort()).toEqual(TAP_KEYS);
     expect(JSON.stringify(all)).not.toMatch(/sample\.login|Codeman|Sample phone|Sample Dummyton/);
-    expect(await repo.taps('2026-11-05T10:00:00.000Z', '2026-11-05T14:00:00.000Z', 2)).toHaveLength(2);
+    expect((await repo.taps('2026-11-05T10:00:00.000Z', '2026-11-05T14:00:00.000Z', 2)).map((t) => t.at))
+      .toEqual(['2026-11-05T13:00:00.000Z', '2026-11-05T12:00:00.000Z']);
     const [last] = await repo.taps('2026-11-05T13:00:00.000Z', '2026-11-05T14:00:00.000Z', 5);
     expect(last).toEqual({ at: '2026-11-05T13:00:00.000Z', event: 'undo', outcome: 'refused:X', deviceId: null });
   });
@@ -66,9 +67,9 @@ describe('night-summary repository (supabase source)', () => {
   it('supabase source names its columns', () => {
     expect(src).not.toMatch(/select\s+\*/i);
     for (const c of ['login', 'leader_name', 'target_name', 'device_label', 'prev_leader_name', 'payload', 'dedupe_key', 'lease_owner', 'note', 'detail']) {
-      expect(src, c).not.toMatch(new RegExp(`\b${c}\b`));
+      expect(src, c).not.toMatch(new RegExp(String.raw`\b${c}\b`));
     }
-    expect(src).toMatch(/select type, status, reason, service_date, created_at, result_at, attempts/);
-    expect(src).toMatch(/select at, event, outcome, device_id/);
+    expect(src).toMatch(/select type, status, reason, service_date, created_at, result_at, attempts\s+from/);
+    expect(src).toMatch(/select at, event, outcome, device_id\s+from/);
   });
 });
