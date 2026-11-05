@@ -169,6 +169,19 @@ describe('module switched off mid-session (final review minor 7)', () => {
     f._icSetStart();
     expect(f.peek()).toEqual({ p: 'admin', _adminScroll: 'setup-idchecks-start', _setupOpen: { modules: true } });
   });
+  // Already on Admin: no go(), the scroll target is set before the view is rendered in place.
+  it('already on the admin page: the tab and scroll target are set and the view renders without go()', async () => {
+    const f = loadFns(['switchAdminTab'],
+      `var S = { page: 'admin' }; var _adminScroll = null, _adminTab = null, _setupOpen = {}, _adminData = null, _went = 0, _drawn = null;
+       const ADMIN_TAB_HOME = { errors:'problems', unsent:'problems', system:'problems', loginActivity:'accounts', data:'newyear' };
+       const API = { get: async () => ({}) };
+       function _setupLeaveAsk() { return false; }
+       function go() { _went++; }
+       async function renderAdminView() { _drawn = { _adminTab, _adminScroll }; }
+       function peek() { return { _went, _drawn }; }`, ['switchAdminTab', 'peek']);
+    await f.switchAdminTab('errors');
+    expect(f.peek()).toEqual({ _went: 0, _drawn: { _adminTab: 'problems', _adminScroll: 'err-log' } });
+  });
   it('the other tabs keep their own scroll targets', () => {
     const f = adminNav();
     f.switchAdminTab('errors');

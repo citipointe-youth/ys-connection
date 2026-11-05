@@ -28,6 +28,8 @@ const STARTS: readonly (readonly [string, HoldCode])[] = [
 // "<name>'s consent form must be approved first...": the name leads, so this one matches inside the text.
 const NAMED_FIRST = "'s consent form must be approved first";
 
+// Every entry matches by startsWith, including those Appendix H lists as exact: the stored text is cut to 200 characters and a few
+// writers append a detail after the wording, so an exact match would drop them to 'other'.
 export function classifyHold(text: string): HoldCode | 'other' {
   for (const [start, code] of STARTS) if (text.startsWith(start)) return code;
   return text.includes(NAMED_FIRST) ? 'first-child-pending' : 'other';

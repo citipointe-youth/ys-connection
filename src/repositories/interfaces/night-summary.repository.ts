@@ -11,7 +11,8 @@ export interface NightIntakeRow { mode: IntakeMode; date: string; status: PlanSt
 export interface NightUnsentRow { reason: UnsentReason; createdAt: string }
 export interface NightRosterRow { kind: 'student' | 'leader' | 'other'; match: Match; active: boolean; hasGrade: boolean; n: number }
 export interface INightSummaryRepository {
-  /** Rows whose service_date is in [fromYmd, toYmd] (inWindow true), plus open rows (pending, claimed, unclear) of any other date (inWindow false). */
+  /** Rows whose service_date is in [fromYmd, toYmd] (inWindow true), plus open rows (pending, claimed, unclear) of any other date (inWindow false).
+   *  Order is not part of the contract (Supabase: window rows then open rows; the twin: by createdAt). Callers must not rely on it. */
   outbox(fromYmd: string, toYmd: string): Promise<NightOutboxRow[]>;
   /** link_log rows with from <= at < to, at most `limit`. */
   taps(fromIso: string, toIso: string, limit: number): Promise<NightTapRow[]>;

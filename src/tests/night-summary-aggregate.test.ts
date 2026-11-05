@@ -6,6 +6,8 @@ import {
   NightSummaryRequest, NightOutbox, NightTaps, NightErrors, NightImports, NightReconcile, NightConsole, NightServices,
   REFUSAL_CODES, REASONS, LINK_REV,
 } from '../core/link-contract';
+import { ERROR_CATEGORIES } from '../repositories/interfaces/error-log.repository';
+import { ERROR_TIERS } from '../services/error-log-text';
 import {
   percentile, aggregateOutbox, aggregateTaps, aggregateErrors, aggregateImports, aggregateConsole, aggregateServices,
 } from '../services/night-summary-aggregate';
@@ -65,6 +67,16 @@ describe('outbox', () => {
     expect(o.groups.some((g) => g.reason === 'no-room')).toBe(true);
     expect(JSON.stringify(o)).not.toContain('Sample');
     expect(REASONS).not.toContain('other');
+  });
+  it('a row outside the window (or at or after `to`) adds nothing to latency or attempts, only to openTotals', () => {
+    const to = '2026-11-13T14:00:00.000Z';
+    const o = aggregateOutbox([
+      orow({ inWindow: false, status: 'unclear', serviceDate: '2026-11-01', resultAt: '2026-11-13T09:00:00.000Z', attempts: 9 }),
+      orow({ serviceDate: '2026-11-14', createdAt: to, resultAt: '2026-11-14T09:00:00.000Z', attempts: 8 }),
+      orow({ resultAt: '2026-11-13T08:00:05.000Z', attempts: 1 })], NOW, to);
+    expect(o.latency.door).toEqual({ n: 1, p50S: 5, p95S: 5, maxS: 5 });
+    expect(o.attempts.door).toEqual({ a1: 1, a2to4: 0, a5plus: 0, max: 1 });
+    expect(o.openTotals.unclear).toBe(1);
   });
   it('an in-window row created at or after `to` is not counted; open totals still are', () => {
     const to = '2026-11-13T14:00:00.000Z';
@@ -149,6 +161,26 @@ describe('errors', () => {
   });
 });
 
+describe('errors: oldestFirstSeen', () => {
+  const OLD = '2026-11-10T09:00:00.000Z', NEW = '2026-11-12T09:00:00.000Z';
+  it('is the earliest firstSeen of a folded group, whatever order the rows come in', () => {
+    for (const order of [[OLD, NEW], [NEW, OLD]]) {
+      const e = aggregateErrors(order.map((firstSeen, i) => view({ id: `e${i}`, firstSeen })), 2, FROM, TO);
+      expect(e.groups).toHaveLength(1);
+      expect(e.groups[0]!.oldestFirstSeen).toBe(OLD);
+      expect(e.groups[0]!.n).toBe(4);
+    }
+  });
+});
+
+describe('contract enums match the Error log lists', () => {
+  it('the NightErrors category and tier enums are ERROR_CATEGORIES and ERROR_TIERS', () => {
+    const g = NightErrors.shape.groups.element.shape;
+    expect([...g.category.options]).toEqual([...ERROR_CATEGORIES]);
+    expect([...g.tier.options]).toEqual([...ERROR_TIERS]);
+  });
+});
+
 const imp = (o: Partial<ImportRecord>): ImportRecord => ({ id: 'i', type: 'service', filename: 'Sample-Dummyton.csv', fileHash: 'abc', rowCount: 10, sessionsAdded: 1,
   studentsAdded: 0, studentsUpdated: 0, status: 'ok', errorMessage: 'Codeman', importedAt: '2026-11-13T10:00:00.000Z', importedBy: 'Sample', ...o });
 
@@ -164,6 +196,15 @@ describe('imports', () => {
     const text = JSON.stringify(i);
     for (const k of ['fileHash', 'filename', 'importedBy', 'errorMessage', 'Sample', 'Codeman']) expect(text).not.toContain(k);
     expect(NightImports.safeParse(i).success).toBe(true);
+  });
+});
+
+describe('imports: previous', () => {
+  const F = '2026-11-13T02:00:00.000Z', T = '2026-11-15T02:00:00.000Z';
+  it('is the newest import before from, whatever order the rows come in; one at or after from is never previous', () => {
+    const a = imp({ importedAt: '2026-10-30T10:00:00.000Z', rowCount: 8 }), b = imp({ importedAt: '2026-11-06T10:00:00.000Z', rowCount: 9 });
+    const c = imp({ importedAt: F, rowCount: 99 });
+    for (const xs of [[a, b, c], [b, a, c], [c, a, b]]) expect(aggregateImports(xs, [], F, T).previous.service).toMatchObject({ rowCount: 9 });
   });
 });
 

@@ -4,7 +4,7 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
-CLOSE-OUT 2026-11-04  (ysc-v167, not yet live)
+CLOSE-OUT 2026-11-04  (ysc-v168, not yet live)
 -------------------------------------------------------------------------------
 - Import (admin): "Not on the Elvanto roster" lists students with no Elvanto
   link and no active roster entry, most recently attended first. Graduate one,

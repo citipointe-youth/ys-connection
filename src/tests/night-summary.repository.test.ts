@@ -55,7 +55,7 @@ describe('night-summary repository (twin)', () => {
       tap('2026-11-05T12:00:00.000Z'), tap('2026-11-05T13:00:00.000Z', { event: 'undo', outcome: 'refused:X', deviceId: null })]);
     const all = await repo.taps('2026-11-05T10:00:00.000Z', '2026-11-05T13:00:00.000Z', 10);
     expect(all.map((t) => t.at).sort()).toEqual(['2026-11-05T10:00:00.000Z', '2026-11-05T11:00:00.000Z', '2026-11-05T12:00:00.000Z']);
-    expect(Object.keys(all[0]!).sort()).toEqual(TAP_KEYS);
+    for (const t of all) expect(Object.keys(t).sort()).toEqual(TAP_KEYS);
     expect(JSON.stringify(all)).not.toMatch(/sample\.login|Codeman|Sample phone|Sample Dummyton/);
     expect((await repo.taps('2026-11-05T10:00:00.000Z', '2026-11-05T14:00:00.000Z', 2)).map((t) => t.at))
       .toEqual(['2026-11-05T13:00:00.000Z', '2026-11-05T12:00:00.000Z']);
