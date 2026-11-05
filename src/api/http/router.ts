@@ -282,7 +282,7 @@ export function buildRoutes(services: Services): Route[] {
     { method: 'POST',   path: '/sync/push/:kind',         auth: false, sync: true, handler: (r) => syncCtl.push(r) },
     { method: 'POST',   path: '/sync/leaders',            auth: false, sync: true, handler: (r) => syncCtl.leaders(r) },
     { method: 'POST',   path: '/sync/reconcile/latest',   auth: false, sync: true, handler: (r) => syncCtl.reconcileLatest(r) }, // Part 2
-    { method: 'POST',   path: '/sync/night-summary',     auth: false, sync: true, handler: (r) => syncCtl.nightSummary(r) }, // Friday night check
+    { method: 'POST',   path: '/sync/night-summary',      auth: false, sync: true, handler: (r) => syncCtl.nightSummary(r) }, // Friday night check
   ];
   services.errorLog.setKnownRoutes(routes.map((r) => `${r.method} ${r.path}`));
   return routes;

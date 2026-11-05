@@ -10,7 +10,7 @@ import type { ConsoleRow, MirrorStateRow, LinkServiceRow } from '../core/link-ty
 const DOOR: readonly string[] = ['checkIn', 'checkOut', 'firstTimerCheckIn'];
 const INTAKE: readonly string[] = INTAKE_TYPES;
 const bucket = (type: string) => (DOOR.includes(type) ? 'door' : INTAKE.includes(type) ? 'intake' : 'other') as 'door' | 'intake' | 'other';
-const iso = (s: string) => new Date(s).toISOString();
+export const iso = (s: string) => new Date(s).toISOString();
 
 /** Nearest rank, p in 0..100. Empty gives 0. */
 export function percentile(sortedAsc: number[], p: number): number {

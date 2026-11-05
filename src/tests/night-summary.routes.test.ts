@@ -16,6 +16,7 @@ describe('POST /sync/night-summary', () => {
   const ME = '8f5a1c2e-0000-4000-8000-000000000001';
   let server: Server; let base = '';
   let seed: (id: string) => Promise<unknown>;
+  let c: Awaited<ReturnType<typeof buildContainer>>;
 
   const body = (o: Record<string, unknown> = {}) => ({ contractVersion: 1, consoleId: ME, section: 'console',
     from: '2026-11-13T07:00:00.000Z', to: '2026-11-13T20:00:00.000Z', ...o });
@@ -25,9 +26,9 @@ describe('POST /sync/night-summary', () => {
   beforeAll(async () => {
     process.env['LINK_SYNC_TOKEN'] = TOKEN;
     process.env['SETUP_CODE'] = CODE;
-    const c = await buildContainer();
+    c = await buildContainer();
     seed = (id) => c.repos.link.claim(claimArgs({}, id as ReturnType<typeof randomUUID>));
-    server = createApp(buildRoutes(c.services), c.services.auth).listen(0);
+    server = createApp(buildRoutes(c.services), c.services.auth, c.services.health, c.services.errorLog).listen(0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });
   afterAll(() => {
@@ -62,6 +63,20 @@ describe('POST /sync/night-summary', () => {
       expect(r.status, section).toBe(200);
       expect(await r.json()).toMatchObject({ contractVersion: 1, section });
     }
+  });
+  it('a section that fails its schema answers 500 INTERNAL_ERROR with no details, logs one row, and never echoes the value', async () => {
+    await c.repos.imports.save({ id: randomUUID(), type: 'service', filename: 'x.csv', fileHash: 'h', rowCount: 1, sessionsAdded: 1, studentsAdded: 0,
+      studentsUpdated: 0, status: 'Sample', errorMessage: null, importedAt: '2026-11-13T09:00:00.000Z', importedBy: 'x' } as any);
+    const before = (await c.repos.errorLog.list()).length;
+    const r = await post(body({ section: 'imports' }));
+    const text = await r.text();
+    expect(r.status).toBe(500);
+    expect(JSON.parse(text).code).toBe('INTERNAL_ERROR');
+    expect(JSON.parse(text).details).toBeUndefined();
+    expect(text).not.toMatch(/Sample|Dummyton|Codeman/);
+    const rows = await c.repos.errorLog.list();
+    expect(rows.length).toBe(before + 1);
+    expect(rows.find((x) => x.route === 'POST /sync/night-summary')).toMatchObject({ code: 'INTERNAL_ERROR', status: 500 });
   });
   it('an unregistered consoleId answers 200 with no self row; a registered one has exactly one', async () => {
     const none = await (await post(body({ consoleId: randomUUID() }))).json() as any;

@@ -1,12 +1,13 @@
 // Friday night check: POST /sync/night-summary (spec 2026-11-05). Read only; counts and closed values only, never a name or text.
 // One section per call, one query at a time (a plain await each, so the connection pool is never fanned out). Every section's
 // result is parsed through its schema before it is returned, so an added field or a bad format fails the section, not the privacy rule.
+import type { z } from 'zod';
 import { LINK_CONTRACT_VERSION, NightSummaryRequest, NightOutbox, NightTaps, NightErrors, NightImports, NightReconcile, NightConsole, NightServices,
   type NIGHT_SECTIONS } from '../core/link-contract';
 import { parseBody } from './sync.service';
 import { toView } from './error-log.service';
 import { brisbaneToday } from './link-rules';
-import { aggregateOutbox, aggregateTaps, aggregateErrors, aggregateImports, aggregateConsole, aggregateServices } from './night-summary-aggregate';
+import { iso, aggregateOutbox, aggregateTaps, aggregateErrors, aggregateImports, aggregateConsole, aggregateServices } from './night-summary-aggregate';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { IErrorLogRepository } from '../repositories/interfaces/error-log.repository';
 import type { IReconcileRunRepository } from '../repositories/interfaces/reconcile-run.repository';
@@ -37,37 +38,43 @@ export function makeNightSummaryService(d: NightSummaryDeps): NightSummaryServic
     const tz = (await d.settings.getSettings()).ministryConfig.structure.timeZone;
     return { fromYmd: brisbaneToday(new Date(from), tz), toYmd: brisbaneToday(new Date(to), tz) };
   };
-  const iso = (s: string) => new Date(s).toISOString();
+  // A result outside its schema fails the section with a plain Error: a ZodError would answer 400 and echo the received value.
+  // The adapter turns this into 500 INTERNAL_ERROR and one Error log row (code and route only).
+  const shaped = <T extends z.ZodTypeAny>(schema: T, v: unknown): z.infer<T> => {
+    const r = schema.safeParse(v);
+    if (!r.success) throw new Error('night-summary: section shape refused');
+    return r.data;
+  };
 
   const sections: Record<Section, (r: { consoleId: string; from: string; to: string }) => Promise<unknown>> = {
     outbox: async (r) => {
       const { fromYmd, toYmd } = await days(r.from, r.to);
-      return NightOutbox.parse(aggregateOutbox(await d.night.outbox(fromYmd, toYmd), now()));
+      return shaped(NightOutbox, aggregateOutbox(await d.night.outbox(fromYmd, toYmd), now()));
     },
-    taps: async (r) => NightTaps.parse(aggregateTaps(await d.night.taps(r.from, r.to, NIGHT_TAPS_MAX), NIGHT_TAPS_MAX)),
+    taps: async (r) => shaped(NightTaps, aggregateTaps(await d.night.taps(r.from, r.to, NIGHT_TAPS_MAX), NIGHT_TAPS_MAX)),
     errors: async (r) => {
       const rows = await d.errorRows.list();
       // The tier is the one the Error log shows (computed from the code at read time), not the stored column.
-      return NightErrors.parse(aggregateErrors(rows.map((x) => toView(x)), rows.length, r.from, r.to));
+      return shaped(NightErrors, aggregateErrors(rows.map((x) => toView(x)), rows.length, r.from, r.to));
     },
     imports: async (r) => {
       const service = await d.imports.findByType('service');
       const lifegroup = await d.imports.findByType('lifegroup');
-      return NightImports.parse(aggregateImports(service, lifegroup, r.from, r.to));
+      return shaped(NightImports, aggregateImports(service, lifegroup, r.from, r.to));
     },
     // The latest run's counts only: its items (ids) are never read out.
     reconcile: async () => {
       const run = await d.runs.latest();
-      return NightReconcile.parse(run ? { ranAt: iso(run.ranAt), ok: run.ok, checks: run.checks } : null);
+      return shaped(NightReconcile, run ? { ranAt: iso(run.ranAt), ok: run.ok, checks: run.checks } : null);
     },
     console: async (r) => {
       const consoles = await d.link.listConsoles();
       const mirror = await d.link.mirrorState();
-      return NightConsole.parse(aggregateConsole(consoles, mirror, r.consoleId));
+      return shaped(NightConsole, aggregateConsole(consoles, mirror, r.consoleId));
     },
     services: async (r) => {
       const { fromYmd, toYmd } = await days(r.from, r.to);
-      return NightServices.parse(aggregateServices(await d.link.services(), fromYmd, toYmd));
+      return shaped(NightServices, aggregateServices(await d.link.services(), fromYmd, toYmd));
     },
   };
 

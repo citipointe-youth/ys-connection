@@ -126,6 +126,31 @@ describe('night-summary service', () => {
     await expect(h.svc.get(req('console'))).rejects.toThrow();
   });
 
+  // Every section parses its result. One bad repository value per section; the refusal is a plain Error with no issues in it,
+  // so the adapter answers 500 INTERNAL_ERROR with no details (a ZodError would answer 400 and echo the received value).
+  // taps has no case: its aggregate maps every outcome to a closed value or 'other', so no repository value can fail its schema.
+  const REFUSED = 'night-summary: section shape refused';
+  const BAD: [string, (h: Awaited<ReturnType<typeof harness>>) => Promise<NightSummaryDeps>][] = [
+    ['outbox', async (h) => ({ ...h.deps, night: { taps: async () => [], outbox: async () => [{ type: 'checkIn', status: 'Sample', reason: null,
+      serviceDate: '2026-11-13', createdAt: '2026-11-13T08:00:00.000Z', resultAt: null, attempts: 1, inWindow: true }] } })],
+    ['errors', async (h) => { await h.errors.record(errEntry({})); return { ...h.deps, errorRows: { list: async () => [...(await h.errors.list())].map((r) => ({ ...r, category: 'Sample' as any })) } }; }],
+    ['imports', async (h) => ({ ...h.deps, imports: { findByType: async (t) => (t === 'service' ? [{ type: 'service', filename: '', fileHash: '', rowCount: 1,
+      sessionsAdded: 1, status: 'Sample', importedAt: '2026-11-13T09:00:00.000Z' }] as any : []) } })],
+    ['reconcile', async (h) => ({ ...h.deps, runs: { latest: async () => ({ ranAt: '2026-11-13T11:00:00.000Z', ok: true,
+      checks: { checkins: { count: -1 }, unmatched: { count: 0 }, lifegroups: { count: 0 }, members: { count: 0 } } }) as any } })],
+    ['console', async (h) => ({ ...h.deps, link: { ...h.link, listConsoles: async () => [], mirrorState: async () => [{ kind: 'Sample' as any,
+      takenAt: '2026-11-13T09:00:00.000Z', appliedAt: '2026-11-13T09:00:00.000Z', rowCount: 1, consoleId: ME }], services: async () => [] } })],
+    ['services', async (h) => ({ ...h.deps, link: { ...h.link, listConsoles: async () => [], mirrorState: async () => [], services: async () => [{ serviceTimeId: 'a',
+      serviceId: 'b', name: 'x', startsAt: '2026-11-13T08:00:00.000Z', ymd: '2026-11-13x', rooms: [], checkedIn: [] }] } })],
+  ];
+  it.each(BAD)('%s: a value outside its schema fails the section with a bare Error, naming no value', async (section, make) => {
+    const h = await harness();
+    const err = await makeNightSummaryService(await make(h)).get(req(section)).then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).name).toBe('Error');            // not a ZodError
+    expect((err as Error).message).toBe(REFUSED);
+  });
+
   it('outbox: the result does not depend on the order the repository returns rows', async () => {
     const h = await harness();
     for (const [date, status] of [['2026-11-13', 'sent'], ['2026-11-13', 'pending'], ['2026-11-14', 'refused'], ['2026-10-01', 'unclear']] as const) {
