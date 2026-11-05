@@ -5,3 +5,4 @@ export { InMemoryLinkRepository } from './link.repository';
 export { InMemoryErrorLogRepository } from './error-log.repository';
 export { InMemoryUnsentRepository } from './unsent.repository';
 export { InMemoryIdCheckRepository } from './id-checks.repository';
+export { InMemoryNightSummaryRepository } from './night-summary.repository';
