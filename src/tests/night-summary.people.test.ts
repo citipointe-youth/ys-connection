@@ -190,6 +190,8 @@ describe('night-summary people (supabase source)', () => {
     for (const l of lists) expect(l, l).not.toMatch(/\bperson_id\b/);
     expect(src.match(/\bperson_id\b/g)!.length).toBe(2);   // both inside the one exists: c.person_id and i.person_id
     expect(src).toMatch(/select mode, date, status, reason, count\(\*\)::int n\s+from link_intake_rows\s+group by 1, ?2, ?3, ?4/);
+    // the one exists: a consent row held 'Not found in consent step' whose person has a needs-you intake row
+    expect(src).toMatch(/c\.mode = 'consent' and c\.reason = 'Not found in consent step'\s+and exists \(select 1 from link_intake_rows i where i\.mode = 'intake' and i\.person_id = c\.person_id and i\.status = 'needs-you'\)/);
     expect(src).toMatch(/select reason, created_at\s+from newperson_unsent/);
     expect(src).toMatch(/select kind, match, active, grade is not null as has_grade, count\(\*\)::int n\s+from link_roster\s+group by 1, ?2, ?3, ?4/);
   });

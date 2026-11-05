@@ -148,6 +148,11 @@ describe('night-summary service', () => {
       takenAt: '2026-11-13T09:00:00.000Z', appliedAt: '2026-11-13T09:00:00.000Z', rowCount: 1, consoleId: ME }], services: async () => [] } })],
     ['services', async (h) => ({ ...h.deps, link: { ...h.link, listConsoles: async () => [], mirrorState: async () => [], services: async () => [{ serviceTimeId: 'a',
       serviceId: 'b', name: 'x', startsAt: '2026-11-13T08:00:00.000Z', ymd: '2026-11-13x', rooms: [], checkedIn: [] }] } })],
+    // roster passes kind and match through, people passes the unsent reason through: a value outside the enum fails closed
+    ['roster', async (h) => ({ ...h.deps, night: { ...NO_PEOPLE, outbox: async () => [], taps: async () => [],
+      roster: async () => [{ kind: 'Sample' as any, match: 'auto' as const, active: true, hasGrade: true, n: 1 }] } })],
+    ['people', async (h) => ({ ...h.deps, night: { ...NO_PEOPLE, outbox: async () => [], taps: async () => [],
+      unsent: async () => [{ reason: 'Sample' as any, createdAt: '2026-11-10T00:00:00.000Z' }] } })],
   ];
   it.each(BAD)('%s: a value outside its schema fails the section with a bare Error, naming no value', async (section, make) => {
     const h = await harness();
