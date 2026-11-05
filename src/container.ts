@@ -100,6 +100,10 @@ import { makeReconcileService, type ReconcileService } from './services/reconcil
 import { InMemoryReconcileRunRepository } from './repositories/in-memory/reconcile-run.repository';
 import { SupabaseReconcileRunRepository } from './repositories/supabase/supabase.reconcile-run';
 import type { IReconcileRunRepository } from './repositories/interfaces/reconcile-run.repository';
+import { makeNightSummaryService, type NightSummaryService } from './services/night-summary.service';
+import { InMemoryNightSummaryRepository } from './repositories/in-memory/night-summary.repository';
+import { SupabaseNightSummaryRepository } from './repositories/supabase/supabase.night-summary';
+import type { INightSummaryRepository } from './repositories/interfaces/night-summary.repository';
 import { makeErrorLogService, type ErrorLogService } from './services/error-log.service';
 import { RateLimiter } from './utils/rate-limiter';
 import { cachedProbe } from './utils/cached-probe';
@@ -157,6 +161,8 @@ export interface Services {
   errorLog: ErrorLogService;
   /** Part 2 reconciliation: runs after each import; POST /sync/reconcile/latest and the admin Who? view. */
   reconcile: ReconcileService;
+  /** Friday night check: POST /sync/night-summary (read only, counts only). */
+  nightSummary: NightSummaryService;
   users: IUserRepository;
   setup: SetupService;
   /** Cached (30 s) db + schema probe for GET /health. */
@@ -227,6 +233,7 @@ export async function buildContainer(): Promise<Container> {
   const link: ILinkRepository = useSupabase ? new SupabaseLinkRepository(sql) : new InMemoryLinkRepository();
   const errorLogRepo: IErrorLogRepository = useSupabase ? new SupabaseErrorLogRepository(sql) : new InMemoryErrorLogRepository();
   const reconcileRuns: IReconcileRunRepository = useSupabase ? new SupabaseReconcileRunRepository(sql) : new InMemoryReconcileRunRepository();
+  const nightRepo: INightSummaryRepository = useSupabase ? new SupabaseNightSummaryRepository(sql) : new InMemoryNightSummaryRepository(link);
   const intakeRepo: ILinkIntakeRepository = useSupabase ? new SupabaseLinkIntakeRepository(sql) : new InMemoryLinkIntakeRepository();
   // Memory has no FK: an entry whose leader is gone reads as archived (Postgres: ON DELETE SET NULL).
   const idChecks: IIdCheckRepository = useSupabase
@@ -319,6 +326,7 @@ export async function buildContainer(): Promise<Container> {
   const reconcile = makeReconcileService({ link, students, lifegroups, lifegroupWeeks, lifegroupAttendance, serviceSessions,
     serviceAttendance, imports, settings, errorLog, errorRows: errorLogRepo, runs: reconcileRuns,
     auditFeed: () => connectionAudit.checkFeed() });
+  const nightSummary = makeNightSummaryService({ night: nightRepo, link, errorRows: errorLogRepo, runs: reconcileRuns, imports, settings });
   // Never throws: the bus step is caught here, rematch/run catch internally and run() is bounded (10 s).
   afterImport = async (kind) => {
     await busSvc.linkGuestsAfterImport().catch(() => undefined);
@@ -356,6 +364,7 @@ export async function buildContainer(): Promise<Container> {
     sync,
     intake,
     reconcile,
+    nightSummary,
     errorLog,
     users,
     setup,

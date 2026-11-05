@@ -1006,6 +1006,7 @@
   "POST /students/off-roster/graduate",
   "POST /sync/claim",
   "POST /sync/leaders",
+  "POST /sync/night-summary",
   "POST /sync/push/:kind",
   "POST /sync/reconcile/latest",
   "POST /sync/result",

@@ -3,8 +3,9 @@
 import type { HttpRequest } from '../http/types';
 import type { SyncService } from '../../services/sync.service';
 import type { ReconcileService } from '../../services/reconcile.service';
+import type { NightSummaryService } from '../../services/night-summary.service';
 
-export function makeSyncController(deps: { sync: SyncService; reconcile: Pick<ReconcileService, 'latest'> }) {
+export function makeSyncController(deps: { sync: SyncService; reconcile: Pick<ReconcileService, 'latest'>; nightSummary: NightSummaryService }) {
   const S = deps.sync;
   return {
     claim: (r: HttpRequest) => S.claim(r.body),
@@ -12,5 +13,6 @@ export function makeSyncController(deps: { sync: SyncService; reconcile: Pick<Re
     push: (r: HttpRequest) => S.push(r.params['kind']!, r.body),
     leaders: (r: HttpRequest) => S.leaders(r.body), // T8 (rev 5)
     reconcileLatest: (r: HttpRequest) => deps.reconcile.latest(r.body),
+    nightSummary: (r: HttpRequest) => deps.nightSummary.get(r.body), // Friday night check: read only, counts only
   };
 }
