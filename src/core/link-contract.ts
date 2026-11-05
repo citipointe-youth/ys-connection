@@ -423,5 +423,56 @@ export const ReconcileLatestResponse = z.object({
     count: z.number().int().min(0), counted: z.boolean(), lastSeen: z.string() })).max(200),
 });
 
+// ---- POST /sync/night-summary (Friday night check, 2026-11-05): read only, counts and closed values only, never a name or text.
+// Additive; an older console never calls it. No LINK_REV change.
+export const NIGHT_SECTIONS = ['outbox', 'taps', 'errors', 'imports', 'reconcile', 'console', 'services'] as const;
+const NIGHT_MAX_MS = 48 * 3_600_000;
+export const NightSummaryRequest = z.object({ contractVersion: Version, consoleId: Uuid, section: z.enum(NIGHT_SECTIONS), from: Iso, to: Iso }).strict()
+  .refine((r) => Date.parse(r.from) < Date.parse(r.to), 'from must be before to')
+  .refine((r) => Date.parse(r.to) - Date.parse(r.from) <= NIGHT_MAX_MS, 'window is at most 48 h');
+/** Every refusal code a link_log `refused:CODE` outcome can carry: each super('X') in src/core/errors, plus INTERNAL and not-landed (link.service). */
+export const REFUSAL_CODES = ['NOT_FOUND', 'FORBIDDEN', 'UNAUTHORIZED', 'BAD_REQUEST', 'CONFLICT', 'MUST_CHANGE_PASSWORD', 'MODULE_DISABLED',
+  'SETUP_INCOMPLETE', 'RATE_LIMITED', 'LINK_UNAVAILABLE', 'LINK_DNC', 'CONSENT_CHECK_FIRST', 'CONSENT_FLOW_UNKNOWN', 'LINK_BUSY_ROW',
+  'LINK_ID_REUSED', 'LINK_EDIT_IN_ELVANTO', 'LINK_DUPLICATE', 'LINK_STILL_SENDING', 'LINK_TOO_OLD', 'LINK_STALE', 'INTAKE_STALE',
+  'LINK_NOT_YOURS', 'LINK_OFF', 'LINK_CONTRACT_MISMATCH', 'VALIDATION_ERROR', 'INTERNAL', 'not-landed'] as const;
+/** The retired 'shadowed' status (PY-P3) may still sit on old rows, so the night summary's status enum adds it. */
+export const NIGHT_STATUSES = [...STATUSES, 'shadowed'] as const;
+const N = z.number().int().min(0);
+const Lat = z.object({ n: N, p50S: N, p95S: N, maxS: N }).strict();
+const Att = z.object({ a1: N, a2to4: N, a5plus: N, max: N }).strict();
+const PerBucket = <T extends z.ZodTypeAny>(t: T) => z.object({ door: t, intake: t, other: t }).strict();
+export const NightOutbox = z.object({
+  groups: z.array(z.object({ type: z.enum(ACTION_TYPES), status: z.enum(NIGHT_STATUSES), reason: z.enum([...REASONS, 'other']).nullable(), n: N }).strict()),
+  latency: PerBucket(Lat), attempts: PerBucket(Att),
+  openTotals: z.object({ unclear: N, pending: N, claimed: N }).strict(),
+  oldestPendingAgeS: N.nullable(),
+}).strict();
+export const NightTaps = z.object({ tapCount: N, peakPerMinute: N, distinctDevices: N, replay: N,
+  refused: z.record(z.enum([...REFUSAL_CODES, 'other']), N), truncated: z.boolean() }).strict();
+export const ERROR_CODE_RE = /^[A-Za-z0-9_-]{1,80}$/;
+export const NightErrors = z.object({ ignored: N, capped: z.boolean(),
+  groups: z.array(z.object({ category: z.enum(['server', 'link', 'elvanto-form', 'client', 'reconcile', 'audit']), tier: z.enum(['now', 'later', 'fyi']),
+    status: z.number().int().min(0).max(599).nullable(), code: z.string().regex(ERROR_CODE_RE), n: N,
+    oldestFirstSeen: Iso, inWindow: z.boolean() }).strict()) }).strict();
+const ImportOne = z.object({ rowCount: N, sessionsAdded: N, importedAt: Iso }).strict();
+export const NightImports = z.object({
+  rows: z.array(z.object({ type: z.enum(['service', 'lifegroup']), status: z.enum(['ok', 'error']), rowCount: N, sessionsAdded: N, importedAt: Iso }).strict()),
+  previous: z.object({ service: ImportOne.nullable(), lifegroup: ImportOne.nullable() }).strict() }).strict();
+export const NightReconcile = z.object({ ranAt: Iso, ok: z.boolean(),
+  checks: z.object({ checkins: CheckState, unmatched: CheckState, lifegroups: CheckState, members: CheckState }).strict() }).strict().nullable();
+export const NightConsole = z.object({
+  consoles: z.array(z.object({ self: z.boolean(), lastSeenAt: Iso, contractVersion: N, consoleVersion: z.string().regex(/^[\w.@-]{1,40}$/), linkRev: N,
+    inWindow: z.boolean(), pollSeconds: N }).strict()),
+  mirror: z.array(z.object({ kind: z.enum(MIRROR_KINDS), takenAt: Iso, appliedAt: Iso, rowCount: N }).strict()),
+  appLinkRev: N }).strict();
+export const NightServices = z.object({ rows: z.array(z.object({ ymd: Ymd, startsAt: Iso, rooms: N, checkedIn: N }).strict()) }).strict();
+export type NightOutbox = z.infer<typeof NightOutbox>;
+export type NightTaps = z.infer<typeof NightTaps>;
+export type NightErrors = z.infer<typeof NightErrors>;
+export type NightImports = z.infer<typeof NightImports>;
+export type NightReconcile = z.infer<typeof NightReconcile>;
+export type NightConsole = z.infer<typeof NightConsole>;
+export type NightServices = z.infer<typeof NightServices>;
+
 // ---- Error bodies (spec 3.1); extra fields (expected, details) pass through.
 export const ErrorBody = z.object({ code: z.enum(SYNC_ERROR_CODES), message: z.string() }).passthrough();
