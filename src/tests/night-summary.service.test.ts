@@ -166,6 +166,17 @@ describe('night-summary service', () => {
     expect(a.openTotals).toEqual({ unclear: 1, pending: 1, claimed: 0 });
   });
 
+  it('outbox: a Saturday-dated row created after `to` is not counted (a later service)', async () => {
+    const h = await harness();
+    const a = newRow({ serviceDate: '2026-11-14' }); await h.link.insertAction(a);
+    const b = newRow({ serviceDate: '2026-11-14' }); await h.link.insertAction(b);
+    h.link._backdate('link_outbox', a.id, 'status', 'sent'); h.link._backdate('link_outbox', b.id, 'status', 'sent');
+    h.link._backdate('link_outbox', a.id, 'createdAt', '2026-11-13T10:00:00.000Z');
+    h.link._backdate('link_outbox', b.id, 'createdAt', '2026-11-14T01:00:00.000Z');
+    const g = ((await h.svc.get(req('outbox'))).data as any).groups;
+    expect(g.reduce((n: number, x: any) => n + x.n, 0)).toBe(1);
+  });
+
   it('taps: asks for NIGHT_TAPS_MAX rows and flags a full read as truncated', async () => {
     const h = await harness();
     let asked = 0;

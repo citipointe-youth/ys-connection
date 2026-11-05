@@ -18,7 +18,9 @@ export function percentile(sortedAsc: number[], p: number): number {
   return sortedAsc[Math.min(sortedAsc.length, Math.max(1, Math.ceil((p / 100) * sortedAsc.length))) - 1]!;
 }
 
-export function aggregateOutbox(rows: NightOutboxRow[], now: Date): NightOutbox {
+/** `to` (ISO) ends the window: service_date is a whole site day, so a row created at or after `to` (a later service) is not this night's. */
+export function aggregateOutbox(rows: NightOutboxRow[], now: Date, to?: string): NightOutbox {
+  const end = to === undefined ? Infinity : Date.parse(to);
   const groups = new Map<string, NightOutbox['groups'][number]>();
   const lat = { door: [] as number[], intake: [] as number[], other: [] as number[] };
   const att = { door: { a1: 0, a2to4: 0, a5plus: 0, max: 0 }, intake: { a1: 0, a2to4: 0, a5plus: 0, max: 0 }, other: { a1: 0, a2to4: 0, a5plus: 0, max: 0 } };
@@ -27,7 +29,7 @@ export function aggregateOutbox(rows: NightOutboxRow[], now: Date): NightOutbox 
   for (const r of rows) {
     if (r.status === 'unclear' || r.status === 'pending' || r.status === 'claimed') openTotals[r.status]++;
     if (r.status === 'pending') { const t = Date.parse(r.createdAt); if (oldestPending === null || t < oldestPending) oldestPending = t; }
-    if (!r.inWindow) continue;
+    if (!r.inWindow || Date.parse(r.createdAt) >= end) continue;
     const reason = r.reason === null ? null : (REASONS as readonly string[]).includes(r.reason) ? r.reason : 'other';
     const key = `${r.type}|${r.status}|${reason}`;
     const g = groups.get(key);

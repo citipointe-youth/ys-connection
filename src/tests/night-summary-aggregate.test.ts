@@ -66,6 +66,13 @@ describe('outbox', () => {
     expect(JSON.stringify(o)).not.toContain('Sample');
     expect(REASONS).not.toContain('other');
   });
+  it('an in-window row created at or after `to` is not counted; open totals still are', () => {
+    const to = '2026-11-13T14:00:00.000Z';
+    const o = aggregateOutbox([orow({ serviceDate: '2026-11-14', createdAt: '2026-11-14T01:00:00.000Z' }),
+      orow({ serviceDate: '2026-11-14', createdAt: to, status: 'pending', resultAt: null }), orow()], NOW, to);
+    expect(o.groups.reduce((a, g) => a + g.n, 0)).toBe(1);
+    expect(o.openTotals.pending).toBe(1);
+  });
   it('the retired shadowed status parses', () => {
     const o = aggregateOutbox([orow({ status: 'shadowed' })], NOW);
     expect(NightOutbox.safeParse(o).success).toBe(true);

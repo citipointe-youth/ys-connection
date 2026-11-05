@@ -49,7 +49,7 @@ export function makeNightSummaryService(d: NightSummaryDeps): NightSummaryServic
   const sections: Record<Section, (r: { consoleId: string; from: string; to: string }) => Promise<unknown>> = {
     outbox: async (r) => {
       const { fromYmd, toYmd } = await days(r.from, r.to);
-      return shaped(NightOutbox, aggregateOutbox(await d.night.outbox(fromYmd, toYmd), now()));
+      return shaped(NightOutbox, aggregateOutbox(await d.night.outbox(fromYmd, toYmd), now(), r.to));
     },
     taps: async (r) => shaped(NightTaps, aggregateTaps(await d.night.taps(r.from, r.to, NIGHT_TAPS_MAX), NIGHT_TAPS_MAX)),
     errors: async (r) => {
