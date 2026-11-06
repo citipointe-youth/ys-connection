@@ -23,11 +23,11 @@ describe('L1-1 Setup leader cards: same outer size, ~3.5 student rows', () => {
     expect(src).toContain('<div class="connect-leader-sub">');
     // the count sits on the meta line, the Add button on the same row
     expect(src).toMatch(/connect-leader-sub">\s*<span class="connect-leader-meta">[^\n]*student\$\{n!==1\?'s':''\}<\/span><\/span>\s*\$\{canEdit\?`<button class="connect-add-btn"/);
-    expect(css('.connect-add-btn')).toContain('min-height:44px');
+    expect(css('.connect-add-btn')).toContain('min-height:40px');
     expect(css('.connect-add-btn')).toContain('flex:none');
   });
   it('>= 540px (2-3 column grid) keeps the full meta line with the Add bar below it', () => {
-    expect(HTML).toContain('@media(min-width:540px){.connect-leader-sub{flex-wrap:wrap;row-gap:10px}.connect-leader-meta{flex-basis:100%;justify-content:space-between}.connect-add-btn{flex:1 1 100%;font-size:14px}}');
+    expect(HTML).toContain('@media(min-width:540px){.connect-leader-sub{flex-wrap:wrap;row-gap:4px}.connect-leader-meta{flex-basis:100%;justify-content:space-between}.connect-add-btn{flex:1 1 100%;font-size:13px}}');
   });
   it('student rows are 39px (38 + rule) with 36px Profile/remove buttons; the list window shows 3.5 rows', () => {
     const row = px(css('.connect-stud-row'), 'min-height');
@@ -40,12 +40,14 @@ describe('L1-1 Setup leader cards: same outer size, ~3.5 student rows', () => {
     expect(list).toContain('padding:4px 10px 0 0');
     expect(css('.connect-students-track')).toContain('top:5px');
   });
-  it('the card keeps its outer size (old: 32 pad + 44 + 26 meta + 39 add + 12 + 126 list = 279px)', () => {
+  it('the card is tightened (was 279px: 32 pad + 44 + 6 + 44 + 12 + 141 list; now 6+10 pad + 40 + 0 + 40 + 4 + 141 = 241px), tap targets stay >= 40px', () => {
     const list = px(css('.connect-students'), 'max-height');
-    const gap = px(css('.connect-leader-head'), 'margin-bottom');
+    expect(css('.connect-leader')).toContain('padding:6px 12px 10px');
+    expect(css('.connect-leader-head')).not.toContain('margin-bottom');
+    expect(css('.connect-leader-head .btn-sm')).toContain('min-height:40px');
     const top = px(css('.connect-students-wrap'), 'margin-top');
-    const h = 32 + 44 + gap + 44 + top + list;
-    expect(Math.abs(h - 279)).toBeLessThanOrEqual(4);
+    const h = 16 + 40 + 40 + top + list;
+    expect(h).toBeLessThanOrEqual(245);
   });
 });
 

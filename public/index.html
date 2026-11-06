@@ -397,25 +397,26 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .connect-grid{display:grid;grid-template-columns:1fr;gap:12px}
 @media(min-width:540px){.connect-grid{grid-template-columns:repeat(2,1fr)}}
 @media(min-width:900px){.connect-grid{grid-template-columns:repeat(3,1fr)}}
-.connect-leader{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;position:relative;transition:box-shadow .15s;min-width:0;overflow:hidden}
+.connect-leader{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);padding:6px 12px 10px;position:relative;transition:box-shadow .15s;min-width:0;overflow:hidden}
 .connect-leader:hover{box-shadow:var(--shadow-md)}
 .connect-leader-name{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* r21 L1: two 44px header rows (name + edit; meta + count + Add Students) so the list window fits ~3.5 students in the
+/* r21 L1 (tightened 6 Nov: 40px rows, no head gap): two header rows (name + edit; meta + count + Add Students) so the list window fits ~3.5 students in the
    same 279px card (old: name row, meta line, full-width Add bar, 2.3 tall rows). The half row says it scrolls. */
-.connect-leader-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.connect-leader-head{display:flex;align-items:center;gap:6px}
+.connect-leader-head .btn-sm{min-height:40px}
 .connect-leader-sub{display:flex;align-items:center;gap:8px}
 .connect-leader-meta{flex:1;min-width:0;display:flex;gap:6px;font-size:12px;color:var(--ink-mid)}
 .connect-leader-meta>:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .connect-leader-meta>:last-child{flex:none;white-space:nowrap}
-.connect-add-btn{flex:none;min-height:44px;padding:0 10px;font-size:13px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
+.connect-add-btn{flex:none;min-height:40px;padding:0 10px;font-size:12px;border-radius:var(--radius-sm);background:var(--accent-light);color:var(--accent-dark);font-weight:700;cursor:pointer;border:none;transition:background .15s;text-align:center}
 .connect-add-btn:hover{background:#c7d2fe}
 /* Two- and three-column cards (>= 540px, the grid's own breakpoint) are narrow: keep the full meta line, Add bar below it */
-@media(min-width:540px){.connect-leader-sub{flex-wrap:wrap;row-gap:10px}.connect-leader-meta{flex-basis:100%;justify-content:space-between}.connect-add-btn{flex:1 1 100%;font-size:14px}}
+@media(min-width:540px){.connect-leader-sub{flex-wrap:wrap;row-gap:4px}.connect-leader-meta{flex-basis:100%;justify-content:space-between}.connect-add-btn{flex:1 1 100%;font-size:13px}}
 .connect-add-btn:disabled{opacity:.45;cursor:not-allowed}
 /* A native scrollbar only flashes during an active touch drag on phones (OS-level
    overlay-scrollbar behavior that CSS can't override), so this preview draws its own
    always-visible track/thumb (sized in _syncConnectThumb) instead of relying on one. */
-.connect-students-wrap{position:relative;margin-top:12px}
+.connect-students-wrap{position:relative;margin-top:4px}
 .connect-students{border-top:1px solid var(--paper-dark);padding:4px 10px 0 0;max-height:141px;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .connect-students::-webkit-scrollbar{display:none}
 .connect-students-track{position:absolute;top:5px;right:0;bottom:1px;width:3px;background:var(--paper-dark);border-radius:2px;pointer-events:none}
