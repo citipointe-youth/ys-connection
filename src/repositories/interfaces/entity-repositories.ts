@@ -78,6 +78,12 @@ export interface INoticeRepository extends IRepository<Notice> {
 /** Notice alert devices. Tiny table (one row per subscribed phone), so findAll is the send-time read. */
 export type INoticePushRepository = IRepository<NoticePushSub>;
 
+/** Alert send ledger. `claim` is true when this caller won the (kind, key, leader) row and may send. */
+export interface IAlertSendRepository {
+  claim(kind: 'bday' | 'lgrem', key: string, leaderId: string): Promise<boolean>;
+  prune(before: Date): Promise<void>;
+}
+
 export interface IConnectionRepository extends IRepository<Connection> {
   findByStudent(studentId: string): Promise<Connection[]>;
   findByLeader(leaderId: string): Promise<Connection[]>;

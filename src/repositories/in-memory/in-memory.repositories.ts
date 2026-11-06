@@ -27,6 +27,7 @@ import type {
   IPrayerRepository,
   INoticeRepository,
   INoticePushRepository,
+  IAlertSendRepository,
   IConnectionRepository,
   IServiceSessionRepository,
   IServiceAttendanceRepository,
@@ -177,6 +178,16 @@ export class InMemoryNoticeRepository extends InMemoryBaseRepository<Notice> imp
   }
 }
 export class InMemoryNoticePushRepository extends InMemoryBaseRepository<NoticePushSub> implements INoticePushRepository {}
+export class InMemoryAlertSendRepository implements IAlertSendRepository {
+  private sent = new Set<string>();
+  async claim(kind: 'bday' | 'lgrem', key: string, leaderId: string): Promise<boolean> {
+    const k = `${kind}|${key}|${leaderId}`;
+    if (this.sent.has(k)) return false;
+    this.sent.add(k);
+    return true;
+  }
+  async prune(_before: Date): Promise<void> { /* ponytail: in-memory dev ledger never expires */ }
+}
 
 // ---------------------------------------------------------------------------
 // Connections

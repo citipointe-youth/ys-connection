@@ -13,6 +13,9 @@ const sub = (n: string) => ({ endpoint: `https://push.example.com/${n}`, keys: {
 
 const ADMIN = A('admin'), DIR = A('oversight'), JG = A('quad', 'b79'), SG = A('quad', 'b1012'), GR = A('grade'), LD = A('leader');
 
+const L1 = '11111111-1111-4111-8111-111111111111', L2 = '22222222-2222-4222-8222-222222222222';
+const LEADERS = [{ id: L1, active: true }, { id: L2, active: false }];
+
 function make(o: { notices?: 'on' | 'off'; env?: Record<string, string>; sender?: PushSender; users?: any[] } = {}) {
   const subs = new InMemoryNoticePushRepository();
   const sent: string[] = [];
@@ -21,7 +24,7 @@ function make(o: { notices?: 'on' | 'off'; env?: Record<string, string>; sender?
   const users = o.users ?? [ADMIN, DIR, JG, SG, GR, LD].map((a) => U(a));
   const sender: PushSender = o.sender ?? (async (s, p) => { sent.push(s.endpoint); expect(JSON.parse(p).title).toBe('New notice'); });
   const svc = makeNoticeService(new InMemoryNoticeRepository(), settingsRepo, () => NOW, {
-    subs, users: { findAll: async () => users as any }, sender, env: o.env ?? VAPID,
+    subs, users: { findAll: async () => users as any }, leaders: { findAll: async () => LEADERS as any }, sender, env: o.env ?? VAPID,
     errorLog: { record: async (r) => { logged.push(r); } },
   });
   return { svc, subs, sent, logged };
@@ -113,5 +116,51 @@ describe('notice push: sending', () => {
     expect(p.body.endsWith('…')).toBe(true);
     expect(p.screen).toBe('notices');
     expect(Object.keys(p).sort()).toEqual(['body', 'screen', 'title']);
+  });
+});
+
+describe('subscription carries leader and prefs', () => {
+  it('saves leaderId and prefs', async () => {
+    const { svc, subs } = make();
+    await svc.subscribe(JG, { ...sub('1'), leaderId: L1, prefs: { bday: false } });
+    expect((await subs.findAll())[0]).toMatchObject({ leaderId: L1, bdayOn: false, lgremOn: true });
+  });
+  it('missing leaderId saves null', async () => {
+    const { svc, subs } = make();
+    await svc.subscribe(JG, { ...sub('1'), leaderId: L1 });
+    await svc.subscribe(JG, sub('1'));
+    expect((await subs.findAll())[0]!.leaderId).toBeNull();
+  });
+  it('missing prefs keeps stored values', async () => {
+    const { svc, subs } = make();
+    await svc.subscribe(JG, { ...sub('1'), prefs: { bday: false } });
+    await svc.subscribe(JG, sub('1'));
+    expect((await subs.findAll())[0]).toMatchObject({ bdayOn: false, lgremOn: true });
+  });
+  it('unknown or inactive leader saves null', async () => {
+    const { svc, subs } = make();
+    await svc.subscribe(JG, { ...sub('1'), leaderId: '33333333-3333-4333-8333-333333333333' });
+    expect((await subs.findAll())[0]!.leaderId).toBeNull();
+    await svc.subscribe(JG, { ...sub('1'), leaderId: L2 });
+    expect((await subs.findAll())[0]!.leaderId).toBeNull();
+  });
+  it('another login re-subscribing resets the leader', async () => {
+    const { svc, subs } = make();
+    await svc.subscribe(JG, { ...sub('1'), leaderId: L1 });
+    await svc.subscribe(SG, sub('1'));
+    expect((await subs.findAll())[0]).toMatchObject({ userId: SG.id, leaderId: null });
+  });
+  it('pushConfig returns this device state for ?endpoint', async () => {
+    const { svc } = make();
+    await svc.subscribe(JG, { ...sub('1'), leaderId: L1 });
+    expect(await svc.pushConfig(JG, sub('1').endpoint)).toMatchObject({ publicKey: 'pub', leaderId: L1, prefs: { bday: true, lgrem: true } });
+    expect(await svc.pushConfig(SG, sub('1').endpoint)).not.toHaveProperty('leaderId'); // someone else's device
+  });
+  it('pushConfig without endpoint carries no device state', async () => {
+    const { svc } = make();
+    await svc.subscribe(JG, { ...sub('1'), leaderId: L1 });
+    const c = await svc.pushConfig(JG);
+    expect(c).not.toHaveProperty('leaderId');
+    expect(c).not.toHaveProperty('prefs');
   });
 });

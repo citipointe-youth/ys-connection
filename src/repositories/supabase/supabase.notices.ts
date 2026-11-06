@@ -1,6 +1,6 @@
 import type { SqlClient } from './client';
 import { toIso } from './client';
-import type { INoticeRepository, INoticePushRepository } from '../interfaces/entity-repositories';
+import type { INoticeRepository, INoticePushRepository, IAlertSendRepository } from '../interfaces/entity-repositories';
 import type { Notice, NoticePushSub, NoticeQuad } from '../../core/entities/notice';
 
 function toNotice(row: Record<string, unknown>): Notice {
@@ -50,6 +50,9 @@ function toSub(row: Record<string, unknown>): NoticePushSub {
     p256dh: row['p256dh'] as string,
     auth: row['auth'] as string,
     createdAt: toIso(row['created_at']),
+    leaderId: (row['leader_id'] as string | null) ?? null,
+    bdayOn: row['bday_on'] as boolean,
+    lgremOn: row['lgrem_on'] as boolean,
   };
 }
 
@@ -66,13 +69,28 @@ export class SupabaseNoticePushRepository implements INoticePushRepository {
   }
   async save(s: NoticePushSub): Promise<NoticePushSub> {
     const rows = await this.sql`
-      insert into notice_push_subscriptions (id, user_id, endpoint, p256dh, auth, created_at)
-      values (${s.id}, ${s.userId}, ${s.endpoint}, ${s.p256dh}, ${s.auth}, ${s.createdAt})
-      on conflict (id) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth
+      insert into notice_push_subscriptions (id, user_id, endpoint, p256dh, auth, created_at, leader_id, bday_on, lgrem_on)
+      values (${s.id}, ${s.userId}, ${s.endpoint}, ${s.p256dh}, ${s.auth}, ${s.createdAt}, ${s.leaderId}, ${s.bdayOn}, ${s.lgremOn})
+      on conflict (id) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth,
+        leader_id = excluded.leader_id, bday_on = excluded.bday_on, lgrem_on = excluded.lgrem_on
       returning *`;
     return toSub(rows[0]!);
   }
   async delete(id: string): Promise<boolean> {
     return (await this.sql`delete from notice_push_subscriptions where id = ${id} returning id`).length > 0;
+  }
+}
+
+/** Alert ledger (migration 0056). claim = insert before sending; true only for the caller that inserted the row. */
+export class SupabaseAlertSendRepository implements IAlertSendRepository {
+  constructor(private sql: SqlClient) {}
+  async claim(kind: 'bday' | 'lgrem', key: string, leaderId: string): Promise<boolean> {
+    const rows = await this.sql`
+      insert into alert_sends (kind, key, leader_id) values (${kind}, ${key}, ${leaderId})
+      on conflict do nothing returning leader_id`;
+    return rows.length > 0;
+  }
+  async prune(before: Date): Promise<void> {
+    await this.sql`delete from alert_sends where sent_at < ${before.toISOString()}`;
   }
 }

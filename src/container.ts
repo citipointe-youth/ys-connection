@@ -313,7 +313,7 @@ export async function buildContainer(): Promise<Container> {
   const connectionAudit = makeConnectionAuditService(connectionAudits, settings, { link, errorLog,
     consentRows: () => intakeRepo.rows('consent') }); // consent audit B: get() reads a failed read as [] (link.service lets it throw)
   const idCheck = makeIdCheckService({ repo: idChecks, leaders, users, connections, students, settings });
-  const notice = makeNoticeService(notices, settings, undefined, { subs: noticePush, users, errorLog });
+  const notice = makeNoticeService(notices, settings, undefined, { subs: noticePush, users, leaders, errorLog });
   // T10: failed or unconfirmed New person sends are kept (encrypted) for the admin to resend.
   const unsent = useSupabase ? new SupabaseUnsentRepository(sql) : new InMemoryUnsentRepository();
   const newYouth = makeNewYouthService(settings, { live: true, errorLog, unsent });

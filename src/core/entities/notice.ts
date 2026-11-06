@@ -22,4 +22,9 @@ export interface NoticePushSub {
   p256dh: string;
   auth: string;
   createdAt: ISODateString;
+  /** The device's "I am" leader (null = none picked); migration 0056. */
+  leaderId: ID | null;
+  /** Per-phone alert prefs (default on). */
+  bdayOn: boolean;
+  lgremOn: boolean;
 }

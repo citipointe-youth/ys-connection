@@ -3,7 +3,7 @@ import webpush from 'web-push';
 import { z } from 'zod';
 import { generateId } from '../utils/id';
 import { assertCan, can, receivesNoticePush } from './access-control';
-import type { INoticePushRepository, INoticeRepository, ISettingsRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
+import type { ILeaderRepository, INoticePushRepository, INoticeRepository, ISettingsRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
 import { NOTICE_QUADS, type Notice } from '../core/entities/notice';
 import type { Actor } from '../core/entities/user';
 import { AppError, ConflictError, NotFoundError, ModuleDisabledError } from '../core/errors/app-error';
@@ -21,6 +21,8 @@ const SendSchema = z.object({
 const SubscribeSchema = z.object({
   endpoint: z.string().url().startsWith('https://').max(1000),
   keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }),
+  leaderId: z.string().uuid().nullable().optional(),
+  prefs: z.object({ bday: z.boolean(), lgrem: z.boolean() }).partial().optional(),
 });
 const UnsubscribeSchema = z.object({ endpoint: z.string().min(1).max(1000) });
 
@@ -33,6 +35,7 @@ const webPushSender: PushSender = (sub, payload, v) =>
 export interface NoticePushDeps {
   subs: INoticePushRepository;
   users: Pick<IUserRepository, 'findAll'>;
+  leaders: Pick<ILeaderRepository, 'findAll'>;
   errorLog?: Pick<ErrorLogService, 'record'>;
   sender?: PushSender;
   env?: Record<string, string | undefined>;
@@ -56,8 +59,8 @@ export interface NoticeService {
   list(actor: Actor): Promise<Notice[]>;
   send(actor: Actor, input: unknown): Promise<Notice>;
   remove(actor: Actor, id: string): Promise<void>;
-  /** `publicKey` null = VAPID env not set (alerts aren't set up yet). */
-  pushConfig(actor: Actor): Promise<{ publicKey: string | null }>;
+  /** `publicKey` null = VAPID env not set (alerts aren't set up yet). With `endpoint`, also this login's own device state. */
+  pushConfig(actor: Actor, endpoint?: string): Promise<{ publicKey: string | null; leaderId?: string | null; prefs?: { bday: boolean; lgrem: boolean } }>;
   subscribe(actor: Actor, input: unknown): Promise<{ ok: true }>;
   unsubscribe(actor: Actor, input: unknown): Promise<{ ok: true }>;
 }
@@ -125,18 +128,27 @@ export function makeNoticeService(
       assertCan(actor, 'notice:write');
       if (!(await repo.delete(id))) throw new NotFoundError('Notice not found');
     },
-    async pushConfig(actor) {
+    async pushConfig(actor, endpoint) {
       await assertOn();
       assertCan(actor, 'notice:alerts');
-      return { publicKey: (push && readVapid(env)?.publicKey) || null };
+      const publicKey = (push && readVapid(env)?.publicKey) || null;
+      const mine = endpoint && push ? await push.subs.findById(subId(endpoint)) : null;
+      return mine?.userId === actor.id ? { publicKey, leaderId: mine.leaderId, prefs: { bday: mine.bdayOn, lgrem: mine.lgremOn } } : { publicKey };
     },
     async subscribe(actor, input) {
       await assertOn();
       assertCan(actor, 'notice:alerts');
       if (!push || !readVapid(env)) throw new AppError('PUSH_OFF', "Alerts aren't set up yet.", 503);
       const d = SubscribeSchema.parse(input);
+      const id = subId(d.endpoint);
+      const old = await push.subs.findById(id);
+      // An unknown or inactive leader saves null; so does a missing one, so a new login never inherits the last pick.
+      const leaderId = d.leaderId && (await push.leaders.findAll()).some((l) => l.id === d.leaderId && l.active) ? d.leaderId : null;
       // Same device, new login: the row moves to whoever subscribed last.
-      await push.subs.save({ id: subId(d.endpoint), userId: actor.id, endpoint: d.endpoint, p256dh: d.keys.p256dh, auth: d.keys.auth, createdAt: now().toISOString() });
+      await push.subs.save({
+        id, userId: actor.id, endpoint: d.endpoint, p256dh: d.keys.p256dh, auth: d.keys.auth, createdAt: now().toISOString(), leaderId,
+        bdayOn: d.prefs?.bday ?? old?.bdayOn ?? true, lgremOn: d.prefs?.lgrem ?? old?.lgremOn ?? true,
+      });
       return { ok: true };
     },
     // Not module-gated: turning alerts off always works.

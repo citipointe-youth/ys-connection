@@ -14,7 +14,7 @@ export function makeNoticeController(deps: { notice: NoticeService }) {
       return { ok: true };
     },
     async pushConfig(req: AuthedRequest) {
-      return deps.notice.pushConfig(req.ctx);
+      return deps.notice.pushConfig(req.ctx, req.query['endpoint']);
     },
     async subscribe(req: AuthedRequest) {
       return deps.notice.subscribe(req.ctx, req.body);
