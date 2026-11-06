@@ -32,14 +32,18 @@ export const LINK_CONTRACT_VERSION = 1;
 // Rev 21 (round 2026-10-30): a flows push step may carry offered (the Elvanto person ids its Complete modal offers; missing or
 // empty = unknown), and the claim reply's consentSnap carries askedAt (sent only to a rev 21 console, which dedupes the Refresh
 // by that value). MIN_CONSOLE_REV stays 12: an older app strips offered, an older console strips askedAt.
-export const LINK_REV = 21;
+// Rev 22 (2026-11-06, Tom; reverses the 24 Oct ruling Q3): Reassign also changes the assignee in Elvanto. A flows push step may
+// carry admins (the Elvanto person ids its Re-assign modal lists for the CURRENT step; missing or empty = unknown), and type
+// reassignStep {rowId, flowId, stepId, personId, assignTo} asks the console to change the row's assignee (never to unassign).
+// MIN_CONSOLE_REV stays 12: an older console never lists the type, so it is never leased one; an older app strips admins.
+export const LINK_REV = 22;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
 
 export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
   'addGroupMember', 'removeGroupMember', 'intakeAnswer', 'intakeSave', 'consentSave', 'intakeText',
-  'removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck', 'busConsentCheck', 'doorSearch'] as const;
+  'removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck', 'busConsentCheck', 'doorSearch', 'reassignStep'] as const;
 /** Rev 15 (L7): the unclear saves the console can re-check (read only). Not the intake chains, lookups or console-local links. */
 export const RECHECK_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
   'addGroupMember', 'removeGroupMember', 'removeFromFlowStep', 'consentFix'] as const;
@@ -155,6 +159,8 @@ export const PAYLOAD_SCHEMAS = {
   recheck: z.object({ ref: Uuid, type: z.enum(RECHECK_TYPES), payload: z.record(z.unknown()), sentLogKey: StepKey.nullable() }).strict(),
   busConsentCheck: z.object({}).strict(), // rev 18: read the bus consent forms now (no input)
   doorSearch: z.object({ ref: Uuid }).strict(), // rev 20: find a youth in Elvanto by the typed name (the note); ref = the row's own id
+  // Rev 22: give the row to assignTo in Elvanto (admin/oversight; one of the step's admins). Never an unassign: Nobody stays YS-only.
+  reassignStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable(), assignTo: Uuid }).strict(),
 } satisfies Record<(typeof ACTION_TYPES)[number], z.ZodTypeAny>;
 
 // ---- POST /sync/claim (spec 3.2)
@@ -169,7 +175,7 @@ export const ClaimRequest = z.object({
     intakeAnswer: Cap.optional(), intakeSave: Cap.optional(), consentSave: Cap.optional(), intakeText: Cap.optional(),
     // Rev 6: sent only when the app's linkRev >= 6.
     removeFromFlowStep: Cap.optional(), consentLookup: Cap.optional(), consentFix: Cap.optional(), consentLink: Cap.optional(),
-    recheck: Cap.optional(), busConsentCheck: Cap.optional(), doorSearch: Cap.optional() }).strict(), // rev 15 (L7); rev 18; rev 20
+    recheck: Cap.optional(), busConsentCheck: Cap.optional(), doorSearch: Cap.optional(), reassignStep: Cap.optional() }).strict(), // rev 15 (L7); rev 18; rev 20; rev 22
   max: z.number().int().min(0).max(20).default(3),
   leaseSeconds: z.number().int().min(30).max(600).default(180),
   linkRev: LinkRev,
@@ -244,7 +250,8 @@ const FlowRow = z.object({ rowId: Uuid, flowId: Uuid, flowName: Text(120), stepI
   serviceVisits: z.number().int().min(0).max(999).nullable().optional() }); // rev 13: distinct service days this term since the student form (form day counts), null = unknown
 // T12 (rev 5): one step of a pushed flow, empty or not.
 export const FlowStep = z.object({ flowId: Uuid, flowName: Text(120), stepId: Uuid, stepName: Text(120), stepOrder: z.number().int().min(0),
-  offered: z.array(Uuid).max(500).optional() }); // rev 21: the next-assignee ids Elvanto offers (missing/empty = unknown)
+  offered: z.array(Uuid).max(500).optional(), // rev 21: the next-assignee ids Elvanto offers (missing/empty = unknown)
+  admins: z.array(Uuid).max(500).optional() }); // rev 22: the ids Elvanto's Re-assign lists for THIS step (missing/empty = unknown)
 const push = <T extends z.ZodTypeAny>(row: T) =>
   z.object({ contractVersion: Version, consoleId: Uuid, takenAt: Iso, rows: z.array(row).max(5000) });
 // ---- X19 (T4): intakePlan / consentPlan, one (mode, date) per push, a full replace of that date. The console builds the

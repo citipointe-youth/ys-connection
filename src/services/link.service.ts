@@ -369,7 +369,7 @@ const FEATURES: Feature[] = ['checkin', 'lifegroupReport', 'flows'];
 const FEATURE_OF: Partial<Record<ActionType, Feature>> = { checkIn: 'checkin', checkOut: 'checkin', firstTimerCheckIn: 'checkin',
   submitReport: 'lifegroupReport', editReport: 'lifegroupReport', completeStep: 'flows',
   addGroupMember: 'lifegroupReport', removeGroupMember: 'lifegroupReport', removeFromFlowStep: 'flows',
-  doorSearch: 'checkin' }; // rev 20: any login the door is on for, never admin-only. The intake types: module Intakes; the consent types: the Consents hub (X19, rev 6)
+  doorSearch: 'checkin', reassignStep: 'flows' }; // rev 22: Reassign in Elvanto. rev 20: any login the door is on for, never admin-only. The intake types: module Intakes; the consent types: the Consents hub (X19, rev 6)
 /** `?? newYouthForms`: a json-mode settings file stored before T10 is never re-parsed. */
 const usable = (a: Actor, s: AppSettings, f: Feature) =>
   can(a, 'link:use') && modeAllows(a, s.ministryConfig.modules[f] ?? s.ministryConfig.modules.newYouthForms);
@@ -637,6 +637,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     else if (consentType) consentsGate(c.actor, c.settings); // modular setup: the Consents hub's types follow consentsHubOn
     else if (!usable(c.actor, c.settings, FEATURE_OF[it.type]!)) throw new ModuleDisabledError('Elvanto link');
     if (it.type === 'removeFromFlowStep' && !can(c.actor, 'link:flowRemove')) throw new ForbiddenError('Only the admin or an oversight login can remove someone from a step.');
+    if (it.type === 'reassignStep' && !isAdminRole(c.actor)) throw new ForbiddenError('Only the admin or an oversight login can reassign.'); // r21 rule (Q4)
     // 2. replay / id reuse
     const prev = await d.link.getAction(it.id);
     if (prev) return replay(prev);
@@ -772,7 +773,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       personId = (p as { personId: string | null }).personId;
     } else if (it.type === 'consentFix') { // rev 6 (R2 c): the console re-checks the form; the app only names the person
       personId = (p as { personId: string }).personId;
-    } else { // completeStep, removeFromFlowStep (rev 6)
+    } else { // completeStep, removeFromFlowStep (rev 6), reassignStep (rev 22)
       const sp = p as unknown as { rowId: string; flowId: string; stepId: string; personId: string | null };
       const row = (await c.flows()).find((x) => x.rowId === sp.rowId);
       if (!row) throw new BadRequestError('This step is not in the list. Reload.');
@@ -786,8 +787,24 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       }
       // Rev 6: one open flow-row action per row (a Complete and a Remove would race in Elvanto).
       const other = it.type === 'completeStep' ? 'removeFromFlowStep' : 'completeStep';
-      if ((await c.openFlowRows()).some((r) => r.type === other && (r.payload as { rowId?: string }).rowId === row.rowId)) {
+      if (it.type !== 'reassignStep' && (await c.openFlowRows()).some((r) => r.type === other && (r.payload as { rowId?: string }).rowId === row.rowId)) {
         throw new LinkBusyRow();
+      }
+      if (it.type === 'reassignStep') {
+        // Rev 22 (2026-11-06): only one of the step's admins (who Elvanto's Re-assign lists for THIS step; unknown = refused, fail
+        // closed), and only an active YS leader matched to that person who fits the row or has it now (assignFlow's rule).
+        const [leaders, assigns, steps] = await Promise.all([c.leaders(), c.flowAssignments(), c.flowSteps()]);
+        const to = String((p as { assignTo: string }).assignTo).toLowerCase();
+        const admins = steps?.find((s) => s.stepId === row.stepId)?.admins;
+        if (!admins?.length) throw new BadRequestError("Elvanto's leader list for this step isn't known yet. Try again in a few minutes.");
+        if (!admins.some((x) => x.toLowerCase() === to)) throw new BadRequestError("Elvanto doesn't list that leader for this step.");
+        const byRoster = new Map(roster.map((x) => [x.personId, x]));
+        const a0 = row.personId ? assigns.find((x) => x.flowId === row.flowId && x.personId === row.personId) : undefined;
+        const current = currentOf(row, a0 ? leaders.find((l) => l.id === a0.leaderId) : undefined, leaders);
+        const personOf = rosterPersonMatcher(roster, leaders);
+        if (!leaders.some((l) => l.active && personOf(l) === to && (fitsRow(l, row, byRoster) || l.id === current?.id))) {
+          throw new BadRequestError('Pick a leader from the list.');
+        }
       }
       if (it.type === 'completeStep') {
         // 2026-10-24 (ruling Q4, r21 rule kept): only the admin or an oversight login picks who gets the next step, and only a leader who
@@ -897,7 +914,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     // Rev 20: one pending door search per login; a new one cancels the older pending one (a claimed one still runs, and is ignored).
     const supersede = it.type === 'intakeAnswer' ? { type: it.type, dedupeKey: key }
       : it.type === 'consentLookup' ? { type: it.type, createdBy: c.actor.id, kind: String(p.kind) }
-      : it.type === 'doorSearch' ? { type: it.type, createdBy: c.actor.id } : undefined;
+      : it.type === 'doorSearch' ? { type: it.type, createdBy: c.actor.id }
+      : it.type === 'reassignStep' ? { type: it.type, dedupeKey: key } : undefined; // rev 22: a newer Reassign of the row replaces a pending one
     try {
       const row = await d.link.insertAction({ id: it.id, type: it.type, payload: p, note, dedupeKey: key,
         serviceDate, studentId, personId, createdBy: c.actor.id, leaderId: me.id, leaderName: me.name, ...(supersede ? { supersede } : {}) });
@@ -1224,8 +1242,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         });
       // T12: the pushed list (empty steps included); an older console sends none, so the rows' steps. Admin: every step (the picker).
       // r30 (rev 21): a known offered (non-empty) goes to admin/oversight only, for the picker; a leader's assignTo is server-set.
-      const steps = new Map((pushed ?? flows).map((f) => { const o = (f as LinkFlowStep).offered; return [f.stepId, { flowId: f.flowId, flowName: f.flowName,
-        stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder, ...(o?.length && isAdminRole(actor) ? { offered: o } : {}) }]; }));
+      const steps = new Map((pushed ?? flows).map((f) => { const o = (f as LinkFlowStep).offered, ad = (f as LinkFlowStep).admins; return [f.stepId, { flowId: f.flowId, flowName: f.flowName,
+        stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder, ...(o?.length && isAdminRole(actor) ? { offered: o } : {}),
+        ...(ad?.length && isAdminRole(actor) ? { admins: ad } : {}) }]; })); // rev 22: admins, the same way
       const hidden = c.settings.ministryConfig.modules.flowHiddenStep;
       // S5: the console is reading the flows now (progress posted after the last flows push landed)
       const progress = progressOf(newest(consoles), 'flows', clock().getTime(), mirrors.find((m) => m.kind === 'flows')?.appliedAt ?? null);
@@ -1314,7 +1333,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       return { rows };
     },
 
-    /** T6: give a flow person to a leader (app only, never sent to Elvanto). 2026-10-24 (Q4): admin/oversight only. */
+    /** T6: give a flow person to a leader in YS (the instant view). 2026-10-24 (Q4): admin/oversight only. Rev 22: the phone also
+     *  queues reassignStep for a leader Elvanto lists for the step, which changes Elvanto's assignee; this stays YS-only. */
     async assignFlow(actor, body) {
       const c = context(actor, await gate(actor, ['flows']));
       if (!isAdminRole(actor)) throw new ForbiddenError('Only the admin or an oversight login can reassign.');

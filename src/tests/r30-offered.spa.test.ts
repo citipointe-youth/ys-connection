@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { loadFns } from './helpers/extract-fn';
 
-const NAMES = ['_lkFlowRow', '_lkPickList', '_lkPicked', '_lkOffers', '_lkFits', '_lkStepSend'];
+const NAMES = ['_lkFlowRow', '_lkPickList', '_lkPicked', '_lkOffers', '_lkAdmins', '_lkFits', '_lkStepSend'];
 const PRELUDE = `
   var LINK = { flows: [], fSteps: [], fLeaders: [], fres: {}, fs: null }, PUSHED = [], ASSIGNED = [];
   function _lkBoss() { return true; } function getMyLeaderId() { return 'L9'; } function _lkIamPick() {} function _lkUuid() { return 'u'; }
@@ -24,10 +24,8 @@ const ids = () => f._lkPickList(L.flows[0]).map((l: any) => l.id);
 
 describe('r30: the Assigned to picker follows the step\'s offered (rev 21)', () => {
   beforeEach(() => { L.fLeaders = LDRS; L.flows = [{ ...ROW }]; L.fs = null; f.PUSHED.length = 0; f.ASSIGNED.length = 0; });
-  it('2026-11-06 (replaces fix 1): a known offered list narrows the picker to offered leaders; unknown or empty keeps every fitting leader', () => {
-    for (const o of [undefined, []]) { L.fSteps = steps(o); expect(ids()).toEqual(['L1', 'L2', 'L3']); }
-    L.fSteps = steps([P(71).toUpperCase()]);
-    expect(ids()).toEqual(['L2']);
+  it('rev 22 (replaces 9c5cf24): offered is the NEXT step list, so it no longer narrows the picker (the current step admins do: r31)', () => {
+    for (const o of [undefined, [], [P(71).toUpperCase()]]) { L.fSteps = steps(o); expect(ids()).toEqual(['L1', 'L2', 'L3']); }
   });
   it('_lkOffers: case-blind; unknown or empty = yes; known and no Elvanto person = no', () => {
     L.fSteps = steps([P(71).toUpperCase()]);
@@ -38,7 +36,7 @@ describe('r30: the Assigned to picker follows the step\'s offered (rev 21)', () 
   it('an unoffered current leader stays listed and is sent with no assignTo; nothing new is saved', () => {
     L.flows = [{ ...ROW, currentLeaderId: 'L1' }];
     L.fSteps = steps([P(71)]);
-    expect(ids()).toEqual(['L1', 'L2']);
+    expect(ids()).toContain('L1');
     L.fs = { rowId: 'r1', note: '', priv: false, pick: 'L1' };
     f._lkStepSend();
     expect('assignTo' in f.PUSHED[0].payload).toBe(false);

@@ -14,7 +14,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkLastReportLabel', '_lkAddReport', '_lkCatFilter', '_lkCat', '_lkTint', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
   '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
   '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel', '_lkDraftKey', '_lkDraftGet', '_lkDraftDrop',
-  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkPicked', '_lkOffers', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
+  '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkAdmins', '_lkReassignElv', '_lkPicked', '_lkOffers', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
   'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkRcHtml', '_lkRcDone', '_lkRcType', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmCreate', '_lkAdmLoadRoster', '_lkAdmDraw', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml', 'renderLinkAdmin', '_lkAdmLoadLog', '_lkAdmLoadActs',
@@ -1770,14 +1770,14 @@ describe('F3 flow steps', () => {
     h.fns._lkStepSend();
     expect('assignTo' in h.fns._lkQGet()[0].payload).toBe(false);
   });
-  it("(f) the picker lists only leaders Elvanto offers for the step, plus the current leader; no offered list = today's list", () => {
+  it("(f) rev 22: the picker lists only leaders Elvanto lists for the CURRENT step (admins), plus the current leader; no admins list = today's list", () => {
     const h = admin([boy()]);
     h.fns._lkOpenStep(F(1));
     const L = h.get().LINK, ids = () => h.fns._lkPickList(L.flows[0]).map((l: any) => l.id);
     expect(ids()).toEqual(['L1', 'L3', 'L4']);
-    L.fSteps = [{ flowId: F(100), stepId: F(200), offered: [] }];
+    L.fSteps = [{ flowId: F(100), stepId: F(200), admins: [], offered: [P(72)] }]; // offered (the NEXT step) no longer narrows it
     expect(ids()).toEqual(['L1', 'L3', 'L4']);
-    L.fSteps = [{ flowId: F(100), stepId: F(200), offered: [P(72).toUpperCase()] }]; // L3 offered; L4 has no person id; L1 is current
+    L.fSteps = [{ flowId: F(100), stepId: F(200), admins: [P(72).toUpperCase()] }]; // L3 listed; L4 has no person id; L1 is current
     expect(ids()).toEqual(['L1', 'L3']);
     expect(h.fns._lkStepHtml()).toContain('Nobody');
   });

@@ -1427,11 +1427,11 @@ describe('UX batch 2026-10-12 (lane Y1)', () => {
 
   it('T1: status carries consoleLinkRev (null before any console) and appLinkRev', async () => {
     const h = await setup();
-    expect(await h.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: 1, appLinkRev: 21 }); // rev 21: flows offered + consentSnap.askedAt; rev 20: doorSearch; rev 18: bus consent forms; rev 16: Connection Audit push; rev 15: L7 recheck + L2 multi-name consent links; rev 14: X1 claim site; rev 13: flows serviceVisits; rev 12: C01 re-hand; rev 11: P4 consentLookup since; rev 10: R8 flows textedOn; rev 9: R4 notReceived; rev 8: Consents Other; fix16 C-1
+    expect(await h.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: 1, appLinkRev: 22 }); // rev 22: flows admins + reassignStep; rev 21: flows offered + consentSnap.askedAt; rev 20: doorSearch; rev 18: bus consent forms; rev 16: Connection Audit push; rev 15: L7 recheck + L2 multi-name consent links; rev 14: X1 claim site; rev 13: flows serviceVisits; rev 12: C01 re-hand; rev 11: P4 consentLookup since; rev 10: R8 flows textedOn; rev 9: R4 notReceived; rev 8: Consents Other; fix16 C-1
     await registerConsole(h.link, CONSOLE, CAPS, 60, 2);
     expect((await h.svc.status(GRADE)).consoleLinkRev).toBe(2);
     const none = await setup('on', { console: false });
-    expect(await none.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: null, appLinkRev: 21 });
+    expect(await none.svc.status(ADMIN)).toMatchObject({ consoleLinkRev: null, appLinkRev: 22 });
   });
 
   it('T3: a checked-in person with no roster row is listed by the pushed name (leader by room name); no name, not listed', async () => {
@@ -1874,5 +1874,74 @@ describe('F1 (review 2026-10-16): "I am" is limited to leaders in scope', () => 
     const a = checkIn(P_AMY, { leaderId: L_DANA });
     await enq(h.svc, LEADER, a, DEV);
     expect(await h.link.getAction(a.id)).toMatchObject({ leaderId: L_CODY });
+  });
+});
+
+// 2026-11-06 (Tom, reverses the 24 Oct ruling Q3): Reassign also changes the assignee in Elvanto. LINK_REV 22: the console
+// pushes each step's admins (who Elvanto's Re-assign modal lists for the CURRENT step); type reassignStep queues the change.
+describe('LINK_REV 22: reassignStep (Reassign changes the leader in Elvanto too)', () => {
+  let n = 40;
+  const withAdmins = async (h: H, admins: string[] | undefined) => h.link.replaceMirror('flows', await h.link.flows(),
+    { takenAt: `2026-10-16T08:${++n}:00.000Z`, consoleId: CONSOLE, steps: (await h.link.flows()).map((f) =>
+      ({ flowId: f.flowId, flowName: f.flowName, stepId: f.stepId, stepName: f.stepName, stepOrder: f.stepOrder, ...(admins ? { admins } : {}) })) });
+  const ra = (p: Record<string, unknown> = {}) => ({ id: nid(), type: 'reassignStep',
+    payload: { rowId: FR3, flowId: FLOW_A, stepId: STEP3, personId: P_TOM, assignTo: P_CODY, ...p }, note: null, leaderId: null });
+  const live = { reassignStep: 'live' as const };
+
+  it('an admin or oversight Reassign to a leader Elvanto lists for the step queues a reassignStep row (no "I am" needed)', async () => {
+    for (const a of [ADMIN, OVERSIGHT]) {
+      const h = await setup('on', { caps: live });
+      await withAdmins(h, [P_CODY.toUpperCase()]);
+      const it = ra();
+      expect((await enq(h.svc, a, it, DEV)).outcome).toBe('saved');
+      expect(await h.link.getAction(it.id)).toMatchObject({ type: 'reassignStep', status: 'pending', personId: P_TOM,
+        payload: { rowId: FR3, flowId: FLOW_A, stepId: STEP3, personId: P_TOM, assignTo: P_CODY } });
+    }
+  });
+  it('other logins may not change the leader (the r21 rule stays)', async () => {
+    const h = await setup('on', { caps: live });
+    await withAdmins(h, [P_CODY]);
+    for (const a of [GRADE, LEADER, QUAD]) expect(oc(await enq(h.svc, a, ra(), DEV))).toBe('FORBIDDEN');
+  });
+  it('refused when the step admins are unknown or do not list the leader; a leader YS does not know is refused', async () => {
+    for (const admins of [undefined, []]) {
+      const h = await setup('on', { caps: live });
+      await withAdmins(h, admins);
+      expect(oc(await enq(h.svc, ADMIN, ra(), DEV))).toBe('BAD_REQUEST');
+    }
+    const h = await setup('on', { caps: live });
+    await withAdmins(h, [u(999)]);
+    expect(oc(await enq(h.svc, ADMIN, ra(), DEV))).toBe('BAD_REQUEST');
+    await withAdmins(h, [u(999), P_CODY]);
+    expect(oc(await enq(h.svc, ADMIN, ra({ assignTo: u(999) }), DEV))).toBe('BAD_REQUEST'); // in admins, but no YS leader
+    expect(oc(await enq(h.svc, ADMIN, ra({ stepId: STEP1 }), DEV))).toBe('BAD_REQUEST'); // the row is not in that step
+  });
+  it('a console that does not list reassignStep: the type is unavailable (nothing queued)', async () => {
+    const h = await setup('on');
+    await withAdmins(h, [P_CODY]);
+    expect(oc(await enq(h.svc, ADMIN, ra(), DEV))).toBe('LINK_UNAVAILABLE');
+  });
+  it('a newer Reassign of the same row replaces a pending one; a note is refused', async () => {
+    const h = await setup('on', { caps: live });
+    await withAdmins(h, [P_CODY]);
+    const a = ra(), b = ra();
+    expect((await enq(h.svc, ADMIN, a, DEV)).outcome).toBe('saved');
+    expect((await enq(h.svc, ADMIN, b, DEV)).outcome).toBe('saved');
+    expect((await h.link.getAction(a.id))!.status).toBe('cancelled');
+    expect(oc(await enq(h.svc, ADMIN, { ...ra(), note: 'hi', leaderId: L_DANA }, DEV))).toBe('BAD_REQUEST');
+  });
+  it('GET /link/flows steps carry a known admins list for admin/oversight only', async () => {
+    const h = await setup();
+    await withAdmins(h, [P_CODY]);
+    for (const a of [ADMIN, OVERSIGHT]) expect((await h.svc.flows(a)).steps.every((s: any) => s.admins?.[0] === P_CODY)).toBe(true);
+    expect((await h.svc.flows(GRADE)).steps.some((s: any) => 'admins' in s)).toBe(false);
+    await withAdmins(h, []);
+    expect((await h.svc.flows(ADMIN)).steps.some((s: any) => 'admins' in s)).toBe(false);
+  });
+  it('assignFlow (the instant YS view) still writes link_flow_assign only', async () => {
+    const h = await setup('on', { caps: live });
+    await withAdmins(h, [P_CODY]);
+    expect(await h.svc.assignFlow(ADMIN, { flowId: FLOW_A, personId: P_TOM, leaderId: L_CODY })).toEqual({ ok: true });
+    expect((await h.link.listActions({ types: ['reassignStep'] })).length).toBe(0);
   });
 });

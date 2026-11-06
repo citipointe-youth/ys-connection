@@ -110,7 +110,7 @@ describe('sync.service claim', () => {
     expect(ClaimResponse.parse(reply)).toBeTruthy();
     expect(reply.contractVersion).toBe(1);
     // X19: the intake types are in claim-response-rev4.json (this console lists no intake capability).
-    expect(reply.rows.map((r) => r.type).sort()).toEqual(Object.keys(PAYLOAD_SCHEMAS).filter((t) => !(INTAKE_TYPES as readonly string[]).includes(t) && !['removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck', 'busConsentCheck', 'doorSearch'].includes(t)).sort()); // rev 6 types (rev 15 recheck: claim-response-rev15.json; rev 18 busConsentCheck: claim-response-rev18.json; rev 20 doorSearch: claim-response-rev20.json): claim-response-rev6.json
+    expect(reply.rows.map((r) => r.type).sort()).toEqual(Object.keys(PAYLOAD_SCHEMAS).filter((t) => !(INTAKE_TYPES as readonly string[]).includes(t) && !['removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck', 'busConsentCheck', 'doorSearch', 'reassignStep'].includes(t)).sort()); // rev 6 types (rev 15 recheck: claim-response-rev15.json; rev 18 busConsentCheck: claim-response-rev18.json; rev 20 doorSearch: claim-response-rev20.json): claim-response-rev6.json
     for (const row of reply.rows) {
       expect(PAYLOAD_SCHEMAS[row.type as ActionType].safeParse(row.payload).success).toBe(true);
     }
@@ -387,7 +387,7 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     }
     expect(await link.listConsoles()).toEqual([]);
     const ok = await svc.claim(claimReq);
-    expect(ClaimResponse.parse(ok).linkRev).toBe(21);
+    expect(ClaimResponse.parse(ok).linkRev).toBe(22);
     expect((await link.listConsoles())[0]!.linkRev).toBe(12);
   });
   it('X1 (rev 14): the claim reply carries site from ministryConfig (structure + elvanto prefixes); a rev 12 console still claims', async () => {
@@ -423,7 +423,7 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     const cfg = (await settings.getSettings()).ministryConfig;
     await settings.updateSettings({ ministryConfig: { ...cfg, modules: MinistryConfigSchema.parse({ modules: LIVE_MODULES }).modules } } as any);
     const reply = await svc.claim(claimReq);
-    expect(reply.linkRev).toBe(21);
+    expect(reply.linkRev).toBe(22);
     expect(reply.modules).toEqual({ checkin: 'admin', lifegroupReport: 'admin', flows: 'admin', newYouthForms: 'on', intakeAdmin: 'on', lifegroups: true, connectionAudit: true });
     expect(validModules(ClaimResponse.parse(reply).modules)).toEqual(reply.modules);
   });

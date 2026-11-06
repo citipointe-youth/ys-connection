@@ -348,7 +348,7 @@ describe('Y6c Flow step wording', () => {
     const src = extractFn(Y6_HTML, '_lkStepHtml');
     const i = src.indexOf('id="lk-assign"');
     expect(i).toBeGreaterThan(0);
-    expect(src.slice(i)).toMatch(/<\/select>[^]*?Reassign changes who has this person\. Complete gives them the next step\./);
+    expect(src.slice(i)).toMatch(/<\/select>[^]*?'Reassign changes the leader in Elvanto too\.' : 'Reassign changes who has this person\.'\} Complete gives them the next step\./); // rev 22
     expect(src).not.toContain('Next step goes to');
   });
   it('assignee-needed says what to do', () => {

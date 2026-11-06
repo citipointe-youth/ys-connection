@@ -13067,7 +13067,7 @@ function _lkStepHtml() {
     const ls = _lkPickList(r), l = _lkPicked(r);
     assign = `<div class="fg"><label class="fl" for="lk-assign">Assigned to</label><select class="fs" id="lk-assign" onchange="LINK.fs.pick=this.value||null;_lkStepDraw()"><option value="">Nobody (Elvanto's usual pick)</option>
       ${ls.map((x) => `<option value="${esc(x.id)}"${l && x.id === l.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
-      <p class="lk-hint">Reassign changes who has this person. Complete gives them the next step.</p></div>${!_lkCanComplete(r) ? '' : l && !l.personId ? q4('Not linked to an Elvanto person: Elvanto picks who gets the next step.')
+      <p class="lk-hint">${_lkReassignElv(r, l) ? 'Reassign changes the leader in Elvanto too.' : 'Reassign changes who has this person.'} Complete gives them the next step.</p></div>${!_lkCanComplete(r) ? '' : l && !l.personId ? q4('Not linked to an Elvanto person: Elvanto picks who gets the next step.')
         : l && !_lkOffers(r, l.personId) ? q4("Elvanto doesn't offer them for the next step. Complete will leave it to Elvanto to pick.") : ''}`;
   } else if (r.personId) {
     // other logins see who has the person; Complete keeps them (the server sets it). No app leader known = Elvanto picks.
@@ -13116,8 +13116,9 @@ function _lkStepBtns() {
 }
 // The admin/oversight pick, as a leader from _lkPickList(r) (null = Nobody).
 function _lkPickList(r) {
-  // A non-empty Elvanto offered list for the step narrows it to the offered leaders (_lkOffers: empty or unknown = everyone).
-  const ls = (LINK.fLeaders || []).filter((l) => (_lkFits(l, r.grade, r.gender) && _lkOffers(r, l.personId)) || l.id === r.currentLeaderId);
+  // Rev 22: a non-empty admins list (who Elvanto's Re-assign lists for THIS step) narrows it (_lkAdmins: empty or unknown = everyone).
+  // offered is the NEXT step's list: it gates only Complete's assignTo (_lkOffers), never this list.
+  const ls = (LINK.fLeaders || []).filter((l) => (_lkFits(l, r.grade, r.gender) && _lkAdmins(r, l.personId)) || l.id === r.currentLeaderId);
   // a current leader missing from a stale LINK.fLeaders: keep them listed so the sheet never unassigns by itself
   if (r.currentLeaderId && !ls.some((l) => l.id === r.currentLeaderId)) ls.push({ id: r.currentLeaderId, name: r.assignedLeaderName || r.assignedTo || 'A leader', personId: null });
   return ls;
@@ -13129,6 +13130,17 @@ function _lkOffers(r, pid) {
   const s = (LINK.fSteps || []).find((x) => x.stepId === r.stepId), o = (s && s.offered) || [];
   return !o.length || (!!pid && o.some((x) => String(x).toLowerCase() === String(pid).toLowerCase()));
 }
+// Rev 22: does Elvanto's Re-assign list this person id for the row's CURRENT step? Unknown (no or empty admins) = yes. Case-blind.
+function _lkAdmins(r, pid) {
+  const s = (LINK.fSteps || []).find((x) => x.stepId === r.stepId), a = (s && s.admins) || [];
+  return !a.length || (!!pid && a.some((x) => String(x).toLowerCase() === String(pid).toLowerCase()));
+}
+// Rev 22: Reassign also changes Elvanto's assignee: a leader with an Elvanto person, on the step's KNOWN admins, while the console
+// takes reassignStep. Nobody (l null) stays YS-only: an unassign is never sent.
+function _lkReassignElv(r, l) {
+  const s = (LINK.fSteps || []).find((x) => x.stepId === r.stepId);
+  return !!(l && l.personId && s && s.admins && s.admins.length && _lkAdmins(r, l.personId) && _lkCap('reassignStep') === 'live');
+}
 // Flows (2026-10-24, ruling Q1): mirrors the server's leaderFitsPerson. No grades = oversight/admin level (anyone, any gender);
 // else the person's grade, and the leader's gender unset or the person's.
 function _lkFits(l, grade, gender) {
@@ -13137,21 +13149,24 @@ function _lkFits(l, grade, gender) {
   if (!gs.length) return true;
   return grade != null && gs.includes(grade) && (!l.gender || l.gender === gender);
 }
-// Assign or unassign (app only, never sent to Elvanto). One assignment covers the person's rows in that flow.
+// Assign or unassign in YS (the instant view). One assignment covers the person's rows in that flow. Elvanto: _lkReassign (rev 22).
 async function _lkAssignSave(r, l) {
   const lid = l ? l.id : null;
   await API.post('/link/flows/assign', { flowId: r.flowId, personId: r.personId, leaderId: lid });
   (LINK.flows || []).forEach((x) => { if (x.flowId === r.flowId && x.personId === r.personId) { x.assignedLeaderId = lid; x.assignedLeaderName = l ? l.name : null; x.currentLeaderId = lid; x.currentLeaderLinked = !!(l && l.personId); } });
 }
-// Reassign (admin/oversight): saves the pick, does not complete the step.
+// Reassign (admin/oversight): saves the pick in YS, does not complete the step. Rev 22: and, for a leader Elvanto lists for the
+// step, queues reassignStep so the console changes the assignee in Elvanto too (a refusal comes back like any queued action's).
 async function _lkReassign() {
   const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
   if (!r || !r.personId || !_lkBoss()) return;
-  const l = _lkPicked(r);
+  const l = _lkPicked(r), elv = _lkReassignElv(r, l);
   try { await _lkAssignSave(r, l); } catch (e) { toast(e.message || 'Could not assign.'); return; }
   LINK.fs = null;
-  closeModal(); _lkRefreshView();
-  toast(l ? 'Assigned to ' + l.name : 'Unassigned');
+  closeModal();
+  if (elv) _lkPush({ kind: 'action', id: _lkUuid(), type: 'reassignStep', payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId, assignTo: l.personId }, note: null, leaderId: getMyLeaderId() || null }, true);
+  else _lkRefreshView();
+  toast(l ? 'Assigned to ' + l.name + (elv ? '. Changes the leader in Elvanto too.' : '') : 'Unassigned');
 }
 function _lkStepDraw() {
   const b = document.getElementById('lk-fs'), a = document.getElementById('lk-fs-act');
@@ -13288,7 +13303,7 @@ function _lkLastFriday(ymd) {
 function _lkAt(iso) { return fmtDay(iso, true); }
 // APP-63 (r22 A6): a word for every server LOG_EVENTS value (every action type plus identity/cancel/undo/resolve).
 function _lkEvents() {
-  const ev = { identity: 'Identity', cancel: 'Cancel', undo: 'Undo', resolve: 'Marked by admin', recheck: 'Check again', busConsentCheck: 'Bus consent check', doorSearch: 'Elvanto search',
+  const ev = { identity: 'Identity', cancel: 'Cancel', undo: 'Undo', resolve: 'Marked by admin', recheck: 'Check again', busConsentCheck: 'Bus consent check', doorSearch: 'Elvanto search', reassignStep: 'Reassign',
     checkIn: 'Check-in', checkOut: 'Check-out', addGroupMember: 'Add to lifegroup', removeGroupMember: 'Remove from lifegroup',
     removeFromFlowStep: 'Remove from flow step' };
   ['firstTimerCheckIn', 'submitReport', 'editReport', 'completeStep', 'intakeAnswer', 'intakeSave', 'intakeText',

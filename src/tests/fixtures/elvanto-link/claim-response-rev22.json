@@ -1,0 +1,6 @@
+{ "contractVersion": 1, "serverTime": "2026-11-06T08:40:05.000Z", "linkRev": 22,
+  "rows": [ { "id": "d6000000-0000-4000-8000-000000000001", "type": "reassignStep", "attempts": 1, "reclaimed": false,
+    "createdAt": "2026-11-06T08:40:00.000Z", "serviceDate": "2026-11-06", "by": { "login": "admin", "leaderName": "" },
+    "payload": { "rowId": "f7000000-0000-4000-8000-000000000021", "flowId": "f1000000-0000-4000-8000-000000000002",
+      "stepId": "f5000000-0000-4000-8000-000000000002", "personId": "9e000000-0000-4000-8000-000000000021",
+      "assignTo": "0b6f3a3e-1c2d-4e5f-8a9b-0c1d2e3f4a5b" }, "note": null } ] }
