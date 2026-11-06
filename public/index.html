@@ -2168,8 +2168,21 @@ function _navRoute(params) {
   const ok = Object.entries(p).every(([k, v]) => k === 'screen' || k === 'nav' || k === 'type'
     || (k === 'ids' ? v.length >= 1 && v.length <= 10 && v.every((x) => UUID.test(String(x)))
       : k === 'date' ? /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(String(v)) : UUID.test(String(v))));
+  if (ok && screen === 'student' && p.ids) { _bdayList(p.ids); return true; }
   go('notices');
   return ok && screen === 'notices';
+}
+// B9: one birthday student opens their detail; several open a "Birthdays today" list. Only students this login can open are
+// offered: its own /students list has the same scoping as GET /students/:id (R4). None left = a toast.
+async function _bdayList(ids) {
+  let list;
+  try { list = await API.get('/students'); } catch { toast("Couldn't load students. Try again."); return; }
+  const by = new Map((list || []).map((s) => [s.id, s]));
+  const kids = ids.map((id) => by.get(id)).filter(Boolean);
+  if (!kids.length) { toast("Today's birthdays aren't on this login."); return; }
+  if (kids.length === 1) { showStudentDetail(kids[0].id); return; }
+  modal(`<div class="mo-title">Birthdays today</div><div style="display:flex;flex-direction:column;gap:8px">${kids.map((s) =>
+    `<button type="button" class="btn btn-secondary" onclick="closeModal();showStudentDetail('${s.id}')">${esc(s.firstName)} ${esc(s.lastName)}</button>`).join('')}</div>`);
 }
 
 /* ── ID CHECKS MODULE ── */
