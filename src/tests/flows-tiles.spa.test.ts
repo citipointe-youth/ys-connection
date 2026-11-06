@@ -135,7 +135,7 @@ describe('Y5 Flow steps: Updated X ago · Reload (admin only)', () => {
     var Date = Object.assign(function () { return new globalThis.Date(...arguments); }, { parse: globalThis.Date.parse, now: () => NOWMS });
     function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
     function _lkTop() { return 'TOP'; } function _lkFlowTypes() { return []; } function _lkFlowsHtml() { return 'LIST'; }
-    function _lkGroup() { return null; } function _lkEsPaint() {} function _lkCiPoll() {} function _lkFlowsDraw() {}
+    function _lkGroup() { return null; } function _lkCiPoll() {} function _lkFlowsDraw() {}
     function shell(h) { return h; } function setApp(h) { PAINT = h; }
     function set(o) { if ('role' in o) ROLE = o.role; FETCHED.length = 0; PAINT = ''; DOM = {}; Object.keys(LINK).forEach((k) => delete LINK[k]); }
     function out() { return { FETCHED, PAINT, DOM }; }
