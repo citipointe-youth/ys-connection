@@ -128,20 +128,22 @@ describe('intake repo (memory)', () => {
   });
   it('purge drops done rows older than the cut-off, keeps unprocessed ones and their date; clear drops everything', async () => {
     const h = await setup();
-    await h.intakeRepo.purge('2026-10-16');
+    await h.intakeRepo.purge('2026-10-16', '2026-08-01');
     expect(await h.intakeRepo.rows('intake')).toHaveLength(2);
     const open = async () => [...await h.intakeRepo.rows('intake'), ...await h.intakeRepo.rows('consent')]
       .filter((r) => r.status !== 'done').map((r) => [r.mode, r.key]);
     const before = await open();
     expect(before.length).toBeGreaterThan(0);
-    await h.intakeRepo.purge('2026-10-17');
+    await h.intakeRepo.purge('2026-10-17', '2026-08-01');
     expect(await open()).toEqual(before); // needs-you / ready rows are never purged
     expect((await h.intakeRepo.rows('intake')).map((r) => r.key)).toEqual([SUB_S]); // the done row went
     expect((await h.intakeRepo.dates()).map((x) => `${x.mode}|${x.date}`).sort()).toEqual([`consent|${DATE}`, `intake|${DATE}`]);
     await h.sync.push('intakePlan', { ...fx('push-intake.json'), takenAt: '2026-10-16T09:45:00.000Z', rows: [] }); // now processed
-    await h.intakeRepo.purge('2026-10-17');
+    await h.intakeRepo.purge('2026-10-17', '2026-08-01');
     expect(await h.intakeRepo.rows('intake')).toEqual([]);
     expect((await h.intakeRepo.dates('intake'))).toEqual([]); // a date with no rows left goes
+    await h.intakeRepo.purge('2026-10-17', '2026-10-17'); // past the Refresh reach: unprocessed rows go too
+    expect([await h.intakeRepo.rows('consent'), await h.intakeRepo.dates()]).toEqual([[], []]);
     const h2 = await setup(); await h2.intakeRepo.markViewed(); await h2.intakeRepo.clear();
     expect([await h2.intakeRepo.dates(), await h2.intakeRepo.viewedAt()]).toEqual([[], null]);
   });
@@ -174,7 +176,7 @@ describe('intake repo (Supabase): SQL text + encryption at rest', () => {
     expect(src).toMatch(/delete from link_intake_rows`; await tx`delete from link_intake_dates`; await tx`delete from link_intake_view`/);
   });
   it('the purge deletes done rows only, and a date only once none of its rows is left', () => {
-    expect(src).toContain("delete from link_intake_rows where date < ${before} and status = 'done'");
+    expect(src).toContain("delete from link_intake_rows where (date < ${before} and status = 'done') or date < ${openBefore}");
     expect(src).toContain('delete from link_intake_dates d where date < ${before} and not exists'
       + ' (select 1 from link_intake_rows r where r.mode = d.mode and r.date = d.date)');
   });
@@ -522,5 +524,14 @@ describe('consent hub (2026-10-23): person and family on list rows; 28-day keep'
     const l = await h.intake.list(ADMIN, { mode: 'intake' }) as any;
     expect((await h.intakeRepo.rows('intake', DATE)).map((r) => r.status)).toEqual(['needs-you']);
     expect(l.dates.map((x: any) => [x.date, x.counts])).toEqual([[DATE, { needsYou: 1, ready: 0, done: 0 }]]);
+    h.clock.now = new Date(NOW.getTime() + 30 * 864e5 + 4 * 3_600_000); // the row is processed: the console pushes it done
+    const p = fx('push-intake.json'); p.takenAt = h.clock.now.toISOString(); p.rows = p.rows.filter((r: any) => r.key === SUB_S).map((r: any) => ({ ...r, status: 'done' }));
+    await h.sync.push('intakePlan', p);
+    h.clock.now = new Date(h.clock.now.getTime() + 2 * 3_600_000);
+    await h.intake.list(ADMIN, { mode: 'intake' });
+    expect(await h.intakeRepo.rows('intake', DATE)).toEqual([]);
+    h.clock.now = new Date(NOW.getTime() + 57 * 864e5); // 8 weeks: an unprocessed consent row can no longer be refreshed, so it goes
+    await h.intake.list(ADMIN, { mode: 'intake' });
+    expect([await h.intakeRepo.rows('consent', DATE), await h.intakeRepo.dates()]).toEqual([[], []]);
   });
 });

@@ -20,7 +20,7 @@ import { canUseIntakeAdmin } from './access-control';
 import { addDays, brisbaneToday } from './link-rules';
 
 export const INTAKE_STALE_MS = 2 * 3_600_000;  // a plan older than this greys out; Save / Text refuse
-export const INTAKE_KEEP_DAYS = 28;           // done rows older than this are deleted, and a date once it has no rows left; unprocessed rows stay (consent hub: Done shows the last 4 weeks; was 14)
+export const INTAKE_KEEP_DAYS = 28;           // done rows older than this are deleted, and a date once it has no rows left; unprocessed rows stay until REFRESH_BACK_DAYS (consent hub: Done shows the last 4 weeks; was 14)
 export const INTAKE_NOTE_MAX = 1900;
 const HURRY_LOOKUP_MS = 5 * 60_000;           // L8: a consentLookup made in the last 5 min (any status: its own claim leased it)
 const HURRY_VIEW_MS = 30 * 60_000;             // R1: an admin opened Intake in the last 30 min
@@ -113,7 +113,9 @@ export function makeIntakeService(d: IntakeServiceDeps) {
   const purgeIfDue = async (t: Date, tz: string) => {
     if (t.getTime() - lastPurge < 3_600_000) return;
     lastPurge = t.getTime();
-    await d.intake.purge(addDays(brisbaneToday(t, tz), -INTAKE_KEEP_DAYS));
+    const today = brisbaneToday(t, tz);
+    // An unprocessed row stays until a Refresh can no longer reach its date (8 weeks); then it can never be saved, so it goes too.
+    await d.intake.purge(addDays(today, -INTAKE_KEEP_DAYS), addDays(today, -REFRESH_BACK_DAYS));
   };
   const stale = (takenAt: string | null, t: Date) => !takenAt || t.getTime() - Date.parse(takenAt) > INTAKE_STALE_MS;
   const actionsOf = async (mode: IntakeMode, date: string) =>

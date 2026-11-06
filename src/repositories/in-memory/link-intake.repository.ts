@@ -48,8 +48,8 @@ export class InMemoryLinkIntakeRepository implements ILinkIntakeRepository {
   }
   async markViewed() { this.viewed = this.clock().toISOString(); }
   async viewedAt() { return this.viewed; }
-  async purge(before: string) {
-    for (const [k, x] of this.r) if (x.lite.date < before && x.lite.status === 'done') this.r.delete(k);
+  async purge(before: string, openBefore: string) {
+    for (const [k, x] of this.r) if ((x.lite.date < before && x.lite.status === 'done') || x.lite.date < openBefore) this.r.delete(k);
     const kept = new Set([...this.r.values()].map((x) => k2(x.lite.mode, x.lite.date)));
     for (const [k, x] of this.d) if (x.date < before && !kept.has(k)) this.d.delete(k);
   }
