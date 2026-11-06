@@ -11775,7 +11775,6 @@ function _lkPaintDoor() {
     ${s ? `<div class="lk-sticky"><div class="sbar"><input class="lk-big" id="lk-search" type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)"></div></div>
       <div id="lk-list">${_lkListHtml()}</div>
       <div id="lk-es">${_lkEsHtml()}</div>
-      ${_nyOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="nyOpen()">${icS('plus')} New person (first time here)</button>` : ''}
       ${!_lkCapOff('checkIn') ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkOpenLeaders()">${icS('check')} Check in leaders</button>` : ''}` : ''}`));
 }
 // APP-74: one repaint after an 80 ms pause in typing, not one per key.
@@ -11824,6 +11823,7 @@ function _lkListHtml() {
   const q = String(LINK.q.search || '').trim();
   const add = typed && _nyOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkNyFromDoor()">${icS('plus')} ${esc(`Add '${q}' as a new person`)}</button>` : '';
   return `${l.due.map(_lkRowHtml).join('') || (typed ? '<p class="lk-hint">Nobody here by that name.</p>' + add : '<p class="lk-hint">Type a name to check someone in.</p>')}
+    ${_nyOn() ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="nyOpen()">${icS('plus')} New person (first time here)</button>` : ''}
     <div class="lk-done"><div class="lk-done-h"><span>Checked in · ${n}</span>${asOf}</div>
     <div id="lk-done-rows">${_lkDoneRowsHtml(l)}</div>
     ${n > 3 ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkDoneToggle(!LINK.doneOpen)">${LINK.doneOpen ? 'Show fewer' : 'Show all ' + n}</button>` : ''}</div>`;

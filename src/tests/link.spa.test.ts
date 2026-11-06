@@ -755,6 +755,13 @@ describe('F1.3 door', () => {
     expect(f.indexOf('id="lk-list"')).toBeLessThan(f.indexOf('_lkOpenLeaders()'));
     expect(f.indexOf('id="lk-search"')).toBeLessThan(f.indexOf('id="lk-list"'));
   });
+  it('the New person button sits directly above the Checked in label, not at the bottom of the door', () => {
+    const list = extractFn(html, '_lkListHtml');
+    expect(list.indexOf('onclick="nyOpen()"')).toBeGreaterThan(-1);
+    expect(list.indexOf('onclick="nyOpen()"')).toBeLessThan(list.indexOf('Checked in ·'));
+    expect(list.indexOf('onclick="nyOpen()"')).toBeGreaterThan(list.indexOf('Type a name to check someone in.'));
+    expect(extractFn(html, '_lkPaintDoor')).not.toContain('nyOpen()');
+  });
   it('T7: nothing is listed until a name is typed; "In N" and "Still to come" are gone', () => {
     const h = setup();
     const out = h.fns._lkListHtml();

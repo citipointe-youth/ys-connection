@@ -44,10 +44,10 @@ describe('rev 20 door: Slow: Search Elvanto', () => {
     E.caps.doorSearch = 'live'; E.caps.checkIn = 'off'; expect(html()).toBe('');
     const src = ['_lkEsOn', '_lkEsHtml', '_lkEsGo'].map((n) => loadIndexHtml().match(new RegExp(`function ${n}\\([\\s\\S]*?\\n}`))![0]).join('');
     expect(src).not.toMatch(/.role|isAdmin|_linkAdminOn|_ikModuleOn/);
-    // the button sits just above New person on the door
+    // the button sits after the list (which now ends with New person above Checked in); Check in leaders follows
     const door = loadIndexHtml().match(/function _lkPaintDoor\(\)[\s\S]*?\n}/)![0];
     expect(door.indexOf('<div id="lk-es">')).toBeGreaterThan(door.indexOf('<div id="lk-list">'));
-    expect(door.indexOf('<div id="lk-es">')).toBeLessThan(door.indexOf('New person (first time here)'));
+    expect(door.indexOf('<div id="lk-es">')).toBeLessThan(door.indexOf('_lkOpenLeaders()'));
   });
   it('a tap sends the typed name in the note (payload {ref} only) and shows the 30 second wait with Cancel', async () => {
     E.LINK.q.search = '  Sam Sample ';
