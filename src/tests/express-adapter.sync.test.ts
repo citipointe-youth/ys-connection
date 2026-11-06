@@ -244,6 +244,17 @@ describe('F4: /sync/alerts (console trigger + cron catch-up)', () => {
     expect(alertRun.run).not.toHaveBeenCalled();
   });
 
+  it('GET /sync/alerts with CRON_SECRET unset writes no Error log row (the intended state)', async () => {
+    delete process.env['CRON_SECRET'];
+    const record = vi.fn(async () => {});
+    const srv = createApp(routes, auth, undefined, { record } as never).listen(0);
+    const url = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    try {
+      expect((await get(null, url)).status).toBe(503);
+      expect(record).not.toHaveBeenCalled();
+    } finally { srv.close(); }
+  });
+
   it('GET /sync/alerts bad bearer 401 logs cron-bad-token', async () => {
     process.env['CRON_SECRET'] = CRON;
     process.env['LINK_SYNC_TOKEN'] = TOKEN;

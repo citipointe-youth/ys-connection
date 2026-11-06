@@ -1988,7 +1988,8 @@ function _ntPushState(o) {
 // Leader alerts (2026-11-06): one line naming what a phone gets, per site module on (cfg.modules from GET /notices/push).
 function _ntAlertsCopy(m) {
   m = m || {};
-  return 'Get phone alerts for new notices' + (m.birthdayAlerts ? ", your students' birthdays" : '') + (m.lifegroupReminders ? ', lifegroup reports' : '') + '.';
+  const xs = ['new notices', m.birthdayAlerts && "your students' birthdays", m.lifegroupReminders && 'lifegroup reports'].filter(Boolean);
+  return 'Get phone alerts for ' + (xs.length > 1 ? xs.slice(0, -1).join(', ') + ' and ' : '') + xs[xs.length - 1] + '.';
 }
 function _ntPushCardHtml(st, cfg) {
   const m = (cfg && cfg.modules) || {}, pf = (cfg && cfg.prefs) || {};
@@ -2072,8 +2073,10 @@ async function _ntPushSub() {
 // (Re-)posts this phone's subscription with the current "I am" pick (a missing leaderId saves null on the server) and any prefs.
 async function _ntPushPost(sub, extra) {
   const j = sub.toJSON(), leaderId = getMyLeaderId() || null;
-  await API.post('/notices/push', { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, leaderId, ...(extra || {}) });
-  try { if (leaderId) localStorage.setItem('yap_push_leader', leaderId); else localStorage.removeItem('yap_push_leader'); } catch {}
+  const r = await API.post('/notices/push', { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, leaderId, ...(extra || {}) });
+  // Store what the server saved (null for an inactive leader), so the next boot or pick posts again; an older server has no leaderId.
+  const saved = r && r.leaderId !== undefined ? r.leaderId : leaderId;
+  try { if (saved) localStorage.setItem('yap_push_leader', saved); else localStorage.removeItem('yap_push_leader'); } catch {}
   Cache.del('/notices/push');
 }
 // Send the pick (spec 5.3): when this phone is subscribed and "I am" differs from what the server was last sent.
@@ -2144,8 +2147,7 @@ async function noticePushOff() {
   if (_ntPushBusy) return;
   _ntPushBusy = true;
   try {
-    const reg = await navigator.serviceWorker.getRegistration();
-    const sub = reg && await reg.pushManager.getSubscription();
+    const sub = await _ntPushSub();
     if (sub) {
       const endpoint = sub.endpoint;
       try { await sub.unsubscribe(); } catch {} // the phone stops first; the server row is also pruned on the next 404/410
@@ -8365,6 +8367,9 @@ function _setupPatch(draft, base) {
   else delete mc.logins;
   if (now.prayers !== b.prayers) { mc.modules = { ...(mc.modules || {}), prayers: now.prayers }; expect.prayers = b.prayers; }
   else if (mc.modules) { delete mc.modules.prayers; if (!Object.keys(mc.modules).length) delete mc.modules; }
+  // I1: an alert switch follows its parent off (it shows greyed and unticked), so turning Notices or Lifegroup report off saves.
+  const md = mc.modules;
+  if (md) for (const [k, ok] of [['birthdayAlerts', md.notices === 'on'], ['lifegroupReminders', md.notices === 'on' && _setupModuleMode(md, 'lifegroupReport') !== 'off']]) if (!ok && md[k] === 'on') md[k] = 'off';
   return Object.keys(expect).length ? { ministryConfig: mc, expect } : { ministryConfig: mc };
 }
 function _ensureSetupDraft(settings) {
@@ -8440,7 +8445,7 @@ function _setupNoticesHtml(md, style) {
   const alertSwitch = (k, label, tip, why) => `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:${why ? 'default' : 'pointer'}"><input type="checkbox" id="setup-${k}" ${!why && md[k] === 'on' ? 'checked' : ''} ${why ? 'disabled' : ''} onchange="_setupSet('modules.${k}', this.checked ? 'on' : 'off')"> <span>${label} ${helpTip(tip)}${why ? `<span class="help-text" style="display:block;margin:0">${why}</span>` : ''}</span></label>`;
   return `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="setup-notices" ${md.notices === 'on' ? 'checked' : ''} onchange="_setupSet('modules.notices', this.checked ? 'on' : 'off')"> <span>Notices ${helpTip("Admin and oversight send a message to the four Junior/Senior logins (Junior or Senior, Guys or Girls). Shows under More and on Home for 24 hours. Off by default. Notices already sent are kept.")}</span></label>`
     + alertSwitch('birthdayAlerts', 'Birthday alerts', "A phone alert at 8 am when a student a leader is connected to has a birthday. Each leader picks it on their phone under More, Notices. Off by default.", md.notices === 'on' ? '' : 'Needs Notices. Turn Notices on first.')
-    + alertSwitch('lifegroupReminders', 'Lifegroup report reminders', "A phone alert to a lifegroup's leaders 2 hours after it meets, when its report isn't in yet. Off by default.", md.notices !== 'on' ? 'Needs Notices. Turn Notices on first.' : lgrOn ? '' : 'Needs Lifegroups. Turn Lifegroups on first.');
+    + alertSwitch('lifegroupReminders', 'Lifegroup report reminders', "A phone alert to a lifegroup's leaders 2 hours after it meets, when its report isn't in yet. Off by default.", md.notices !== 'on' ? 'Needs Notices. Turn Notices on first.' : lgrOn ? '' : 'Needs Lifegroup report. Turn Lifegroup report on first (Elvanto for this location below).');
 }
 function _youthSetupBody(settings, users) {
   _ensureSetupDraft(settings);

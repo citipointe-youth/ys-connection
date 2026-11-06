@@ -28,6 +28,11 @@ describe('birthdayBody', () => {
     expect(body.length).toBeLessThanOrEqual(120);
     expect(body).toMatch(/… and \d+ more today$/);
   });
+  it('two long names stay within 120 chars (falls to the "and 1 more" form)', () => {
+    const body = birthdayBody([s('A'.repeat(60), 15), s('B'.repeat(60), 16)]);
+    expect(body.length).toBeLessThanOrEqual(120);
+    expect(body).toBe(`🎂 ${'A'.repeat(60)} (15) … and 1 more today`);
+  });
 });
 
 const L1 = '00000001-0000-4000-8000-000000000000', L2 = '00000002-0000-4000-8000-000000000000';
@@ -74,6 +79,7 @@ describe('birthday sweep', () => {
     ['graduated (findAll omits it)', { students: [] }],
     ['DNC', { dnc: ['s1'] }],
     ['no DOB', { students: [stu('s1', 'Sam', null)] }],
+    ['blank first name', { students: [stu('s1', '  ', '2010-11-07')] }],
     ['inactive leader', { leaders: [{ id: L1, active: false }] }],
     ['no notice:alerts', { users: [{ id: 'u1', role: 'leader', status: 'active' }] }],
     ['inactive login', { users: [{ id: 'u1', role: 'quad', status: 'inactive' }] }],

@@ -194,7 +194,8 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
       } catch (err) {
         const r = errorResponse(err);
         // T3: every 5xx goes to the admin Error log (code + route + role only), before the reply so serverless can't freeze it.
-        if (r.status >= 500 && errorLog) {
+        // CRON_OFF is the intended state (CRON_SECRET unset), so a hit on the cron GET leaves no row.
+        if (r.status >= 500 && errorLog && r.body.code !== 'CRON_OFF') {
           await errorLog.record({ category: categoryForCode(r.body.code), code: r.body.code, route: routeLabel, status: r.status,
             role: ctx?.role ?? (route.sync ? 'console' : route.cron ? 'cron' : null) });
         }

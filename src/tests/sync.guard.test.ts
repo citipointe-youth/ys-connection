@@ -147,7 +147,7 @@ describe('D6: a console id with no link_console row', () => {
   });
 
   it('every new code has its own wording, naming no values', () => {
-    for (const code of ['link-new-console', 'push-future-time', 'push-roster-shrink', 'push-dnc-held', 'sync-bad-token']) {
+    for (const code of ['link-new-console', 'push-future-time', 'push-roster-shrink', 'push-dnc-held', 'push-dob-held', 'sync-bad-token']) {
       expect(textFor('link', code, 'roster', null).line1, code).not.toMatch(/Elvanto link action|unknown/i);
     }
   });

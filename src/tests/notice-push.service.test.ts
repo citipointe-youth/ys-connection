@@ -33,7 +33,7 @@ function make(o: { notices?: 'on' | 'off'; env?: Record<string, string>; sender?
 describe('notice push: subscribe / unsubscribe / RBAC / module', () => {
   it('quad, admin and oversight may subscribe; grade and leader are refused', async () => {
     const { svc, subs } = make();
-    for (const [a, n] of [[ADMIN, 'a'], [DIR, 'd'], [JG, 'j']] as const) await expect(svc.subscribe(a, sub(n))).resolves.toEqual({ ok: true });
+    for (const [a, n] of [[ADMIN, 'a'], [DIR, 'd'], [JG, 'j']] as const) await expect(svc.subscribe(a, sub(n))).resolves.toEqual({ ok: true, leaderId: null });
     for (const a of [GR, LD]) await expect(svc.subscribe(a, sub('x'))).rejects.toThrow();
     expect((await subs.findAll()).length).toBe(3);
   });
@@ -141,8 +141,9 @@ describe('subscription carries leader and prefs', () => {
     const { svc, subs } = make();
     await svc.subscribe(JG, { ...sub('1'), leaderId: '33333333-3333-4333-8333-333333333333' });
     expect((await subs.findAll())[0]!.leaderId).toBeNull();
-    await svc.subscribe(JG, { ...sub('1'), leaderId: L2 });
+    await expect(svc.subscribe(JG, { ...sub('1'), leaderId: L2 })).resolves.toEqual({ ok: true, leaderId: null }); // the reply carries what was saved
     expect((await subs.findAll())[0]!.leaderId).toBeNull();
+    await expect(svc.subscribe(JG, { ...sub('1'), leaderId: L1 })).resolves.toEqual({ ok: true, leaderId: L1 });
   });
   it('another login re-subscribing resets the leader', async () => {
     const { svc, subs } = make();
@@ -155,6 +156,12 @@ describe('subscription carries leader and prefs', () => {
     await svc.subscribe(JG, { ...sub('1'), leaderId: L1 });
     expect(await svc.pushConfig(JG, sub('1').endpoint)).toMatchObject({ publicKey: 'pub', leaderId: L1, prefs: { bday: true, lgrem: true } });
     expect(await svc.pushConfig(SG, sub('1').endpoint)).not.toHaveProperty('leaderId'); // someone else's device
+  });
+  it('a repeated ?endpoint= (array) is treated as absent, not a 500', async () => {
+    const { svc } = make();
+    await svc.subscribe(JG, { ...sub('1'), leaderId: L1 });
+    const c = await svc.pushConfig(JG, [sub('1').endpoint, sub('1').endpoint] as any);
+    expect(c).not.toHaveProperty('leaderId');
   });
   it('pushConfig without endpoint carries no device state', async () => {
     const { svc } = make();

@@ -29,7 +29,8 @@ export function birthdayBody(students: { firstName: string; age: number }[]): st
   const [a, b] = students;
   if (!a) return '';
   if (!b) return `🎂 ${a.firstName} turns ${a.age} today`;
-  if (students.length === 2) return `🎂 ${a.firstName} turns ${a.age} and ${b.firstName} turns ${b.age} today`;
+  const two = `🎂 ${a.firstName} turns ${a.age} and ${b.firstName} turns ${b.age} today`;
+  if (students.length === 2 && two.length <= MAX_BODY) return two;
   const parts = students.map((s) => `${s.firstName} (${s.age})`);
   const full = `🎂 ${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]} have birthdays today`;
   if (full.length <= MAX_BODY) return full;
@@ -59,7 +60,7 @@ export function makeBirthdayKind(deps: {
       const turning = new Map<string, { id: string; firstName: string; age: number }>();
       for (const s of students) {
         const age = dnc.has(s.id) ? null : birthdayToday(s.dateOfBirth, day);
-        if (age) turning.set(s.id, { id: s.id, firstName: s.firstName.trim(), age });
+        if (age && s.firstName.trim()) turning.set(s.id, { id: s.id, firstName: s.firstName.trim(), age });
       }
       const items: AlertItem[] = [];
       for (const leaderId of new Set(subs.map((s) => s.leaderId!))) {

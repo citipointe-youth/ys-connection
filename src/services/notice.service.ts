@@ -54,7 +54,8 @@ export interface NoticeService {
   /** `publicKey` null = VAPID env not set (alerts aren't set up yet). With `endpoint`, also this login's own device state. */
   pushConfig(actor: Actor, endpoint?: string): Promise<{ publicKey: string | null; leaderId?: string | null; prefs?: { bday: boolean; lgrem: boolean };
     modules: { birthdayAlerts: boolean; lifegroupReminders: boolean } }>;
-  subscribe(actor: Actor, input: unknown): Promise<{ ok: true }>;
+  /** `leaderId` = what was saved (null for a missing, unknown or inactive leader). */
+  subscribe(actor: Actor, input: unknown): Promise<{ ok: true; leaderId: string | null }>;
   unsubscribe(actor: Actor, input: unknown): Promise<{ ok: true }>;
 }
 
@@ -116,7 +117,7 @@ export function makeNoticeService(
       await assertOn();
       assertCan(actor, 'notice:alerts');
       const publicKey = (push && readVapid(env)?.publicKey) || null;
-      const mine = endpoint && push ? await push.subs.findById(subId(endpoint)) : null;
+      const mine = typeof endpoint === 'string' && endpoint && push ? await push.subs.findById(subId(endpoint)) : null;
       const m = settingsRepo ? (await settingsRepo.getSettings()).ministryConfig.modules : null;
       const modules = { birthdayAlerts: !!m && alertModuleOn(m, 'birthdayAlerts'), lifegroupReminders: !!m && alertModuleOn(m, 'lifegroupReminders') };
       return mine?.userId === actor.id ? { publicKey, leaderId: mine.leaderId, prefs: { bday: mine.bdayOn, lgrem: mine.lgremOn }, modules } : { publicKey, modules };
@@ -135,7 +136,7 @@ export function makeNoticeService(
         id, userId: actor.id, endpoint: d.endpoint, p256dh: d.keys.p256dh, auth: d.keys.auth, createdAt: now().toISOString(), leaderId,
         bdayOn: d.prefs?.bday ?? old?.bdayOn ?? true, lgremOn: d.prefs?.lgrem ?? old?.lgremOn ?? true,
       });
-      return { ok: true };
+      return { ok: true, leaderId };
     },
     // Not module-gated: turning alerts off always works.
     async unsubscribe(actor, input) {

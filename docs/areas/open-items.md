@@ -13,13 +13,13 @@ Cutover planned Sun 25 Oct night (fallback Mon 26 / Wed 28). Do these first, in 
 
 - **Operator follow-up: Vercel cron.** No `vercel.json` cron was added. `CRON_SECRET` (32+ chars) is not set, and `GET /sync/alerts` answers 503 `CRON_OFF` until it is set and a `crons` entry is added (the spec's value was `0 23 * * *`, 09:00 Brisbane). Until then the console's 15-min `POST /sync/alerts` is the only scheduler, so a console outage means no alerts that day.
 - Both new modules ship Off, so Part F shows nothing. Phones send their "I am" pick on their next boot; give it a few days before turning a module on.
-- Watch: `ALERT_PUSH_FAILED` and `CRON_OFF` in the YS error log; console log counts at each quarter hour; one real quad phone with "I am" set.
+- Watch: `ALERT_PUSH_FAILED` in the YS error log (`CRON_OFF` is the intended state, so the adapter writes no row for it); console log counts at each quarter hour; one real quad phone with "I am" set.
 - Rollback: turn the module off (instant, no ship). A YS rollback leaves the 0056 columns and `alert_sends` unused.
 
 ## Birthday alerts, Part B (2026-11-07; watch items)
 
 - Ship order: YS first (`LINK_REV` 23, `dob`, the sweep), then the console (`birthIso`, roster `dob`). After the first roster push fills the DOBs (outside the 08:00-11:59 window), **turn the Birthday alerts module on**.
-- Watch the console log counts at 08:00 and the YS error log for `push-dob-held` (it has no Error log wording yet; one line next to `push-dnc-held` in `error-log-text.ts`, plus the code in the `sync.guard.test.ts` list, would add it) and `ALERT_PUSH_FAILED`. Test with a student whose DOB is today, connected to a leader whose phone has "I am" set.
+- Watch the console log counts at 08:00 and the YS error log for `push-dob-held` and `ALERT_PUSH_FAILED`. Test with a student whose DOB is today, connected to a leader whose phone has "I am" set.
 - **Tom to confirm IA-1 (B13): Elvanto's date of birth wins over a stored YS one** (a blank Elvanto DOB never clears it). The alternative, fill-blanks-only, would keep a wrong YS DOB firing every year.
 
 ## Open items
