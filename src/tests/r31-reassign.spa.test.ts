@@ -49,7 +49,7 @@ describe('r31: Reassign changes the leader in Elvanto too (rev 22)', () => {
     expect(f.PUSHED).toHaveLength(1);
     expect(f.PUSHED[0]).toMatchObject({ kind: 'action', type: 'reassignStep', note: null,
       payload: { rowId: 'r1', flowId: 'F1', stepId: 'S1', personId: P(10), assignTo: P(71) } });
-    expect(f.TOASTS[0]).toBe('Assigned to Carl. Changes the leader in Elvanto too.');
+    expect(f.TOASTS[0]).toBe('Assigned to Carl'); // the Elvanto line comes with the queue's answer (below)
   });
   it('Nobody stays YS-only: unassigned here, nothing queued', async () => {
     L.fSteps = steps({ admins: [P(71)] });
@@ -82,4 +82,25 @@ describe('r31: Reassign changes the leader in Elvanto too (rev 22)', () => {
     expect(f._lkReassignElv(L.flows[0], LDRS[0])).toBe(false);
     expect(f._lkOffers(L.flows[0], P(70))).toBe(true);
   });
+});
+
+// Review fix 2 (2026-11-06): the Elvanto line follows the queue's answer. A duplicate = an earlier Reassign of the row is still being sent.
+describe('r31: the queue answer for a reassignStep', () => {
+  const R = loadFns(['_lkResults', '_lkSay'], `
+    var LINK = { resGen: 0, loadGen: 0, gmOpen: {}, mres: {}, refusals: {}, fails: 0 }, TOASTS = [], Q = [], BOSS = true;
+    var LK_FLOW_TYPES = ['completeStep', 'removeFromFlowStep'], LK_MEM_TYPES = ['addGroupMember', 'removeGroupMember'];
+    function _lkBoss() { return BOSS; } function toast(t) { TOASTS.push(t); } function _lkPlainToast(t) { return t; }
+    function _lkQGet() { return Q; } function _lkQSet(q) { Q = q; } function _lkSchedule() {} function _lkRefreshView() {} function _lkMembersLoad() {}
+    function setBoss(b) { BOSS = b; }
+  `, ['_lkResults', 'TOASTS', 'setBoss']);
+  const item = { kind: 'action', id: 'a1', type: 'reassignStep', payload: { rowId: 'r1', personId: 'p', assignTo: 'x' } };
+  const answer = (outcome: string, extra = {}) => { R.TOASTS.length = 0; R._lkResults([item], [{ kind: 'action', id: 'a1', outcome, ...extra }]); return R.TOASTS[0]; };
+  beforeEach(() => R.setBoss(true));
+  it('saved: "Changes the leader in Elvanto too."', () => expect(answer('saved')).toBe('Changes the leader in Elvanto too.'));
+  it('duplicate: Saved in YS, an earlier Elvanto change still being sent (never "Changes the leader")', () => {
+    expect(answer('duplicate', { existingId: 'a0' })).toBe('Saved in YS. An earlier Elvanto change for this person is still being sent; try again in a minute.');
+    R.setBoss(false);
+    expect(answer('duplicate', { existingId: 'a0' })).toBe('Saved. An earlier change for this person is still being sent; try again in a minute.');
+  });
+  it('refused: the server message', () => expect(answer('refused', { code: 'BAD_REQUEST', message: "Elvanto doesn't list that leader for this step." })).toBe("Elvanto doesn't list that leader for this step."));
 });

@@ -11116,6 +11116,7 @@ function _lkStatusText(row, lastSeen) {
       if (row.reason === 'already') return row.type === 'completeStep' ? "Done once already. If it's back on the list, do it in Elvanto." : 'Already in Elvanto';
       return 'In Elvanto' + (row.resultAt ? ' ' + _lkTime(row.resultAt) : '');
     case 'refused': if (row.reason === 'no-room' && row.type === 'checkOut') return 'Checked in with no room, so there is nothing to check out.'; // T6 (2026-10-21)
+      if (row.reason === 'assignee-needed' && row.type === 'reassignStep') return "That leader isn't on this step's list in Elvanto. Pick someone from the list."; // rev 22
       if (row.code === 'CONSENT_CHECK_FIRST') return 'Do the consent check first (New youth & consent).';
       if (row.code === 'CONSENT_FLOW_UNKNOWN') return "Can't check consent. This year's New People flow wasn't found. Ask your admin.";
       return R[row.reason] || row.message || R.unknown;
@@ -11406,6 +11407,10 @@ function _lkResults(items, results) {
         : Object.assign({ id: it.id, type: it.type, status: 'pending', reason: null }, r.action || {}, r.outcome === 'duplicate' && r.existingId ? { id: r.existingId } : {});
       if (gid) { if (!LINK.gres) LINK.gres = {}; LINK.gres[gid] = ans; }
       else { if (!LINK.fres) LINK.fres = {}; LINK.fres[fr] = ans; }
+    } else if (it.kind === 'action' && it.type === 'reassignStep') { // rev 22: the Elvanto half of a Reassign (the YS half already saved)
+      if (r.outcome === 'refused') say = r.message || say;
+      else if (r.outcome === 'duplicate') say = _lkSay('Saved in YS. An earlier Elvanto change for this person is still being sent; try again in a minute.', 'Saved. An earlier change for this person is still being sent; try again in a minute.');
+      else if (r.outcome === 'saved' || r.outcome === 'replay') say = say || _lkSay('Changes the leader in Elvanto too.', 'Changes the leader in the system too.');
     } else if (it.kind === 'action' && it.type === 'firstTimerCheckIn') { // a tap queued by an older build: nothing shows it now
     } else if (it.kind === 'action') {
       const svc = it.payload && it.payload.serviceTimeId, pid = it.payload && it.payload.personId;
@@ -13166,7 +13171,7 @@ async function _lkReassign() {
   closeModal();
   if (elv) _lkPush({ kind: 'action', id: _lkUuid(), type: 'reassignStep', payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId, assignTo: l.personId }, note: null, leaderId: getMyLeaderId() || null }, true);
   else _lkRefreshView();
-  toast(l ? 'Assigned to ' + l.name + (elv ? '. Changes the leader in Elvanto too.' : '') : 'Unassigned');
+  toast(l ? 'Assigned to ' + l.name : 'Unassigned'); // rev 22: the Elvanto line comes with the queue's answer (_lkFlush: saved, or duplicate = an earlier one still sending)
 }
 function _lkStepDraw() {
   const b = document.getElementById('lk-fs'), a = document.getElementById('lk-fs-act');
@@ -13467,7 +13472,7 @@ const _LK_RC = {};
 // The unclear types the console can re-check (link-contract RECHECK_TYPES; pinned in recheck.spa.test.ts).
 function _lkRcType(t) {
   return ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn', 'addGroupMember',
-    'removeGroupMember', 'removeFromFlowStep', 'consentFix'].includes(t);
+    'removeGroupMember', 'removeFromFlowStep', 'consentFix', 'reassignStep'].includes(t);
 }
 function _lkRcHtml(id, caps) {
   const r = _LK_RC[id];

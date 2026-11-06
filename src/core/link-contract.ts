@@ -46,7 +46,7 @@ export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport'
   'removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck', 'busConsentCheck', 'doorSearch', 'reassignStep'] as const;
 /** Rev 15 (L7): the unclear saves the console can re-check (read only). Not the intake chains, lookups or console-local links. */
 export const RECHECK_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
-  'addGroupMember', 'removeGroupMember', 'removeFromFlowStep', 'consentFix'] as const;
+  'addGroupMember', 'removeGroupMember', 'removeFromFlowStep', 'consentFix', 'reassignStep'] as const; // rev 22: reassignStep (the row's assignee uuid re-read)
 /** The Consents screen's lookups: rev 6 forms + mismatches, L6 unlinked (0031), rev 8 other (0033). */
 export const CONSENT_LOOKUP_KINDS = ['forms', 'mismatches', 'unlinked', 'other'] as const;
 export type ConsentLookupKind = (typeof CONSENT_LOOKUP_KINDS)[number];

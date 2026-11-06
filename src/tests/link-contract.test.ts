@@ -473,7 +473,7 @@ describe('link contract: rev 6 (R1 consent, R4 remove, R2 consent lookup / fix)'
     (C.PAYLOAD_SCHEMAS[p.type] as z.ZodTypeAny).parse(p.payload); // the ref row's own payload, by its own type
     expect(C.LINK_REV).toBeGreaterThanOrEqual(15);
     expect(C.MIN_CONSOLE_REV).toBe(12);
-    const not: string[] = [...C.INTAKE_TYPES, 'consentLookup', 'consentLink', 'recheck', 'busConsentCheck', 'doorSearch', 'reassignStep'];
+    const not: string[] = [...C.INTAKE_TYPES, 'consentLookup', 'consentLink', 'recheck', 'busConsentCheck', 'doorSearch'];
     expect([...C.RECHECK_TYPES].sort()).toEqual(C.ACTION_TYPES.filter((t) => !not.includes(t)).sort());
     const req = load('claim-request.json');
     expect(C.ClaimRequest.parse({ ...req, capabilities: { ...req.capabilities, recheck: 'live' } }).capabilities.recheck).toBe('live');
@@ -677,7 +677,7 @@ describe('link contract: rev 22 (Reassign changes the leader in Elvanto, 2026-11
     for (const bad of [{ assignTo: undefined }, { assignTo: null }, { assignTo: '' }, { note: 'x' }, { assignTo: A.toUpperCase() }]) {
       rejects(C.PAYLOAD_SCHEMAS.reassignStep, { ...pay, ...bad });
     }
-    expect((C.RECHECK_TYPES as readonly string[]).includes('reassignStep')).toBe(false); // the console has no Check again for it yet
+    expect((C.RECHECK_TYPES as readonly string[]).includes('reassignStep')).toBe(true); // an unclear one settles by Check again (the row's assignee uuid)
   });
   it('the rev 22 claim reply carries one reassignStep row; a claim may list the capability (optional: an older console omits it)', () => {
     const r = C.ClaimResponse.parse(load('claim-response-rev22.json'));
