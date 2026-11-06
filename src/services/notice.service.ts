@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import webpush from 'web-push';
 import { z } from 'zod';
 import { generateId } from '../utils/id';
 import { assertCan, can, receivesNoticePush } from './access-control';
@@ -9,6 +8,9 @@ import { NOTICE_QUADS, type Notice } from '../core/entities/notice';
 import type { Actor } from '../core/entities/user';
 import { AppError, ConflictError, NotFoundError, ModuleDisabledError } from '../core/errors/app-error';
 import type { ErrorLogService } from './error-log.service';
+import { readVapid, sendToSubs, webPushSender, type PushSender } from './push-send';
+
+export type { PushSender, Vapid } from './push-send';
 
 export const NOTICE_HISTORY_DAYS = 30;
 
@@ -27,12 +29,6 @@ const SubscribeSchema = z.object({
 });
 const UnsubscribeSchema = z.object({ endpoint: z.string().min(1).max(1000) });
 
-export interface Vapid { publicKey: string; privateKey: string; subject: string }
-/** Sends one push. Throws on failure; a dead endpoint throws with statusCode 404/410 (web-push's WebPushError). */
-export type PushSender = (sub: { endpoint: string; keys: { p256dh: string; auth: string } }, payload: string, vapid: Vapid) => Promise<unknown>;
-const webPushSender: PushSender = (sub, payload, v) =>
-  webpush.sendNotification(sub, payload, { vapidDetails: v, TTL: 3600, timeout: 5000 });
-
 export interface NoticePushDeps {
   subs: INoticePushRepository;
   users: Pick<IUserRepository, 'findAll'>;
@@ -42,11 +38,6 @@ export interface NoticePushDeps {
   env?: Record<string, string | undefined>;
 }
 
-/** VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT; any one unset = alerts silently off. */
-function readVapid(env: Record<string, string | undefined>): Vapid | null {
-  const publicKey = env['VAPID_PUBLIC_KEY']?.trim(), privateKey = env['VAPID_PRIVATE_KEY']?.trim(), subject = env['VAPID_SUBJECT']?.trim();
-  return publicKey && privateKey && subject ? { publicKey, privateKey, subject } : null;
-}
 const subId = (endpoint: string) => createHash('sha256').update(endpoint).digest('hex').slice(0, 32);
 
 /** The notification text: first line of the notice (its title), ~120 chars. Nothing else from the notice goes out. */
@@ -81,16 +72,7 @@ export function makeNoticeService(
     try {
       const users = new Map((await push.users.findAll()).map((u) => [u.id, u]));
       const targets = (await push.subs.findAll()).filter((s) => { const u = users.get(s.userId); return !!u && receivesNoticePush(u, n.recipients); });
-      const payload = pushPayload(n);
-      await Promise.all(targets.map(async (s) => {
-        try {
-          await sender({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, v);
-        } catch (e) {
-          const status = (e as { statusCode?: number })?.statusCode;
-          if (status === 404 || status === 410) await push.subs.delete(s.id).catch(() => { failed++; });
-          else failed++;
-        }
-      }));
+      failed += (await sendToSubs(targets, pushPayload(n), { sender, vapid: v, repo: push.subs })).failed;
     } catch { failed++; }
     if (failed) await push.errorLog?.record({ category: 'server', code: 'PUSH_FAILED', route: 'POST /notices', count: failed });
   }

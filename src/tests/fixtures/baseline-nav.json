@@ -766,6 +766,7 @@
      "fyi"
     ],
     "serverCodes": {
+     "ALERT_PUSH_FAILED": "fyi",
      "BUS_CONSENT_FORM_FAILED": "now",
      "BUS_CONSENT_FORM_UNCONFIRMED": "now",
      "CONSENT_ADDRESS_UNMATCHED": "fyi",

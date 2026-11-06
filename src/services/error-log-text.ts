@@ -40,6 +40,7 @@ export const TEXT: Record<string, Entry> = {
   LINK_OFF: ['now', 'The Elvanto link is off: no sync token in Vercel', `Set LINK_SYNC_TOKEN (32+ characters) in Vercel, redeploy, and save it in the console.${TELL}`],
   ROUTING_FAILED: ['later', 'Bus route planning failed at Google', `Replan the run later. GOOGLE_MAPS_API_KEY or its quota in Google Cloud needs a look.${TELL}`],
   PUSH_FAILED: ['fyi', 'Some phone alerts for a notice failed', 'Nothing to do; the notice is in the app.'],
+  ALERT_PUSH_FAILED: ['fyi', 'Some birthday or lifegroup alerts to phones failed', 'Nothing to do; alerts are not resent.'],
   PUSH_OFF: ['later', 'Notice alerts are not set up', `Add VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT in Vercel and redeploy.${TELL}`],
   SETUP_INCOMPLETE: ['now', 'Logins are failing: SESSION_SECRET is not set', `Set SESSION_SECRET in Vercel and redeploy.${TELL}`],
   ELVANTO_UNREACHABLE: ['now', 'Elvanto was unreachable, so a new person was not sent', 'Resend from Admin > Unsent new people.'],
