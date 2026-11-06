@@ -44,7 +44,7 @@ describe('L1-1 Setup leader cards: same outer size, ~3.5 student rows', () => {
     const list = px(css('.connect-students'), 'max-height');
     expect(css('.connect-leader')).toContain('padding:6px 12px 10px');
     expect(css('.connect-leader-head')).not.toContain('margin-bottom');
-    expect(css('.connect-leader-head .btn-sm')).toContain('min-height:40px');
+    expect(css('.connect-leader-head>button')).toContain('min-height:40px');
     const top = px(css('.connect-students-wrap'), 'margin-top');
     const h = 16 + 40 + 40 + top + list;
     expect(h).toBeLessThanOrEqual(245);

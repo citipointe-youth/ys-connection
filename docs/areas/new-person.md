@@ -26,6 +26,7 @@ A host types a new student and one parent into the **New person** screen (intern
   - "Send the parent form again" appears only when the student form is in and the parent form failed. If that retry fails, the screen stays on the result page, so the student form is never sent twice.
   - "Add a brother or sister" keeps the parent details and sends the student form only. It is offered only when neither form failed (so it never competes with "Send the parent form again").
   - Logout clears the screen's state (`nyReset()`).
+  - Keyboard (2026-11-06): `_fixViewportGap` does nothing while the iOS keyboard is open (`_kbOpen()`) or when focus moved to another field, and `html{scroll-padding-top}` clears the sticky header, so tapping a field scrolls it into view without a jump. The door's "New person (first time here)" button sits directly above the "Checked in" label.
   - Only the host's own name is stored, in `localStorage` `ysc.nyHost`, on that device.
 - **No personal data is stored or logged.** Validation errors name the field only (fixed `LABELS` strings), never the value. Names are tidied to match Project 11.1's `capName`, so 11.1 does not offer a capital fix on a form this app sent. Phones go out as bare `04XXXXXXXX`.
 - **`/intake` is registered in all three places** (house checklist): `router.ts`, the `vercel.json` regex, and `public/sw.js` `API_RE`. After deploy, `curl -s -X POST https://<deployment>/intake/new-youth` must return a **JSON 401**, not HTML.

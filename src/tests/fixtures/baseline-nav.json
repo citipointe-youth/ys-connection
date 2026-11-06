@@ -194,6 +194,8 @@
      "#fl-time-zone",
      "_setupSet('structure.timeZone', this.value.trim()",
      "#setup-tz",
+     "#fl-consent-closes-at",
+     "_setupSet('structure.consentCutoff', this.value)",
      "#fl-min-attendance-for-a-valid-service",
      "_setupSetMinAtt(this.value)",
      "#fl-term-gap-days",
