@@ -108,7 +108,7 @@ describe('bulk Reassign from the multi-select bar', () => {
   beforeEach(() => {
     B.fLeaders = LD; B.fSteps = [{ flowId: 'F1', stepId: 'S1', admins: [P(70), P(71), P(72)] }];
     B.flows = [row('r1'), row('r2'), row('r3', { grade: 9, gender: 'female', currentLeaderId: 'L1' })];
-    B.fsel = { r1: true, r2: true, r3: true }; B.fr = null;
+    B.fsel = { r1: true, r2: true, r3: true }; B.fr = null; B.frBusy = false;
     for (const a of [b.PUSHED, b.ASSIGNED, b.TOASTS, b.MODALS, b.SCHED]) a.length = 0;
     for (const k of Object.keys(b.FAIL)) delete b.FAIL[k];
   });
@@ -131,6 +131,24 @@ describe('bulk Reassign from the multi-select bar', () => {
     expect(b.ASSIGNED).toEqual([['r1', null], ['r2', null], ['r3', null]]);
     expect(b.PUSHED).toEqual([]);
     expect(b.TOASTS[0]).toBe('Unassigned 3.');
+  });
+  it('a second tap while the loop runs sends nothing again: ticks clear before the loop and the bar is busy', async () => {
+    b._lkBulkReassignOpen(); B.fr.pick = 'L2';
+    const first = b._lkBulkReassignSend();
+    expect(B.fsel).toEqual({});
+    B.fsel = { r1: true, r2: true }; // even re-ticked mid-run, a reopen is refused while busy
+    b._lkBulkReassignOpen(); if (B.fr) B.fr.pick = 'L2';
+    await Promise.all([first, b._lkBulkReassignSend()]);
+    expect(b.ASSIGNED).toEqual([['r1', 'L2'], ['r2', 'L2']]);
+    expect(b.PUSHED).toHaveLength(2);
+    expect(b.MODALS).toHaveLength(1);
+    expect(B.frBusy).toBe(false);
+  });
+  it('rows sharing one person + flow: the person is done once, the sibling is counted', async () => {
+    B.flows.push(row('r4', { personId: P(11) })); B.fsel.r4 = true; // r1's person, same flow
+    await send('L2');
+    expect(b.ASSIGNED).toEqual([['r1', 'L2'], ['r2', 'L2']]);
+    expect(b.TOASTS[0]).toBe("Reassigned 2 to Carl. 1 skipped: that leader isn't on their step's list. 1 skipped: same person already done in this flow.");
   });
   it('a partial failure is reported with the name, the rest still go through, and the queue waits so the toast is seen', async () => {
     b.FAIL.r2 = true;

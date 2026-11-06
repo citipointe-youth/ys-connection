@@ -13015,7 +13015,7 @@ function _lkFlowsHtml() {
     top += _lkFfHtml(_lkFfGet());
     body = n || hid ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
       ${n ? `<button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} Complete ${n}</button>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="_lkBulkReassignOpen()">Reassign ${n}</button>` : ''}
+      <button type="button" class="btn btn-secondary btn-sm" onclick="_lkBulkReassignOpen()"${LINK.frBusy ? ' disabled' : ''}>Reassign ${n}</button>` : ''}
       ${hid ? `<p class="lk-hint" style="flex-basis:100%;margin:0">${hid} more ticked but hidden by the filter (not included).</p>` : ''}</div>` : '';
   }
   return bar + top + '<div id="lk-fbody">' + body + _lkFlowGroups(shown, today, steps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
@@ -13211,7 +13211,7 @@ function _lkBulkPickList(rows) {
   return out;
 }
 function _lkBulkReassignOpen() {
-  if (!_lkBoss()) return;
+  if (!_lkBoss() || LINK.frBusy) return; // review: no second run while one is still saving
   const ids = _lkSelIds(_lkFlowVisible(), LINK.fsel), n = ids.length;
   if (!n) return;
   if (n > 50) { toast('Up to 50 at a time. Untick some first.'); return; }
@@ -13225,29 +13225,36 @@ function _lkBulkReassignOpen() {
 }
 async function _lkBulkReassignSend() {
   const f = LINK.fr, ids = _lkSelIds(_lkFlowVisible(), LINK.fsel);
-  if (!f || !_lkBoss() || !ids.length || ids.length > 50) return;
-  LINK.fr = null;
+  if (!f || LINK.frBusy || !_lkBoss() || !ids.length || ids.length > 50) return;
+  // review: the ids are snapshotted and the ticks cleared BEFORE the loop, and the bar is busy, so a second tap sends nothing again
+  LINK.fr = null; LINK.fsel = {}; LINK.frBusy = true;
   closeModal();
-  let done = 0, skip = 0, nop = 0, sent = 0, name = '';
-  const bad = [];
+  _lkFlowsDraw();
+  let done = 0, skip = 0, nop = 0, sib = 0, sent = 0, name = '';
+  const bad = [], seen = {};
+  try {
   for (const id of ids) { // one at a time, like the single Reassign: the YS save first, then the Elvanto half
     const r = _lkFlowRow(id);
     if (!r || !r.personId) { nop++; continue; }
     const l = f.pick ? _lkPickList(r).find((x) => x.id === f.pick) : null;
     if (f.pick && !l) { skip++; continue; }
+    const key = r.flowId + '|' + r.personId; // one assignment covers the person's rows in that flow: do the person once
+    if (seen[key]) { sib++; continue; }
+    seen[key] = true;
     if (l) name = l.name;
     const elv = _lkReassignElv(r, l);
     try { await _lkAssignSave(r, l); } catch (e) { bad.push([r.name || 'Someone', (e && e.message) || 'Could not assign.']); continue; }
     done++;
     if (elv) { sent++; _lkPush({ kind: 'action', id: _lkUuid(), type: 'reassignStep', payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId, assignTo: l.personId }, note: null, leaderId: getMyLeaderId() || null }, false); }
   }
-  LINK.fsel = {};
+  } finally { LINK.frBusy = false; }
   // a failure toast must not be overwritten by the queue's Elvanto line at once: the flush waits 6 s then (else the usual 300 ms)
   if (sent) _lkSchedule(bad.length ? 6000 : 300);
   _lkRefreshView();
   _lkFlowsDraw();
   const t = [f.pick ? (done ? 'Reassigned ' + done + (name ? ' to ' + name : '') + '.' : 'Nobody reassigned.') : 'Unassigned ' + done + '.'];
   if (skip) t.push(skip + " skipped: that leader isn't on their step's list.");
+  if (sib) t.push(sib + ' skipped: same person already done in this flow.');
   if (nop) t.push(nop + ' skipped: no Elvanto profile.');
   if (bad.length) t.push(bad.length + ' failed (' + bad.map((x) => x[0]).slice(0, 3).join(', ') + (bad.length > 3 ? ', …' : '') + '): ' + bad[0][1]);
   toast(t.join(' '), bad.length || skip ? 8000 : 4000);
