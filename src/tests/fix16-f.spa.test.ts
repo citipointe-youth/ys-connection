@@ -5,7 +5,7 @@ import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const SRC = loadIndexHtml();
 const LK_FF_SRC = SRC.match(/^const LK_FF = .*;/m)![0];
-const NAMES = ['_lkFirstName', '_lkTextHref', '_lkSmsHref', '_lkFfHtml', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkFlowGroups', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFlowAct', '_lkFlowFree', '_lkTickable', '_lkCanComplete', '_lkHubOwned', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkSelIds', '_lkRemoveHtml', '_lkLoadFlows', '_lkFlowShown',
+const NAMES = ['_lkFirstName', '_lkTextHref', '_lkSmsHref', '_lkFfHtml', '_lkFqGet', '_lkFqHit', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkFlowGroups', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFlowAct', '_lkFlowFree', '_lkTickable', '_lkCanComplete', '_lkHubOwned', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkSelIds', '_lkRemoveHtml', '_lkLoadFlows', '_lkFlowShown',
   '_lkFlowBucket', '_lkFfGet'];
 const PRELUDE = `
   ${LK_FF_SRC}
@@ -54,7 +54,7 @@ describe('F-23 the flow Text link greets by first name ("Last, First" names)', (
 describe('F-21 filter pills say Jr/Sr Guys/Girls (not colour only)', () => {
   it('four distinct labels', () => {
     const h = f._lkFfHtml([]);
-    const labels = [...h.matchAll(/>([^<]+)<\/button>/g)].map((m) => m[1]);
+    const labels = [...h.matchAll(/<option value="\w+"[^>]*>([^<]+)</g)].map((m) => m[1]); // 6 Nov: the quad dropdown's options
     expect(labels).toEqual(['Jr Guys', 'Jr Girls', 'Sr Guys', 'Sr Girls']);
   });
 });

@@ -21,7 +21,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
   // run 2026-10-15 lane B: DNC, flow filters, bulk Complete, Remove from step, console offline
   '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFfGet',
-  '_lkFfHtml', '_lkFfToggle', '_lkFlowShown', '_lkFlowBucket', '_lkTickable', '_lkSelIds', '_lkSel', '_lkSelAll', '_lkSelClear', '_lkFlowsDraw',
+  '_lkFfHtml', '_lkFfPick', '_lkFqGet', '_lkFqSet', '_lkFqHit', '_lkFlowShown', '_lkFlowBucket', '_lkTickable', '_lkSelIds', '_lkSel', '_lkSelAll', '_lkSelClear', '_lkFlowsDraw',
   '_lkBulkOpen', '_lkBulkSend', '_lkRemoveHtml', '_lkRemoveAsk', '_lkRemoveBack', '_lkRemoveSend', '_lkStepBtns', 'dncChip', 'dncBanner',
   '_structure', '_gradeWord', 'gradeBands', '_juniorMin', '_ikModuleOn'];
 
@@ -1990,7 +1990,7 @@ describe('F3 flow steps', () => {
     const g = setup('L1', [row(1)]);
     const out = g.fns._lkFlowsHtml();
     expect(out).not.toContain('lk-tick');
-    expect(out).not.toContain('Junior Guys');
+    expect(out).not.toContain('aria-label="Quad"');
   });
   it('R1 DNC sheet: red banner, no Text, no Complete; admin still sees the number and can Remove', () => {
     const h = boss([row(1, { dnc: true, consent: 'contact', mobile: '0412345678' })]);

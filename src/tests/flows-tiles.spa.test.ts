@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { loadFns, loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete',
-  '_lkTickable', '_lkSelIds', '_lkFfGet', '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkHubOwned', '_lkPickList', '_lkAdmins', '_lkReassignElv', '_lkPicked', '_lkOffers', '_lkFits', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkMemOff', '_lkCanRemove', '_lkFlowRow', '_lkBulkOpen', '_lkBulkSend', '_lkStepHtml', '_lkStepBtns',
+  '_lkTickable', '_lkSelIds', '_lkFfGet', '_lkFfHtml', '_lkFqGet', '_lkFqHit', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkHubOwned', '_lkPickList', '_lkAdmins', '_lkReassignElv', '_lkPicked', '_lkOffers', '_lkFits', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkMemOff', '_lkCanRemove', '_lkFlowRow', '_lkBulkOpen', '_lkBulkSend', '_lkStepHtml', '_lkStepBtns',
   '_lkTextHref', '_lkSmsHref', '_lkFirstName'];
 const PRELUDE = `
   var ROLE = 'admin', MODALS = [], TOASTS = [], PUSHED = [];
@@ -60,7 +60,7 @@ describe('Flow steps: no tiles; step 0 and Parent Consent step 1 are the hub\'s'
     expect(s).not.toContain('New Students ·');
     expect(s).not.toContain('Parent text ·');
     for (const step of ['Welcome', 'Follow up', 'Text parent', 'Chase']) expect(h).toContain(step);
-    expect(h).toContain('Junior Guys');
+    expect(h).toContain('Jr Guys');
   });
   it('module on, on link-flows: a step-0 row cannot be completed, removed or ticked; its sheet links to the hub', () => {
     const s0 = R({ rowId: 's0', consentStep: true, stepOrder: 1 });

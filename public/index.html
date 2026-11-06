@@ -850,6 +850,7 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .fc.lk-ff-boy{color:var(--boy-dark)}.fc.lk-ff-girl{color:var(--girl-dark)}.fc.lk-ff-mix{color:var(--mix-dark)}
 .fc.lk-ff-mix.on{background:var(--mix-dark);border-color:var(--mix-dark);color:#fff}
 .fc.lk-ff-boy.on{background:var(--boy-dark);border-color:var(--boy-dark);color:#fff}.fc.lk-ff-girl.on{background:var(--girl-dark);border-color:var(--girl-dark);color:#fff}
+.lk-ff2{display:flex;gap:8px;margin-bottom:10px}.lk-ff2 .fs{flex:1 1 0;min-width:0;min-height:44px}.lk-ff2 .fi{flex:2 1 0;min-width:0;min-height:44px}
 .lk-ff{flex-wrap:nowrap}.lk-ff .fc{min-height:36px;flex:1 1 0;padding:6px 2px;font-size:13px;white-space:nowrap;text-align:center}
 .lk-cf{gap:4px}.lk-cf .fc{font-size:12px;padding:6px 0;min-width:0} /* six chips fit a 375px phone */
 @media(pointer:coarse){.lk-ff .fc{min-height:44px}} /* impeccable 2026-10-24 #7: back to the I1 44px chip ruling (36px above won on order) */
@@ -12821,29 +12822,53 @@ function _lkFlowBucket(r, b) {
 function _lkFlowShown(rows, on, bands) {
   return (rows || []).filter((r) => { const b = _lkFlowBucket(r, bands); return !b || on.includes(b); });
 }
-// The chips that are on: memory first (a blocked localStorage still toggles), then this device's pick, else all four.
+// The quads shown: one quad or all four (6 Nov: a dropdown replaced the chips). Memory first, then this device's pick
+// (an old multi-chip pick opens as All quads), else all four.
 function _lkFfGet() {
   if (Array.isArray(LINK.ff)) return LINK.ff;
-  try { const v = JSON.parse(localStorage.getItem('yap_lk_flowf') || 'null'); if (Array.isArray(v)) return (LINK.ff = v.filter((k) => LK_FF.some((x) => x[0] === k))); } catch (e) {}
-  return (LINK.ff = LK_FF.map((x) => x[0]));
+  const all = LK_FF.map((x) => x[0]);
+  try { const v = JSON.parse(localStorage.getItem('yap_lk_flowf') || 'null'); if (Array.isArray(v)) { const k = v.filter((x) => all.includes(x)); return (LINK.ff = k.length === 1 ? k : all); } } catch (e) {}
+  return (LINK.ff = all);
 }
-function _lkFfToggle(k) {
-  const on = _lkFfGet().slice(), i = on.indexOf(k);
-  if (i >= 0) on.splice(i, 1); else on.push(k);
-  LINK.ff = on;
-  try { localStorage.setItem('yap_lk_flowf', JSON.stringify(on)); } catch (e) {}
+function _lkFfPick(k) { // '' = All quads
+  LINK.ff = LK_FF.some((x) => x[0] === k) ? [k] : LK_FF.map((x) => x[0]);
+  try { localStorage.setItem('yap_lk_flowf', JSON.stringify(LINK.ff)); } catch (e) {}
   _lkFlowsDraw();
 }
-function _lkFfHtml(on) {
-  return `<div class="filter-row lk-ff" role="group" aria-label="Show these people">${LK_FF.map(([k, l, c]) => {
-    const p = on.includes(k);
-    return `<button type="button" class="fc lk-ff-${c}${p ? ' on' : ''}" aria-pressed="${p}" aria-label="${l}" onclick="_lkFfToggle('${k}')">${l.replace(/^(J|S)\w+/, '$1r')}</button>`;
-  }).join('')}</div>`;
+// The name search (student or assigned leader), kept for this browser session.
+function _lkFqGet() {
+  if (typeof LINK.fq === 'string') return LINK.fq;
+  try { LINK.fq = sessionStorage.getItem('yap_lk_flowq') || ''; } catch (e) { LINK.fq = ''; }
+  return LINK.fq;
 }
-// The rows this login sees on the screen (filters only for admin/oversight).
+// Every space-split term must be in the student + leader text (case-blind substring).
+function _lkFqHit(r, q) {
+  const t = [r.name, r.assignedLeaderName, r.assignedTo].filter(Boolean).join(' ').toLowerCase();
+  return String(q || '').toLowerCase().split(/\s+/).filter(Boolean).every((w) => t.includes(w));
+}
+// Typing redraws only #lk-fbody (the list under the filter row), so the search box keeps focus and the phone keyboard.
+function _lkFqSet(v) {
+  LINK.fq = String(v || '');
+  try { sessionStorage.setItem('yap_lk_flowq', LINK.fq); } catch (e) {}
+  const b = document.getElementById('lk-fbody');
+  if (!b) { _lkFlowsDraw(); return; }
+  const t = document.createElement('div');
+  t.innerHTML = _lkFlowsHtml();
+  const nb = t.querySelector('#lk-fbody');
+  b.innerHTML = nb ? nb.innerHTML : '';
+}
+function _lkFfHtml(on) {
+  const one = on.length === 1 ? on[0] : '';
+  return `<div class="lk-ff2"><select class="fs" aria-label="Quad" onchange="_lkFfPick(this.value)">${[['', 'All quads']].concat(LK_FF.map(([k, l]) => [k, l.replace(/^(J|S)\w+/, '$1r')]))
+    .map(([k, l]) => `<option value="${k}"${k === one ? ' selected' : ''}>${l}</option>`).join('')}</select>
+    <input type="search" class="fi" aria-label="Search student or leader name" placeholder="Search name" autocomplete="off" value="${esc(_lkFqGet())}" oninput="_lkFqSet(this.value)"></div>`;
+}
+// The rows this login sees on the screen (quad + search only for admin/oversight).
 function _lkFlowVisible() {
   const rows = LINK.flows || [];
-  return _lkBoss() ? _lkFlowShown(rows, _lkFfGet(), gradeBands()) : rows;
+  if (!_lkBoss()) return rows;
+  const q = _lkFqGet();
+  return _lkFlowShown(rows, _lkFfGet(), gradeBands()).filter((r) => !q.trim() || _lkFqHit(r, q));
 }
 // Flow kinds 'people' / 'parent' (_lkHubOwned finds the Parent Consent flow's first step by kind).
 // Y2b: the two flow names come from this location's settings (Youth Setup, ministryConfig.elvanto); a blank one matches nothing.
@@ -12983,13 +13008,17 @@ function _lkFlowsHtml() {
   if (S.user && S.user.role === 'admin') { // Y2b: none = every step-0 Complete is refused (CONSENT_FLOW_UNKNOWN), so the admin is told why
     if (!_lkPeopleFlowFound()) top += `<div class="lk-alert warn">${icS('info')}<div>${esc("This year's New People flow wasn't found, so step 0 can't be completed. In Admin > Youth Setup > Elvanto for this location, check the New People flow name. It must match the flow in Elvanto.")}</div></div>`;
   }
+  let body = '';
   if (boss) {
-    const n = _lkSelIds(shown, LINK.fsel).length;
-    top += _lkFfHtml(_lkFfGet()) + (n ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
-      <button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} Complete ${n}</button>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="_lkBulkReassignOpen()">Reassign ${n}</button></div>` : '');
+    // 6 Nov: ticks survive a filter change, but bulk acts only on ticked rows that are shown; the bar says how many are hidden.
+    const n = _lkSelIds(shown, LINK.fsel).length, hid = _lkSelIds(rs, LINK.fsel).length - n;
+    top += _lkFfHtml(_lkFfGet());
+    body = n || hid ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
+      ${n ? `<button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} Complete ${n}</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="_lkBulkReassignOpen()">Reassign ${n}</button>` : ''}
+      ${hid ? `<p class="lk-hint" style="flex-basis:100%;margin:0">${hid} more ticked but hidden by the filter (not included).</p>` : ''}</div>` : '';
   }
-  return bar + top + _lkFlowGroups(shown, today, steps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
+  return bar + top + '<div id="lk-fbody">' + body + _lkFlowGroups(shown, today, steps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
     const id = 'lks-' + String(f.flowId + '-' + s.stepId).replace(/[^\w-]/g, '');
     const open = !!(LINK.fOpen && LINK.fOpen[id]) && s.rows.length > 0;
     const tk = boss ? s.rows.filter(_lkTickable).map((r) => r.rowId) : [];
@@ -12999,7 +13028,7 @@ function _lkFlowsHtml() {
     return `<div class="drop${open ? ' open' : ''}" id="${id}"><button type="button" class="drop-head lk-dh" aria-expanded="${open}" onclick="_lkFlowDrop('${id}')">
       <span class="lk-dt">${esc(s.stepName)} · ${s.rows.length}</span>${s.overdue ? `<span class="lk-od">${s.overdue} overdue</span>` : ''}<span class="drop-chev">${icS('chevr')}</span></button>
       <div class="drop-body">${selAll}${s.rows.map((r) => _lkFlowRowHtml(r, today, boss)).join('')}</div></div>`;
-  }).join('')).join('');
+  }).join('')).join('') + '</div>';
 }
 function _lkFlowDrop(id) {
   _drop(id);

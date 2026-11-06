@@ -7,12 +7,15 @@ import { ACTION_TYPES } from '../core/link-contract';
 const NAMES = ['_lkFlowBucket', '_lkFlowShown', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkDay', 'fmtDay', '_lkFlowFree', '_lkFlowAct', '_lkCap', '_lkCapOff', '_lkCanComplete', '_lkHubOwned',
   '_lkTickable', '_lkSelIds', '_lkTextHref', '_lkSmsHref', '_lkFirstName', '_lkOfflineSince', 'dncChip', 'dncBanner', '_lkFfGet',
   '_lkFfHtml', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFlowGroups', '_lkFlowRowHtml', '_lkFlowsHtml', '_lkStatusText', '_lkFlowTypes',
-  '_lkMemOff', '_lkCanRemove'];
+  '_lkMemOff', '_lkCanRemove', '_lkFfPick', '_lkFqGet', '_lkFqSet', '_lkFqHit'];
 const PRELUDE = `
   var STORE = {}, THROW = false, ROLE = 'admin', QUEUE = [], HUB = false;
   function _ikModuleOn() { return HUB; } // consent hub (Task 11): off here, so these cases pin DNC and the consent gate themselves
   var localStorage = { getItem: (k) => { if (THROW) throw new Error('blocked'); return STORE[k] == null ? null : STORE[k]; },
     setItem: (k, v) => { if (THROW) throw new Error('blocked'); STORE[k] = String(v); } };
+  var SSTORE = {}, DRAWN = 0;
+  var sessionStorage = { getItem: (k) => (SSTORE[k] == null ? null : SSTORE[k]), setItem: (k, v) => { SSTORE[k] = String(v); } };
+  var document = { getElementById: () => null }; function _lkFlowsDraw() { DRAWN++; }
   var S = { get user() { return { role: ROLE }; } };
   var LINK = { flows: [], fSteps: [], fres: {}, fsel: {}, status: null };
   const LK_FLOW_TYPES = ['completeStep', 'removeFromFlowStep'];
@@ -31,14 +34,14 @@ const PRELUDE = `
   function _busGradeChip(g) { return g ? '<chip>' : ''; }
   function icS(k) { return '<i:' + k + '>'; }
   function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-  function set(o) { if ('role' in o) ROLE = o.role; if ('queue' in o) QUEUE = o.queue; if ('throw' in o) THROW = o.throw; if ('store' in o) STORE = o.store; if ('hub' in o) HUB = o.hub; }
+  function set(o) { if ('role' in o) ROLE = o.role; if ('queue' in o) QUEUE = o.queue; if ('throw' in o) THROW = o.throw; if ('store' in o) STORE = o.store; if ('hub' in o) HUB = o.hub; if ('sstore' in o) SSTORE = o.sstore; }
 `;
 const f = loadFns(NAMES, PRELUDE, [...NAMES, 'set', 'LINK']);
 const L = f.LINK;
 let n = 0;
 const R = (o: any) => ({ rowId: o.rowId ?? 'r' + (++n), flowId: 'F1', flowName: 'New People', stepId: 'S1', stepName: 'Step 1', stepOrder: 2,
   personId: 'p' + n, name: 'Zed ' + n, due: null, grade: 8, gender: 'male', mobile: '0412345678', consent: 'ok', dnc: false, consentStep: false, ...o });
-const reset = (o: any = {}) => { f.set({ role: 'admin', queue: [], throw: false, store: {}, hub: false, ...o }); Object.assign(L, { flows: [], fSteps: [], fres: {}, fsel: {}, status: null, ff: undefined }); };
+const reset = (o: any = {}) => { f.set({ role: 'admin', queue: [], throw: false, store: {}, hub: false, ...o }); f.set({ sstore: o.sstore || {} }); Object.assign(L, { flows: [], fSteps: [], fres: {}, fsel: {}, status: null, ff: undefined, fq: undefined }); };
 
 const B7 = { junior: [7, 8, 9], senior: [10, 11, 12] }, B6 = { junior: [6, 7, 8, 9], senior: [10, 11, 12] };
 describe('R4 filter buckets: junior Y7-9 (+Y6 with Include Grade 6), senior Y10-12, unknown always shows', () => {
@@ -76,19 +79,76 @@ describe('R4 filter persistence (localStorage in try/catch)', () => {
     reset({ throw: true });
     expect(f._lkFfGet()).toEqual(['jg', 'jf', 'sg', 'sf']);
   });
-  it('chips show for admin/oversight only; leaders see every row unfiltered', () => {
-    reset({ store: { yap_lk_flowf: '[]' } });
+  it('an old multi-chip pick or an empty one opens as All quads', () => {
+    for (const v of ['[]', '["jg","sf"]', '["nope"]']) { reset({ store: { yap_lk_flowf: v } }); expect(f._lkFfGet()).toEqual(['jg', 'jf', 'sg', 'sf']); }
+  });
+  it('the quad filter shows for admin/oversight only; leaders see every row unfiltered', () => {
+    reset({ store: { yap_lk_flowf: '["sg"]' } });
     L.flows = [R({ rowId: 'a' }), R({ rowId: 'b', grade: null })];
     expect(f._lkFlowVisible().map((r: any) => r.rowId)).toEqual(['b']);
-    expect(f._lkFlowsHtml()).toContain('Junior Guys');
+    expect(f._lkFlowsHtml()).toContain('aria-label="Quad"');
     f.set({ role: 'quad' });
     expect(f._lkFlowVisible()).toHaveLength(2);
-    expect(f._lkFlowsHtml()).not.toContain('Junior Guys');
+    expect(f._lkFlowsHtml()).not.toContain('aria-label="Quad"');
   });
-  it('chip colours: guys blue, girls pink, aria-pressed follows the pick', () => {
-    const h = f._lkFfHtml(['jf']);
-    expect(h).toMatch(/lk-ff-boy" aria-pressed="false"[^>]*aria-label="Junior Guys"[^>]*>Jr Guys</);
-    expect(h).toMatch(/lk-ff-girl on" aria-pressed="true"[^>]*aria-label="Junior Girls"[^>]*>Jr Girls</);
+});
+
+// Tom, 6 Nov: one row replaces the four chips: a quad <select> (1/3) and a search box (2/3) for student or leader name.
+describe('Flow steps: quad dropdown + name search', () => {
+  const ids = () => f._lkFlowVisible().map((r: any) => r.rowId);
+  const rows = () => [R({ rowId: 'jg1', name: 'Amy Brown', assignedLeaderName: 'Cody Smith' }), R({ rowId: 'jg2', name: 'Ben Carter', assignedLeaderName: 'Gina Lee' }),
+    R({ rowId: 'sf1', name: 'Cara Diaz', grade: 11, gender: 'female', assignedTo: 'Gina Lee' }), R({ rowId: 'u', name: 'Dan Unknown', grade: null })];
+  it('the dropdown replaces the chips: one native select (All quads + the four), one search box, both labelled; no chip buttons', () => {
+    reset();
+    const h = f._lkFfHtml(f._lkFfGet());
+    expect(h).not.toContain('_lkFfToggle'); expect(h).not.toContain('aria-pressed');
+    expect(h).toMatch(/<select[^>]*aria-label="Quad"[^>]*onchange="_lkFfPick\(this.value\)"/);
+    expect([...h.matchAll(/<option value="(\w*)"[^>]*>([^<]+)</g)].map((m) => [m[1], m[2]])).toEqual([['', 'All quads'], ['jg', 'Jr Guys'], ['jf', 'Jr Girls'], ['sg', 'Sr Guys'], ['sf', 'Sr Girls']]);
+    expect(h).toMatch(/<option value="" selected>All quads/);
+    expect(h).toMatch(/<input type="search"[^>]*aria-label="Search student or leader name"[^>]*oninput="_lkFqSet\(this.value\)"/);
+    expect(f._lkFfHtml(['sf'])).toMatch(/<option value="sf" selected>Sr Girls/);
+  });
+  it('quad filtering: a pick shows that quad (plus unknown rows) and is kept on the device; All shows everyone', () => {
+    reset(); L.flows = rows();
+    f._lkFfPick('sf');
+    expect(ids()).toEqual(['sf1', 'u']);
+    L.ff = undefined; expect(f._lkFfGet()).toEqual(['sf']); // from localStorage, like the chips
+    f._lkFfPick('');
+    expect(ids()).toEqual(['jg1', 'jg2', 'sf1', 'u']);
+  });
+  it('leader search: case-blind substring, first or last name, assignedLeaderName or assignedTo', () => {
+    reset(); L.flows = rows();
+    L.fq = 'gina'; expect(ids()).toEqual(['jg2', 'sf1']);
+    L.fq = 'SMI'; expect(ids()).toEqual(['jg1']);
+  });
+  it('student search: first or last name, substring', () => {
+    reset(); L.flows = rows();
+    L.fq = 'carter'; expect(ids()).toEqual(['jg2']);
+    L.fq = 'car'; expect(ids()).toEqual(['jg2', 'sf1']);
+  });
+  it('spaces split terms that must all match across student + leader; combined with the quad', () => {
+    reset(); L.flows = rows();
+    L.fq = '  ben   lee '; expect(ids()).toEqual(['jg2']);
+    L.fq = 'lee'; f._lkFfPick('sf'); expect(ids()).toEqual(['sf1']);
+    L.fq = 'amy cody'; expect(ids()).toEqual([]);
+  });
+  it('the search is kept for the session (sessionStorage) and redraws; leaders get no search', () => {
+    reset(); L.flows = rows();
+    f._lkFqSet('Gina');
+    L.fq = undefined; expect(f._lkFqGet()).toBe('Gina');
+    f.set({ role: 'quad' }); expect(f._lkFlowVisible()).toHaveLength(4);
+  });
+  it('selection: ticks survive a filter change; bulk acts on ticked AND shown rows; the bar says how many ticks are hidden', () => {
+    reset(); L.flows = rows(); L.fsel = { jg1: true, jg2: true, sf1: true };
+    L.fq = 'gina';
+    let h = f._lkFlowsHtml();
+    expect(h).toContain('2 selected'); expect(h).toContain('Complete 2'); expect(h).toContain('Reassign 2');
+    expect(h).toContain('1 more ticked but hidden by the filter (not included)');
+    expect(f._lkSelIds(f._lkFlowVisible(), L.fsel)).toEqual(['jg2', 'sf1']);
+    L.fq = 'dan'; h = f._lkFlowsHtml(); // nothing ticked on screen: the bar stays to say so, without Complete / Reassign
+    expect(h).toContain('0 selected'); expect(h).toContain('3 more ticked but hidden'); expect(h).not.toContain('Complete 0');
+    L.fq = ''; expect(f._lkFlowsHtml()).toContain('3 selected');
+    expect(L.fsel).toEqual({ jg1: true, jg2: true, sf1: true });
   });
 });
 
