@@ -287,6 +287,16 @@ Expected result: when **Notices** is **On** in **Modules & Import**, **More** > 
 
 NOTE: Notices go only to admin, oversight and the four Junior/Senior logins.
 
+Two more alert types use the same phone alerts. They are **Birthday alerts** and **Lifegroup report reminders**. Both need **Notices** to be **On**. Lifegroup report reminders also need **Lifegroup report** to be **On**. Both start **Off**.
+
+1. Open **Youth Setup**. Find the two switches under **Notices**.
+2. Turn on the alert type you want. Select **Save**.
+3. On each phone, open **More** > **Notices**. Select your name in **I am**. Then use the switches **Birthdays** and **Lifegroup reminders**.
+
+NOTE: A phone gets these alerts only after you select your name in **I am**. Wait a few days after the update so phones send their choice.
+
+Optional: add `CRON_SECRET` in Vercel with 32 or more characters. Use it only if you add a daily cron for `/sync/alerts`. Without it, that route answers 503 and nothing happens. The Elvanto Sync Console sends the alerts every 15 minutes, so you do not need a cron.
+
 ## 12. Troubleshooting (as needed)
 
 | What you see | What to do |

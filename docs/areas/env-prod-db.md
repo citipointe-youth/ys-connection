@@ -15,6 +15,9 @@ LINK_SYNC_TOKEN=<32+ chars>             # Elvanto link console (/sync/*); unset 
 VAPID_PUBLIC_KEY=<base64url>            # Notice alerts (web push). Any of the three unset = alerts silently off
 VAPID_PRIVATE_KEY=<base64url>           #   ("Alerts aren't set up yet"). Make a pair: npx web-push generate-vapid-keys
 VAPID_SUBJECT=<mailto: or https: URL>   #   Contact sent to the push services, e.g. https://ys-connection.vercel.app
+CRON_SECRET=<32+ chars>                 # Vercel cron catch-up GET /sync/alerts (Bearer). Unset or shorter = that GET answers 503 CRON_OFF, nothing runs.
+                                        #   NOT SET in prod and no vercel.json cron exists (2026-11-07): the console's 15-min POST /sync/alerts is the only scheduler.
+                                        #   Follow-up: set it (Vercel sends it as the Bearer when a cron entry exists), then add a crons entry.
 
 # Required whenever PERSISTENCE=supabase — read directly from process.env by
 # src/utils/field-crypto.ts, NOT via src/config/env.ts. Encrypts students.mobile and

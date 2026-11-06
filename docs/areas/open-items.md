@@ -9,6 +9,13 @@ Cutover planned Sun 25 Oct night (fallback Mon 26 / Wed 28). Do these first, in 
 3. (The door "Slow: Search Elvanto" button was removed 2026-11-06; no phone test needed.) Run `spike/e2e-ys-link.js` (ship.sh warned it was not run for LINK_REV 20).
 4. Console side: the weekly digest does not exclude graduated students yet (see the console CLAUDE.md).
 
+## Leader alerts, Part F (2026-11-07, branch feat/bday-alerts; watch items from the spec)
+
+- **Operator follow-up: Vercel cron.** No `vercel.json` cron was added. `CRON_SECRET` (32+ chars) is not set, and `GET /sync/alerts` answers 503 `CRON_OFF` until it is set and a `crons` entry is added (the spec's value was `0 23 * * *`, 09:00 Brisbane). Until then the console's 15-min `POST /sync/alerts` is the only scheduler, so a console outage means no alerts that day.
+- Both new modules ship Off, so Part F shows nothing. Phones send their "I am" pick on their next boot; give it a few days before turning a module on.
+- Watch: `ALERT_PUSH_FAILED` and `CRON_OFF` in the YS error log; console log counts at each quarter hour; one real quad phone with "I am" set.
+- Rollback: turn the module off (instant, no ship). A YS rollback leaves the 0056 columns and `alert_sends` unused.
+
 ## Open items
 
 **Operator decisions pending**
