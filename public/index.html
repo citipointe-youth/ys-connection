@@ -8427,6 +8427,8 @@ function _youthSetupBody(settings, users) {
     <div class="fg"><label class="fl" for="fl-time-zone">Time zone ${helpTip('Where this location is, e.g. Australia/Brisbane. Every date and time in the app uses it.')}</label>
       <input id="fl-time-zone" class="fi" list="setup-tz" value="${esc(st.timeZone != null ? st.timeZone : dst.timeZone)}" onchange="_setupSet('structure.timeZone', this.value.trim())">
       <datalist id="setup-tz">${['Australia/Adelaide', 'Australia/Brisbane', 'Australia/Darwin', 'Australia/Hobart', 'Australia/Melbourne', 'Australia/Perth', 'Australia/Sydney'].map((z) => `<option value="${z}">`).join('')}</datalist></div>
+    <div class="fg"><label class="fl" for="fl-consent-closes-at">Consent closes at ${helpTip('The time on the service day when parents can no longer reply to the consent text, e.g. 09:00.')}</label>
+      <input id="fl-consent-closes-at" class="fi" type="time" value="${esc(st.consentCutoff != null ? st.consentCutoff : dst.consentCutoff)}" onchange="_setupSet('structure.consentCutoff', this.value)"></div>
     <div class="form-row">
       <div class="fg"><label class="fl" for="fl-min-attendance-for-a-valid-service">Min attendance for a valid service ${helpTip('A ' + esc(_serviceDayName()) + ' with fewer people than this is treated as a holiday or break, and left out of averages and attendance rates.')}</label>
         <input id="fl-min-attendance-for-a-valid-service" class="fi" type="number" min="0" max="2000" value="${_setupServiceMinAttendance}" onchange="_setupSetMinAtt(this.value)">

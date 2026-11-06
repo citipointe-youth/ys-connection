@@ -95,9 +95,11 @@ describe('Login style: one control for Junior/Senior or Oversight and leaders', 
   });
   it('the old controls are gone from Youth Setup', () => {
     const body = extractFn(loadIndexHtml(), '_youthSetupBody');
-    for (const gone of ['fl-cohort-model', 'Start from', 'Apply account layout', 'fl-consent-closes-at', "'logins.simple'", "['quad', 'Quad'", "['grade', 'Grade'", 'Complex'])
+    for (const gone of ['fl-cohort-model', 'Start from', 'Apply account layout', "'logins.simple'", "['quad', 'Quad'", "['grade', 'Grade'", 'Complex'])
       expect(body).not.toContain(gone);
     expect(body).toContain('fl-login-style');
+    expect(body).toContain('fl-consent-closes-at'); // restored 6 Nov: the operator sets the cut-off here
+    expect(body).toContain("_setupSet('structure.consentCutoff', this.value)");
     expect(body).toContain("' 6 counts as a junior year.");
   });
 });
