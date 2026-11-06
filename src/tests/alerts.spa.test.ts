@@ -6,14 +6,16 @@ import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
 const FNS = ['esc', 'getMyLeaderId', 'setMyLeaderId', '_iamNewLogin', '_noticesOn', '_ntPushSub', '_ntPushPost', '_pushLeaderSync', '_pushLoginMoved',
-  'noticePushOff', '_ntAlertsCopy', '_ntPushCardHtml', '_ntPrefSet', '_navRoute', '_bdayList'];
+  'noticePushOff', '_ntAlertsCopy', '_ntPushCardHtml', '_ntPrefSet', '_navRoute', '_bdayList',
+  '_lgremOpen', '_lkAddDays', '_lkWeekStart', '_lkReports', '_lkWeekReports', '_lkWeekReport'];
 const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-type Opts = { saved?: string | null; subscribed?: boolean; postErr?: any; role?: string; store?: Record<string, string>; students?: any[]; search?: string; notices?: string };
+type Opts = { groups?: any[]; loadFails?: boolean; saved?: string | null; subscribed?: boolean; postErr?: any; role?: string; store?: Record<string, string>; students?: any[]; search?: string; notices?: string };
 function env(o: Opts = {}) {
-  const calls = { posts: [] as any[], unsub: 0, draw: 0, toasts: [] as string[], go: [] as string[], cleared: 0, modal: [] as string[], detail: [] as string[], gets: [] as string[] };
+  const calls = { posts: [] as any[], unsub: 0, draw: 0, toasts: [] as string[], go: [] as string[], cleared: 0, modal: [] as string[], detail: [] as string[], gets: [] as string[],
+    opened: [] as string[], newRep: [] as string[] };
   const store: Record<string, string> = { ...(o.store || {}) };
   const args = { calls, store, o };
   const prelude = `
@@ -26,12 +28,15 @@ function env(o: Opts = {}) {
     const API = { post: async (p, b) => { calls.posts.push([p, b]); if (o.postErr) throw o.postErr; return 'saved' in o ? { ok: true, leaderId: o.saved } : { ok: true, leaderId: b.leaderId }; },
       get: async (p) => { calls.gets.push(p); if (p === '/students') return o.students || []; return {}; } };
     const Cache = { del: () => {} };
-    const toast = (m) => calls.toasts.push(m), go = (p) => calls.go.push(p), modal = (h) => calls.modal.push(h), closeModal = () => {};
+    const toast = (m) => calls.toasts.push(m), go = (p) => { calls.go.push(p); S.page = p; }, modal = (h) => calls.modal.push(h), closeModal = () => {};
     const showStudentDetail = (id) => calls.detail.push(id);
     const history = { replaceState: () => { calls.cleared++; } };
     const location = { search: o.search || '', pathname: '/' };
     const icS = () => '';
-    function _vgSnap() {} function _linkOn() { return false; } function _lkPush() {} function _ntPushDraw() { calls.draw++; }`;
+    function _vgSnap() {} function _linkOn() { return false; } function _lkPush() {} function _ntPushDraw() { calls.draw++; }
+    const LINK = { groups: null };
+    async function _lkLoadGroups() { if (o.loadFails) return false; LINK.groups = o.groups || []; return true; }
+    function _lkOpenGroup(id) { calls.opened.push(id); } function _lkNewReport(d) { calls.newRep.push(d); }`;
   const f = new Function('ARGS', `${prelude}\n${BODY}\nreturn { ${FNS.join(', ')}, S };`)(args);
   return { ...f, calls, store };
 }
@@ -209,6 +214,49 @@ describe('bday: student deep link (B3)', () => {
   });
 });
 
+describe('lgrem: lgreport deep link (L3)', () => {
+  const G = U(50), D = '2026-11-10';
+  const grp = (history: any[] = []) => ({ groupId: G, name: 'Year 8 Boys', meets: 'Tue 6:30 PM', lastReport: null, history });
+  it('opens the group, then the new-report form for d', async () => {
+    const e = env({ groups: [grp()], search: `?nav=lgreport&g=${G}&d=${D}` });
+    expect(e._navRoute(new URLSearchParams(`nav=lgreport&g=${G}&d=${D}`))).toBe(true);
+    await flush();
+    expect(e.calls.cleared).toBe(1);
+    expect(e.calls.go).toEqual(['link-groups']);
+    expect(e.calls.opened).toEqual([G]);
+    expect(e.calls.newRep).toEqual([D]);
+  });
+  it('week already reported -> group page, no form', async () => {
+    const e = env({ groups: [grp([{ reportId: 'r1', date: '2026-11-14' }])] }); // Sat of the same Mon-Sun week
+    e._navRoute({ type: 'push-nav', screen: 'lgreport', g: G, d: D }); await flush();
+    expect(e.calls.opened).toEqual([G]);
+    expect(e.calls.newRep).toEqual([]);
+    const last = env({ groups: [grp([{ reportId: 'r0', date: '2026-11-08' }])] }); // last week's only
+    last._navRoute({ screen: 'lgreport', g: G, d: D }); await flush();
+    expect(last.calls.newRep).toEqual([D]);
+  });
+  it("unknown group -> toast, nothing opened", async () => {
+    const e = env({ groups: [grp()] });
+    e._navRoute({ screen: 'lgreport', g: U(51), d: D }); await flush();
+    expect(e.calls.toasts).toEqual(["This group isn't on this login."]);
+    expect(e.calls.opened).toEqual([]);
+  });
+  it('a failed load opens nothing and no toast', async () => {
+    const e = env({ loadFails: true });
+    e._navRoute({ screen: 'lgreport', g: G, d: D }); await flush();
+    expect(e.calls.toasts).toEqual([]);
+    expect(e.calls.opened).toEqual([]);
+  });
+  it('bad g / d are rejected by _navRoute', () => {
+    const e = env({ groups: [grp()] });
+    expect(e._navRoute({ screen: 'lgreport', g: 'nope', d: D })).toBe(false);
+    expect(e._navRoute({ screen: 'lgreport', g: G, d: '2026-13-01' })).toBe(false);
+    expect(e._navRoute({ screen: 'lgreport', g: G })).toBe(false);
+    expect(e.calls.go).toEqual(['notices', 'notices', 'notices']);
+    expect(e.calls.opened).toEqual([]);
+  });
+});
+
 describe('sw.js payloads', () => {
   function sw() {
     const src = readFileSync(join(__dirname, '..', '..', 'public', 'sw.js'), 'utf8');
@@ -247,5 +295,13 @@ describe('sw.js payloads', () => {
     expect(s.posted).toEqual([{ type: 'push-nav', screen: 'student', ids: [U(1), U(2)] }]);
     await s.click(n.data, false);
     expect(s.opened).toEqual([`/?nav=student&ids=${encodeURIComponent(`${U(1)},${U(2)}`)}`]);
+  });
+  it('lgrem payload keeps tag lgrem:<id> and posts screen lgreport with g, d', async () => {
+    const s = sw();
+    const n = await s.push({ title: 'Lifegroup report', body: 'x', tag: `lgrem:${U(50)}`, screen: 'lgreport', g: U(50), d: '2026-11-10' });
+    expect(n.tag).toBe(`lgrem:${U(50)}`);
+    expect(n.data).toEqual({ screen: 'lgreport', g: U(50), d: '2026-11-10' });
+    await s.click(n.data, false);
+    expect(s.opened).toEqual([`/?nav=lgreport&g=${U(50)}&d=2026-11-10`]);
   });
 });

@@ -2169,8 +2169,9 @@ function _navRoute(params) {
   if (p.ids != null) p.ids = Array.isArray(p.ids) ? p.ids : String(p.ids).split(',');
   const ok = Object.entries(p).every(([k, v]) => k === 'screen' || k === 'nav' || k === 'type'
     || (k === 'ids' ? v.length >= 1 && v.length <= 10 && v.every((x) => UUID.test(String(x)))
-      : k === 'date' ? /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(String(v)) : UUID.test(String(v))));
+      : k === 'date' || k === 'd' ? /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(String(v)) : UUID.test(String(v))));
   if (ok && screen === 'student' && p.ids) { _bdayList(p.ids); return true; }
+  if (ok && screen === 'lgreport' && p.g && p.d) { _lgremOpen(p.g, p.d); return true; }
   go('notices');
   return ok && screen === 'notices';
 }
@@ -2185,6 +2186,17 @@ async function _bdayList(ids) {
   if (kids.length === 1) { showStudentDetail(kids[0].id); return; }
   modal(`<div class="mo-title">Birthdays today</div><div style="display:flex;flex-direction:column;gap:8px">${kids.map((s) =>
     `<button type="button" class="btn btn-secondary" onclick="closeModal();showStudentDetail('${s.id}')">${esc(s.firstName)} ${esc(s.lastName)}</button>`).join('')}</div>`);
+}
+// L8: a lifegroup reminder opens that group's new report for the meeting date d, or just the group page when d's week
+// already has a report. Always through _lkOpenGroup (going to the page clears LINK.gid). A failed load leaves the page's error.
+async function _lgremOpen(gid, d) {
+  go('link-groups');
+  if (!(await _lkLoadGroups(true)) || S.page !== 'link-groups') return;
+  const g = (LINK.groups || []).find((x) => x.groupId === gid);
+  if (!g) { toast("This group isn't on this login."); return; }
+  _lkOpenGroup(gid);
+  const start = _lkWeekStart(d);
+  if (!_lkWeekReport(g, { start, end: _lkAddDays(start, 6) })) _lkNewReport(d);
 }
 
 /* ── ID CHECKS MODULE ── */
