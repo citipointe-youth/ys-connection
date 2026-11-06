@@ -77,6 +77,7 @@ import { makeLeaderService, type LeaderService } from './services/leader.service
 import { makePrayerService, type PrayerService } from './services/prayer.service';
 import { makeNoticeService, type NoticeService } from './services/notice.service';
 import { makeAlertRun, type AlertRun } from './services/alert-run.service';
+import { makeBirthdayKind } from './services/birthday-alert';
 import { makeIdCheckService, type IdCheckService } from './services/id-check.service';
 import { makeConnectionService, type ConnectionService } from './services/connection.service';
 import { makeFollowupService, type FollowupService } from './services/followup.service';
@@ -320,7 +321,7 @@ export async function buildContainer(): Promise<Container> {
   const idCheck = makeIdCheckService({ repo: idChecks, leaders, users, connections, students, settings });
   const notice = makeNoticeService(notices, settings, undefined, { subs: noticePush, users, leaders, errorLog });
   const alertSends = useSupabase ? new SupabaseAlertSendRepository(sql) : new InMemoryAlertSendRepository();
-  const alerts = makeAlertRun({ subs: noticePush, users, leaders, settings, claims: alertSends, errorLog }, []); // kinds come in B/L
+  const alerts = makeAlertRun({ subs: noticePush, users, leaders, settings, claims: alertSends, errorLog }, [makeBirthdayKind({ connections, students, dnc })]); // lgrem joins in L
   // T10: failed or unconfirmed New person sends are kept (encrypted) for the admin to resend.
   const unsent = useSupabase ? new SupabaseUnsentRepository(sql) : new InMemoryUnsentRepository();
   const newYouth = makeNewYouthService(settings, { live: true, errorLog, unsent });

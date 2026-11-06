@@ -16,7 +16,7 @@ export function dncFullyOn(rosterPushed: boolean, rows: Pick<LinkRosterRow, 'act
 
 // Any student-shaped object; only a mobile / parentPhone key that is present is nulled.
 export type DncMark = <T extends object>(o: T, studentId: string | null | undefined) => T & { dnc: boolean };
-export interface Dnc { forActor(actor: Actor): Promise<DncMark> }
+export interface Dnc { forActor(actor: Actor): Promise<DncMark>; /** Every DNC student id (the same cached set forActor uses). */ ids(): Promise<Set<string>> }
 
 const TTL_MS = 60_000;
 
@@ -38,6 +38,7 @@ export function makeDnc(link?: Pick<ILinkRepository, 'roster'>): Dnc {
     return cache.ids;
   }
   return {
+    ids,
     async forActor(actor) {
       const set = await ids();
       const keep = canSeeDncPhones(actor);

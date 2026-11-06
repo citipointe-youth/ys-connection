@@ -154,7 +154,7 @@ describe('DNC on consent details', () => {
   it('a DNC student: the parent phone in the details goes through the DNC mark', async () => {
     const t = await setup();
     const dnc = { forActor: async () => <T extends object>(o: T, id: string | null | undefined) =>
-      ({ ...o, dnc: id === 's1', ...(id === 's1' && 'parentPhone' in o ? { parentPhone: null } : {}) }) as T & { dnc: boolean } };
+      ({ ...o, dnc: id === 's1', ...(id === 's1' && 'parentPhone' in o ? { parentPhone: null } : {}) }) as T & { dnc: boolean }, ids: async () => new Set<string>() };
     const svc = makeBusService(t.bus, t.students, t.leaders, t.settings, undefined, undefined, dnc, { link: new InMemoryLinkRepository() });
     await t.bus.upsertConsentForms([form({})]);
     await svc.addRider(t.ctx('admin'), { studentId: 's1', newAddress: { label: 'Home', address: '1 Test St, Brisbane City', placeId: 'fake:1' } });
