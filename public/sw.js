@@ -1,4 +1,4 @@
-const CACHE = 'ysc-v172';
+const CACHE = 'ysc-v173';
 const SHELL_WAIT_MS = 3000; // impeccable 2026-10-24 #10: then the cached shell, if any
 const APP_SHELL = ['/'];
 
@@ -68,29 +68,32 @@ self.addEventListener('fetch', (e) => {
 });
 
 // ─── Notice alerts (web push, ported from MyYouthCamp) ───────────────────────────
-// userVisibleOnly is mandatory, so every push MUST show a notification. The server sends only
-// { title: 'New notice', body: <the notice's first line>, screen: 'notices' }; it may show on a locked screen.
+// userVisibleOnly is mandatory, so every push MUST show a notification. Payload { title, body, tag, screen, ...params }
+// (notice: tag 'notice', screen 'notices'; birthdays: tag 'bday', screen 'student', ids). It may show on a locked screen.
+// Each type has its own tag so one never replaces another; an old payload with no tag/screen is a notice.
 self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (_) { d = {}; }
-  e.waitUntil(self.registration.showNotification(d.title || 'New notice', {
-    body: d.body || 'Open the app for details.',
+  const { title, body, tag, screen, ...params } = d || {};
+  e.waitUntil(self.registration.showNotification(title || 'New notice', {
+    body: body || 'Open the app for details.',
     icon: '/icons/icon-192.png',
-    tag: 'notice',
-    renotify: true, // a second notice replacing the first must still alert (Android is silent otherwise)
-    data: { screen: 'notices' },
+    tag: tag || 'notice',
+    renotify: true, // a second alert replacing the first must still alert (Android is silent otherwise)
+    data: { screen: screen || 'notices', ...params },
   }));
 });
 
-// The SPA has no URL router: tell an open window to go to Notices, or cold-start with /?nav=notices.
+// Tell an open window where to go (the SPA's _navRoute), or cold-start with /?nav=<screen>&<params>.
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
+  const { screen = 'notices', ...params } = e.notification.data || {};
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
       for (const c of cs) {
-        if ('focus' in c) { c.postMessage({ type: 'push-nav', screen: 'notices' }); return c.focus(); }
+        if ('focus' in c) { c.postMessage({ type: 'push-nav', screen, ...params }); return c.focus(); }
       }
-      return self.clients.openWindow('/?nav=notices');
+      return self.clients.openWindow('/?' + new URLSearchParams({ nav: screen, ...params }));
     })
   );
 });

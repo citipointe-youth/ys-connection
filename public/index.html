@@ -1985,10 +1985,16 @@ function _ntPushState(o) {
   if (o.permission === 'denied') return 'blocked';
   return o.subscribed && o.permission === 'granted' ? 'on' : 'off';
 }
-function _ntPushCardHtml(st) {
+// Leader alerts (2026-11-06): one line naming what a phone gets, per site module on (cfg.modules from GET /notices/push).
+function _ntAlertsCopy(m) {
+  m = m || {};
+  return 'Get phone alerts for new notices' + (m.birthdayAlerts ? ", your students' birthdays" : '') + (m.lifegroupReminders ? ', lifegroup reports' : '') + '.';
+}
+function _ntPushCardHtml(st, cfg) {
+  const m = (cfg && cfg.modules) || {}, pf = (cfg && cfg.prefs) || {};
   const msg = {
     on: 'Alerts are on for this phone.',
-    off: 'Get a phone alert when a new notice arrives.',
+    off: _ntAlertsCopy(m),
     blocked: 'Alerts are blocked by your browser. Allow notifications for this site in your browser or phone settings, then come back.',
     unsupported: "This browser can't show alerts.",
     'ios-install': 'To get alerts on iPhone, add this app to your Home Screen first: tap Share, then Add to Home Screen, and open it from there.',
@@ -1996,7 +2002,12 @@ function _ntPushCardHtml(st) {
   }[st] || '';
   const btn = st === 'on' ? `<button type="button" class="btn btn-secondary btn-sm" id="nt-push-btn" onclick="noticePushOff()">Turn off alerts</button>`
     : st === 'off' ? `<button type="button" class="btn btn-primary btn-sm" id="nt-push-btn" onclick="noticePushOn()">Turn on alerts</button>` : '';
-  return `<div class="card" style="margin-bottom:10px;display:flex;gap:10px;align-items:center"><div style="flex:1;min-width:0;font-size:13px;color:var(--ink-mid)">${icS('bell')} ${esc(msg)}</div>${btn}</div>`;
+  // Per-phone switches (S4): only while alerts are on and the site module is on; they need an "I am" pick to mean anything.
+  const sw = (k, label) => `<label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="nt-pref-${k}" ${pf[k] !== false ? 'checked' : ''} onchange="_ntPrefSet('${k}', this.checked)"> <span>${label}</span></label>`;
+  const rows = st !== 'on' || !(m.birthdayAlerts || m.lifegroupReminders) ? ''
+    : !getMyLeaderId() ? `<div style="margin-top:8px;font-size:13px;color:var(--ink-faint)">Pick 'I am' to get birthday and lifegroup alerts.</div>`
+    : (m.birthdayAlerts ? sw('bday', 'Birthdays') : '') + (m.lifegroupReminders ? sw('lgrem', 'Lifegroup reminders') : '');
+  return `<div class="card" style="margin-bottom:10px"><div style="display:flex;gap:10px;align-items:center"><div style="flex:1;min-width:0;font-size:13px;color:var(--ink-mid)">${icS('bell')} ${esc(msg)}</div>${btn}</div>${rows}</div>`;
 }
 function _isStandalone() { try { return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch { return false; } }
 // I4 (R2-G2): from the installed app, open Elvanto in the real browser (in-app sheets don't share its sign-in).
@@ -2043,15 +2054,50 @@ async function _ntPushEnv() {
   const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   const o = { ios, standalone, supported, publicKey: null, permission: supported ? Notification.permission : 'default', subscribed: false };
   if (!supported) return o;
-  try { o.publicKey = (await API.get('/notices/push')).publicKey || null; } catch {}
-  try { const reg = await navigator.serviceWorker.getRegistration(); o.subscribed = !!(reg && await reg.pushManager.getSubscription()); } catch {}
+  const sub = await _ntPushSub();
+  o.subscribed = !!sub;
+  // ?endpoint= also returns this phone's stored pick and prefs (only when the row is this login's), so the switches show the server's state.
+  try { o.cfg = await API.get('/notices/push' + (sub && sub.endpoint ? '?endpoint=' + encodeURIComponent(sub.endpoint) : '')); o.publicKey = o.cfg.publicKey || null; } catch {}
   return o;
 }
 async function _ntPushDraw() {
   const env = await _ntPushEnv();
   _ntPushLast = env;
   const el = document.getElementById('nt-push');
-  if (el) el.innerHTML = _ntPushCardHtml(_ntPushState(env));
+  if (el) el.innerHTML = _ntPushCardHtml(_ntPushState(env), env.cfg);
+}
+async function _ntPushSub() {
+  try { const reg = await navigator.serviceWorker.getRegistration(); return (reg && await reg.pushManager.getSubscription()) || null; } catch { return null; }
+}
+// (Re-)posts this phone's subscription with the current "I am" pick (a missing leaderId saves null on the server) and any prefs.
+async function _ntPushPost(sub, extra) {
+  const j = sub.toJSON(), leaderId = getMyLeaderId() || null;
+  await API.post('/notices/push', { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, leaderId, ...(extra || {}) });
+  try { if (leaderId) localStorage.setItem('yap_push_leader', leaderId); else localStorage.removeItem('yap_push_leader'); } catch {}
+  Cache.del('/notices/push');
+}
+// Send the pick (spec 5.3): when this phone is subscribed and "I am" differs from what the server was last sent.
+async function _pushLeaderSync() {
+  if (!_noticesOn() || _previewStash) return; // a preview never writes the admin's subscription
+  let sent = null;
+  try { sent = localStorage.getItem('yap_push_leader'); } catch {}
+  if ((getMyLeaderId() || null) === sent) return;
+  const sub = await _ntPushSub();
+  if (sub) try { await _ntPushPost(sub); } catch {} // not stored: the next pick change or boot tries again
+}
+// A1: a different login on this phone moves the row to it (leader null). A login that can't have alerts (403) drops the browser
+// subscription, so the old login's row 410s and is pruned at its next send.
+async function _pushLoginMoved() {
+  const sub = await _ntPushSub();
+  if (!sub) return;
+  try { await _ntPushPost(sub); } catch (e) {
+    if (e && e.status === 403) { try { await sub.unsubscribe(); } catch {} try { localStorage.removeItem('yap_push_leader'); } catch {} }
+  }
+}
+async function _ntPrefSet(kind, on) {
+  const sub = await _ntPushSub();
+  if (sub) try { await _ntPushPost(sub, { prefs: { [kind]: on } }); } catch { toast("Couldn't save that. Try again."); }
+  _ntPushDraw(); // redraws from the server's state (a failed save springs back)
 }
 function _urlB64ToUint8(b64) {
   const raw = atob((b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
@@ -2072,8 +2118,7 @@ async function _ntPushFinish(permP, publicKey) {
     if (perm !== 'granted') { toast(perm === 'denied' ? 'Alerts are blocked by the browser' : 'Alerts were not turned on'); return; }
     const reg = await navigator.serviceWorker.ready;
     const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _urlB64ToUint8(publicKey) });
-    const j = sub.toJSON();
-    await API.post('/notices/push', { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth } });
+    await _ntPushPost(sub);
     toast('Alerts are on for this phone');
   } catch (e) {
     toast(_lkSay('Could not turn on alerts' + (e && e.message ? ': ' + e.message : ''), "Couldn't turn on alerts. Try again."));
@@ -2091,7 +2136,7 @@ async function _quadAlertsPrompt(n = 0) {
   if (!S.user || document.querySelector('#modal-root .mo')) return;
   try { localStorage.setItem('yap_alert_ask', String(Date.now())); } catch {}
   modal(`<div class="mo-title">Turn on alerts?</div>
-    <p class="lk-sub">${st === 'off' ? 'Get a phone alert when a new notice arrives.' : 'To get alerts on iPhone, add this app to your Home Screen first: tap Share, then Add to Home Screen, and open it from there.'}</p>
+    <p class="lk-sub">${st === 'off' ? esc(_ntAlertsCopy(env.cfg && env.cfg.modules)) :'To get alerts on iPhone, add this app to your Home Screen first: tap Share, then Add to Home Screen, and open it from there.'}</p>
     <div class="lk-acts"><button type="button" class="btn btn-secondary" onclick="closeModal()">Not now</button>
     ${st === 'off' ? `<button type="button" class="btn btn-primary" onclick="closeModal();noticePushOn()">Turn on alerts</button>` : ''}</div>`);
 }
@@ -2106,9 +2151,25 @@ async function noticePushOff() {
       try { await sub.unsubscribe(); } catch {} // the phone stops first; the server row is also pruned on the next 404/410
       try { await API.post('/notices/push/off', { endpoint }); } catch {}
     }
+    try { localStorage.removeItem('yap_push_leader'); } catch {}
     toast('Alerts are off for this phone');
   } catch { toast('Could not turn off alerts'); }
   finally { _ntPushBusy = false; _ntPushDraw(); }
+}
+// Tapped alert (spec 5.3): one router for the cold start (?nav=<screen>&...) and a warm push-nav message ({screen, ...}).
+// Every param is checked (ids = 1-10 uuids, date = YYYY-MM-DD, any other = a uuid) and the URL cleared first. A bad or unknown
+// link opens Notices (render() sends Home if that module is off) and returns false.
+function _navRoute(params) {
+  const p = params instanceof URLSearchParams ? Object.fromEntries(params) : { ...(params || {}) };
+  const screen = p.screen || p.nav;
+  try { if (/[?&]nav=/.test(location.search)) history.replaceState(null, '', location.pathname); } catch {}
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (p.ids != null) p.ids = Array.isArray(p.ids) ? p.ids : String(p.ids).split(',');
+  const ok = Object.entries(p).every(([k, v]) => k === 'screen' || k === 'nav' || k === 'type'
+    || (k === 'ids' ? v.length >= 1 && v.length <= 10 && v.every((x) => UUID.test(String(x)))
+      : k === 'date' ? /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(String(v)) : UUID.test(String(v))));
+  go('notices');
+  return ok && screen === 'notices';
 }
 
 /* ── ID CHECKS MODULE ── */
@@ -2795,16 +2856,19 @@ function setMyLeaderId(id) {
   if (id && id !== prev) _vgSnap(); // R5: a new "I am" starts on that leader's own grades
   // Elvanto link (spec §6.2): log the "I am" switch with the next flush, only while the screens are on.
   try { if ((id || null) !== prev && _linkOn()) _lkPush({ kind: 'identity', id: _lkUuid(), at: new Date().toISOString(), from: prev, to: id || null }, false); } catch {}
+  try { _pushLeaderSync(); } catch {} // leader alerts: the phone's subscription carries the pick (fire and forget)
 }
 
 // A pick belongs to the login that made it: the same login keeps it across sign-out (T4), but a DIFFERENT login signing in
 // on this phone starts with none (and its own skip clock). A pick with no owner yet (made before this) is given to this login.
 function _iamNewLogin(uid) {
+  let moved = false;
   try {
     const own = localStorage.getItem('yap_iam_login');
-    if (own && own !== uid) { localStorage.removeItem('yap_leader_id'); localStorage.removeItem('yap_iam_skip'); }
+    if (own && own !== uid) { moved = true; localStorage.removeItem('yap_leader_id'); localStorage.removeItem('yap_iam_skip'); }
     localStorage.setItem('yap_iam_login', uid);
   } catch {}
+  try { if (moved) _pushLoginMoved(); } catch {} // A1: this phone's alerts follow the new login (or stop)
   if (typeof LINK !== 'undefined') { LINK.iamPick = undefined; LINK.ldrs = null; } // the name lists were loaded for the last login
 }
 
@@ -17675,13 +17739,14 @@ async function boot() {
   try { S.settings = await API.get('/settings'); } catch (e) { S.settings = _settingsFallback(); settingsFailed = !!e.status; }
   if (!S.user && (settingsFailed || (S.settings && S.settings.needsAdmin))) S.page = 'setup';
   if (S.settings && S.settings.ministryConfig) applyTheme(S.settings.ministryConfig);
-  if (S.user) {
-    // Tapped notice alert, cold start (sw.js openWindow('/?nav=notices')). render() sends Home if the module is off.
-    try { if (new URLSearchParams(location.search).get('nav') === 'notices') { S.page = 'notices'; history.replaceState(null, '', location.pathname); } } catch {}
-  }
+  // Tapped alert, cold start (sw.js openWindow('/?nav=<screen>&...')): routed after the first render (_navRoute clears the URL).
+  let nav = null;
+  try { const q = new URLSearchParams(location.search); if (S.user && q.has('nav')) nav = q; } catch {}
   render();
   _reloadViewportFix();
   if (typeof _quadIamPrompt === 'function') _quadIamPrompt();
+  if (nav) _navRoute(nav);
+  if (S.user) _pushLeaderSync(); // once per boot: a pick changed while offline (or before alerts carried it) reaches the server
 }
 
 boot();
@@ -17736,9 +17801,9 @@ function _swOnUpdate() {
 function _swOnHidden() { if (_swWaiting && document.visibilityState === 'hidden' && _swIdle()) _swReload(); }
 if ('serviceWorker' in navigator) {
   const _swHadController = !!navigator.serviceWorker.controller;
-  // Tapped notice alert with the app already open (sw.js notificationclick posts this).
+  // Tapped alert with the app already open (sw.js notificationclick posts {type: 'push-nav', screen, ...params}).
   navigator.serviceWorker.addEventListener('message', (e) => {
-    if (e.data && e.data.type === 'push-nav' && e.data.screen === 'notices' && S.user) go('notices');
+    if (e.data && e.data.type === 'push-nav' && S.user) _navRoute(e.data);
   });
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!_swHadController) return;
