@@ -6,7 +6,7 @@ import type { User, Actor } from '../core/entities/user';
 import type { Modules } from '../core/ministry-config';
 import type { IAlertSendRepository, ILeaderRepository, INoticePushRepository, ISettingsRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
 import type { ErrorLogService } from './error-log.service';
-import { can } from './access-control';
+import { can, type StructureScope } from './access-control';
 import { readVapid, sendToSubs, webPushSender, type PushSender } from './push-send';
 
 export type AlertKindName = 'bday' | 'lgrem';
@@ -14,7 +14,7 @@ export type Skip = 'window' | 'push-off' | 'module-off' | 'stale' | null;
 export interface Counts { leaders: number; sent: number; failed: number; skipped: Skip; hidden?: number; unlinked?: number }
 /** A subscription that may receive leader alerts (S6): leader picked and active, user active with notice:alerts. */
 export type EligibleSub = NoticePushSub & { user: User };
-export interface AlertCtx { now: Date; tz: string; modules: Modules; subs: EligibleSub[] }
+export interface AlertCtx { now: Date; tz: string; modules: Modules; structure: StructureScope; subs: EligibleSub[] }
 /** One leader's alert; `subs` already filtered by the kind (its pref, visibility). */
 export interface AlertItem { key: string; leaderId: string; subs: NoticePushSub[]; payload: object }
 export interface AlertKind {
@@ -66,7 +66,7 @@ export function makeAlertRun(deps: AlertRunDeps, kinds: AlertKind[]): AlertRun {
 
       let failedAll = 0;
       for (const k of todo) {
-        const p = await k.plan({ now, tz: cfg.structure.timeZone, modules: cfg.modules, subs: eligible });
+        const p = await k.plan({ now, tz: cfg.structure.timeZone, modules: cfg.modules, structure: cfg.structure, subs: eligible });
         const c: Counts = { leaders: 0, sent: 0, failed: 0, skipped: p.skipped };
         if (p.hidden !== undefined) c.hidden = p.hidden;
         if (p.unlinked !== undefined) c.unlinked = p.unlinked;

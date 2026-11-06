@@ -293,7 +293,7 @@ function stable(v: unknown): string {
 /** Local midnight of a date, as an instant. */
 const brisbaneStart = (ymd: string, tz: string) => new Date(instantOf(ymd, '00:00', tz)).toISOString();
 
-function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope): boolean {
+export function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope): boolean {
   const q = g.grade == null ? groupQuadOf(g.name) : null; // Junior/Senior-named group
   if (q) return canAccessQuadGroup(a, q, s);
   if (g.grade == null) return isAdminRole(a);
