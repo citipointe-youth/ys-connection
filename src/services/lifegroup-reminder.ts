@@ -4,9 +4,9 @@
 import type { Actor } from '../core/entities/user';
 import type { LinkGroupRow, OutboxRow, Status } from '../core/link-types';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
-import type { ILeaderRepository } from '../repositories/interfaces/entity-repositories';
 import { alertModuleOn, resolveModules } from '../core/module-tree';
 import type { AlertItem, AlertKind } from './alert-run.service';
+import { toActor } from './auth.service';
 import { can, modeAllows } from './access-control';
 import { groupVisible } from './link.service';
 import { addDays, brisbaneToday, instantOf, meetsTime, meetsWeekday, rosterPersonMatcher, weekdayOf } from './link-rules';
@@ -36,7 +36,7 @@ export function dueOccurrences(meets: string, now: Date, tz: string): string[] {
 export function reportDone(g: LinkGroupRow, outbox: OutboxRow[], d: string, today: string): boolean | 'unreadable' {
   if (g.thisWeek === 'unreadable') return 'unreadable';
   const wk = mondayOf(d);
-  const inWeek = (x: unknown) => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x) && mondayOf(x) === wk;
+  const inWeek = (x: unknown) => typeof x === 'string' && mondayOf(x) === wk;
   const p = (r: OutboxRow) => r.payload as { groupId?: unknown; date?: unknown };
   return outbox.some((r) => (r.type === 'submitReport' || r.type === 'editReport') && DONE.includes(r.status) && p(r).groupId === g.groupId && inWeek(p(r).date))
     || [g.lastReport, ...g.history].some((h) => h && inWeek(h.date))
@@ -44,9 +44,7 @@ export function reportDone(g: LinkGroupRow, outbox: OutboxRow[], d: string, toda
 }
 
 export function makeLifegroupKind(deps: {
-  link: Pick<ILinkRepository, 'groups' | 'roster' | 'mirrorState' | 'listActions'>;
-  leaders: Pick<ILeaderRepository, 'findAll'>;
-}): AlertKind {
+  link: Pick<ILinkRepository, 'groups' | 'roster' | 'mirrorState' | 'listActions'>;}): AlertKind {
   return {
     kind: 'lgrem',
     async plan(ctx) {
@@ -59,9 +57,10 @@ export function makeLifegroupKind(deps: {
       const today = brisbaneToday(ctx.now, ctx.tz);
       const due = (await deps.link.groups()).flatMap((g) => dueOccurrences(g.meets || '', ctx.now, ctx.tz).map((d) => ({ g, d })));
       if (!due.length) return { skipped: null, items: [], hidden: 0, unlinked: 0 };
-      const [outbox, roster, leaders] = await Promise.all([
+      const leaders = ctx.leaders;
+      const [outbox, roster] = await Promise.all([
         deps.link.listActions({ types: ['submitReport', 'editReport'], statuses: DONE, serviceDateFrom: addDays(today, -8) }),
-        deps.link.roster(), deps.leaders.findAll()]);
+        deps.link.roster()]);
       const personOf = rosterPersonMatcher(roster, leaders);
       const leaderOf = new Map<string, string>();
       for (const l of leaders) { const pid = l.active ? personOf(l) : null; if (pid) leaderOf.set(pid, l.id); }
@@ -79,7 +78,7 @@ export function makeLifegroupKind(deps: {
           const leaderId = leaderOf.get(pid);
           if (!leaderId) { unlinked++; continue; }
           const mine = subs.filter((s) => s.leaderId === leaderId);
-          const ok = mine.filter((s) => { const a = s.user as unknown as Actor; return canOpen(a) && groupVisible(a, g, ctx.structure); });
+          const ok = mine.filter((s) => { const a = toActor(s.user); return canOpen(a) && groupVisible(a, g, ctx.structure); });
           hidden += mine.length - ok.length;
           if (ok.length) items.push({ key: `${g.groupId}:${d}`, leaderId, subs: ok, payload });
         }

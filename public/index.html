@@ -2191,12 +2191,13 @@ async function _bdayList(ids) {
 // already has a report. Always through _lkOpenGroup (going to the page clears LINK.gid). A failed load leaves the page's error.
 async function _lgremOpen(gid, d) {
   go('link-groups');
+  if (LINK.rf && LINK.rf.dirty && LINK.rf.mode === 'edit') return; // an unsaved edit has no draft: keep that form open
   if (!(await _lkLoadGroups(true)) || S.page !== 'link-groups') return;
   const g = (LINK.groups || []).find((x) => x.groupId === gid);
   if (!g) { toast("This group isn't on this login."); return; }
   _lkOpenGroup(gid);
   const start = _lkWeekStart(d);
-  if (!_lkWeekReport(g, { start, end: _lkAddDays(start, 6) })) _lkNewReport(d);
+  if (!g.openAction && !_lkWeekReport(g, { start, end: _lkAddDays(start, 6) })) _lkNewReport(d); // a report still pending from the app counts as in
 }
 
 /* ── ID CHECKS MODULE ── */

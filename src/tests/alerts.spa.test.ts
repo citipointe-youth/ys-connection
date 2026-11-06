@@ -12,7 +12,7 @@ const BODY = FNS.map((n) => extractFn(HTML, n)).join('\n');
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-type Opts = { groups?: any[]; loadFails?: boolean; saved?: string | null; subscribed?: boolean; postErr?: any; role?: string; store?: Record<string, string>; students?: any[]; search?: string; notices?: string };
+type Opts = { rf?: any; groups?: any[]; loadFails?: boolean; saved?: string | null; subscribed?: boolean; postErr?: any; role?: string; store?: Record<string, string>; students?: any[]; search?: string; notices?: string };
 function env(o: Opts = {}) {
   const calls = { posts: [] as any[], unsub: 0, draw: 0, toasts: [] as string[], go: [] as string[], cleared: 0, modal: [] as string[], detail: [] as string[], gets: [] as string[],
     opened: [] as string[], newRep: [] as string[] };
@@ -34,7 +34,7 @@ function env(o: Opts = {}) {
     const location = { search: o.search || '', pathname: '/' };
     const icS = () => '';
     function _vgSnap() {} function _linkOn() { return false; } function _lkPush() {} function _ntPushDraw() { calls.draw++; }
-    const LINK = { groups: null };
+    const LINK = { groups: null, rf: o.rf || null };
     async function _lkLoadGroups() { if (o.loadFails) return false; LINK.groups = o.groups || []; return true; }
     function _lkOpenGroup(id) { calls.opened.push(id); } function _lkNewReport(d) { calls.newRep.push(d); }`;
   const f = new Function('ARGS', `${prelude}\n${BODY}\nreturn { ${FNS.join(', ')}, S };`)(args);
@@ -234,6 +234,22 @@ describe('lgrem: lgreport deep link (L3)', () => {
     const last = env({ groups: [grp([{ reportId: 'r0', date: '2026-11-08' }])] }); // last week's only
     last._navRoute({ screen: 'lgreport', g: G, d: D }); await flush();
     expect(last.calls.newRep).toEqual([D]);
+  });
+  it('M3: a pending app-filed report for the group -> group page, no second form', async () => {
+    const e = env({ groups: [{ ...grp(), openAction: { id: 'a1', type: 'submitReport', status: 'pending', reason: null } }] });
+    e._navRoute({ screen: 'lgreport', g: G, d: D }); await flush();
+    expect(e.calls.opened).toEqual([G]);
+    expect(e.calls.newRep).toEqual([]);
+  });
+  it('M2: a dirty edit form is kept: no group switch, no new form', async () => {
+    const e = env({ groups: [grp()], rf: { mode: 'edit', dirty: true } });
+    e._navRoute({ screen: 'lgreport', g: G, d: D }); await flush();
+    expect(e.calls.go).toEqual(['link-groups']);
+    expect(e.calls.opened).toEqual([]);
+    expect(e.calls.newRep).toEqual([]);
+    const clean = env({ groups: [grp()], rf: { mode: 'edit', dirty: false } });
+    clean._navRoute({ screen: 'lgreport', g: G, d: D }); await flush();
+    expect(clean.calls.newRep).toEqual([D]);
   });
   it("unknown group -> toast, nothing opened", async () => {
     const e = env({ groups: [grp()] });

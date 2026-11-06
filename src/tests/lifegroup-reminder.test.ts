@@ -96,7 +96,6 @@ async function rig(o: { groups?: LinkGroupRow[]; outbox?: OutboxRow[]; roster?: 
       mirrorState: async () => (takenAt ? [{ kind: 'groups', takenAt, consoleId: 'c', rowCount: 1, appliedAt: takenAt }] : []) as any,
       listActions: async () => o.outbox ?? [],
     },
-    leaders: { findAll: async () => leaders as any },
   });
   const run = makeAlertRun({
     subs, users: { findAll: async () => (o.users ?? [QUAD]) as any }, leaders: { findAll: async () => leaders as any },

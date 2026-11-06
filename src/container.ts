@@ -323,7 +323,7 @@ export async function buildContainer(): Promise<Container> {
   const notice = makeNoticeService(notices, settings, undefined, { subs: noticePush, users, leaders, errorLog });
   const alertSends = useSupabase ? new SupabaseAlertSendRepository(sql) : new InMemoryAlertSendRepository();
   const alerts = makeAlertRun({ subs: noticePush, users, leaders, settings, claims: alertSends, errorLog }, [makeBirthdayKind({ connections, students, dnc }),
-    makeLifegroupKind({ link, leaders })]);
+    makeLifegroupKind({ link })]);
   // T10: failed or unconfirmed New person sends are kept (encrypted) for the admin to resend.
   const unsent = useSupabase ? new SupabaseUnsentRepository(sql) : new InMemoryUnsentRepository();
   const newYouth = makeNewYouthService(settings, { live: true, errorLog, unsent });
