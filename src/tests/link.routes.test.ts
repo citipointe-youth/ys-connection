@@ -18,6 +18,7 @@ const j = async (r: Response): Promise<any> => r.json();
 
 const SPEC_ROUTES = [
   'POST /sync/claim', 'POST /sync/result', 'POST /sync/push/:kind', 'POST /sync/leaders', 'POST /sync/reconcile/latest', 'POST /sync/night-summary',
+  'POST /sync/alerts', 'GET /sync/alerts', // F4 leader alerts (GET = Vercel cron, cron secret)
   'GET /link/status', 'GET /link/checkin', 'GET /link/actions',
   'POST /link/batch', 'GET /link/lifegroups', 'GET /link/flows', 'POST /link/flows/assign',
   'GET /link/lifegroups/:groupId/members', 'GET /link/youth',
@@ -37,6 +38,7 @@ describe('link + sync route table', () => {
     expect(routes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([...SPEC_ROUTES].sort());
     for (const r of routes) {
       if (r.path.startsWith('/link')) { expect(r.auth).toBe(true); expect(r.sync).toBeUndefined(); }
+      else if (r.method === 'GET' && r.path === '/sync/alerts') { expect(r.cron).toBe(true); expect(r.sync).toBeUndefined(); expect(r.auth).toBe(false); }
       else { expect(r.sync).toBe(true); expect(r.auth).toBe(false); }
     }
   });

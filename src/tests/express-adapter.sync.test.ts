@@ -6,6 +6,8 @@ import type { Route, HttpRequest } from '../api/http/types';
 import type { AuthService } from '../services/auth.service';
 import type { Actor } from '../core/entities/user';
 import { createApp, UNTIMED_ROUTES } from '../api/http/express-adapter';
+import { makeSyncController } from '../api/controllers/sync.controller';
+import { LINK_CONTRACT_VERSION } from '../core/link-contract';
 
 const j = async (r: Response): Promise<any> => r.json();
 
@@ -20,7 +22,12 @@ const TOKEN = 'Tk_' + 'x9'.repeat(20); // 43 chars, mixed case
 const SECRET_BODY = 'note-body-should-never-be-logged';
 
 const seen: { sync: HttpRequest[]; session: HttpRequest[] } = { sync: [], session: [] };
+// F4: the real controller rows for /sync/alerts, with a spy run.
+const alertRun = { run: vi.fn(async (_now: Date, which: string[]) => Object.fromEntries(which.map((k) => [k, { leaders: 0, sent: 0, failed: 0, skipped: 'module-off' }]))) };
+const syncCtl = makeSyncController({ sync: {} as never, reconcile: {} as never, nightSummary: {} as never, alerts: alertRun as never });
 const routes: Route[] = [
+  { method: 'POST', path: '/sync/alerts', auth: false, sync: true, handler: (r) => syncCtl.alerts(r) },
+  { method: 'GET', path: '/sync/alerts', auth: false, cron: true, handler: () => syncCtl.alertsCron() },
   { method: 'POST', path: '/sync/ping', auth: false, sync: true,
     handler: async (r) => { seen.sync.push(r); return { ok: true, ctxNull: r.ctx === null }; } },
   { method: 'POST', path: '/sync/boom', auth: false, sync: true,
@@ -37,6 +44,7 @@ const auth = { resolveToken } as unknown as AuthService;
 let server: Server;
 let base = '';
 const saved = process.env['LINK_SYNC_TOKEN'];
+const savedCron = process.env['CRON_SECRET'];
 
 beforeAll(() => {
   server = createApp(routes, auth).listen(0);
@@ -45,8 +53,9 @@ beforeAll(() => {
 afterAll(() => {
   server.close();
   if (saved === undefined) delete process.env['LINK_SYNC_TOKEN']; else process.env['LINK_SYNC_TOKEN'] = saved;
+  if (savedCron === undefined) delete process.env['CRON_SECRET']; else process.env['CRON_SECRET'] = savedCron;
 });
-afterEach(() => { vi.restoreAllMocks(); resolveToken.mockClear(); seen.sync.length = 0; seen.session.length = 0; });
+afterEach(() => { vi.restoreAllMocks(); resolveToken.mockClear(); alertRun.run.mockClear(); seen.sync.length = 0; seen.session.length = 0; });
 
 describe('SY-06: a wrong /sync token leaves an Error log row', () => {
   it('logs code and route only, never the token; session 401s and good tokens log nothing', async () => {
@@ -164,7 +173,7 @@ describe('sync routes: token gate', () => {
     timed.labels.length = 0;
     await sync(`Bearer ${TOKEN}`);
     expect(timed.labels).toEqual([20_000]);
-    expect([...UNTIMED_ROUTES].some((r) => r.includes('/sync'))).toBe(false);
+    expect([...UNTIMED_ROUTES].filter((r) => r.includes('/sync'))).toEqual(['POST /sync/alerts', 'GET /sync/alerts']);
   });
 
   it('no dead route in UNTIMED_ROUTES: POST /audits is gone (final review M1)', () => {
@@ -186,5 +195,90 @@ describe('sync routes: token gate', () => {
     const out = JSON.stringify(spies.flatMap((s) => s.mock.calls));
     expect(out).not.toContain(TOKEN);
     expect(out).not.toContain(SECRET_BODY);
+  });
+});
+
+describe('F4: /sync/alerts (console trigger + cron catch-up)', () => {
+  const CRON = 'Cr_' + 'q8'.repeat(20);
+  const BODY = { contractVersion: LINK_CONTRACT_VERSION, consoleId: '0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a' };
+  const post = (authz: string | null, url = base) => fetch(`${url}/sync/alerts`, { method: 'POST',
+    headers: { 'content-type': 'application/json', ...(authz === null ? {} : { authorization: authz }) }, body: JSON.stringify(BODY) });
+  const get = (authz: string | null, url = base) => fetch(`${url}/sync/alerts`, { headers: authz === null ? {} : { authorization: authz } });
+
+  it('POST /sync/alerts without link token 401', async () => {
+    process.env['LINK_SYNC_TOKEN'] = TOKEN;
+    expect((await post(null)).status).toBe(401);
+    expect((await post(`Bearer ${CRON}`)).status).toBe(401);
+    expect(alertRun.run).not.toHaveBeenCalled();
+  });
+
+  it('POST /sync/alerts with LINK_SYNC_TOKEN unset 503', async () => {
+    delete process.env['LINK_SYNC_TOKEN'];
+    const r = await post(`Bearer ${TOKEN}`);
+    expect(r.status).toBe(503);
+    expect((await j(r)).code).toBe('LINK_OFF');
+    expect(alertRun.run).not.toHaveBeenCalled();
+  });
+
+  it('POST /sync/alerts with the token runs both kinds', async () => {
+    process.env['LINK_SYNC_TOKEN'] = TOKEN;
+    const r = await post(`Bearer ${TOKEN}`);
+    expect(r.status).toBe(200);
+    expect(Object.keys(await j(r))).toEqual(['bday', 'lgrem']);
+    expect(alertRun.run.mock.calls[0]![1]).toEqual(['bday', 'lgrem']);
+  });
+
+  it('POST /sync/alerts checks the body (contractVersion, consoleId)', async () => {
+    process.env['LINK_SYNC_TOKEN'] = TOKEN;
+    const r = await fetch(`${base}/sync/alerts`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` }, body: '{}' });
+    expect(r.status).toBe(400);
+    expect(alertRun.run).not.toHaveBeenCalled();
+  });
+
+  it('GET /sync/alerts with CRON_SECRET unset 503 and runs nothing', async () => {
+    delete process.env['CRON_SECRET'];
+    process.env['LINK_SYNC_TOKEN'] = TOKEN;
+    for (const h of [`Bearer ${CRON}`, `Bearer ${TOKEN}`, null]) expect((await get(h)).status).toBe(503);
+    process.env['CRON_SECRET'] = 'short';
+    expect((await get('Bearer short')).status).toBe(503);
+    expect(alertRun.run).not.toHaveBeenCalled();
+  });
+
+  it('GET /sync/alerts bad bearer 401 logs cron-bad-token', async () => {
+    process.env['CRON_SECRET'] = CRON;
+    process.env['LINK_SYNC_TOKEN'] = TOKEN;
+    const record = vi.fn(async () => {});
+    const srv = createApp(routes, auth, undefined, { record } as never).listen(0);
+    const url = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    try {
+      expect((await get(`Bearer ${TOKEN}`, url)).status).toBe(401); // the link token is not the cron secret
+      expect((await get(null, url)).status).toBe(401);
+      expect(record.mock.calls).toEqual([
+        [{ category: 'server', code: 'cron-bad-token', route: 'GET /sync/alerts', status: 401, role: 'cron' }],
+        [{ category: 'server', code: 'cron-bad-token', route: 'GET /sync/alerts', status: 401, role: 'cron' }],
+      ]);
+      expect(JSON.stringify(record.mock.calls)).not.toContain(TOKEN);
+      expect(alertRun.run).not.toHaveBeenCalled();
+    } finally { srv.close(); }
+  });
+
+  it('GET /sync/alerts good bearer runs bday only', async () => {
+    process.env['CRON_SECRET'] = CRON;
+    delete process.env['LINK_SYNC_TOKEN']; // the cron does not need the link
+    const r = await get(`Bearer ${CRON}`);
+    expect(r.status).toBe(200);
+    expect(await j(r)).toEqual({ bday: { leaders: 0, sent: 0, failed: 0, skipped: 'module-off' } });
+    expect(alertRun.run.mock.calls.map((c) => c[1])).toEqual([['bday']]);
+  });
+
+  it('both routes are in UNTIMED_ROUTES', async () => {
+    expect(UNTIMED_ROUTES.has('POST /sync/alerts')).toBe(true);
+    expect(UNTIMED_ROUTES.has('GET /sync/alerts')).toBe(true);
+    process.env['CRON_SECRET'] = CRON;
+    process.env['LINK_SYNC_TOKEN'] = TOKEN;
+    timed.labels.length = 0;
+    await get(`Bearer ${CRON}`);
+    await post(`Bearer ${TOKEN}`);
+    expect(timed.labels).toEqual([]);
   });
 });

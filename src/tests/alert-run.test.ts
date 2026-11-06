@@ -3,6 +3,8 @@ import { describe, it, expect } from 'vitest';
 import { InMemoryNoticePushRepository, InMemoryAlertSendRepository } from '../repositories/in-memory/in-memory.repositories';
 import { makeAlertRun, type AlertKind, type AlertItem, type EligibleSub } from '../services/alert-run.service';
 import type { PushSender } from '../services/push-send';
+import { makeSyncController } from '../api/controllers/sync.controller';
+import { LINK_CONTRACT_VERSION } from '../core/link-contract';
 
 const VAPID = { VAPID_PUBLIC_KEY: 'pub', VAPID_PRIVATE_KEY: 'priv', VAPID_SUBJECT: 'mailto:x@example.com' };
 const NOW = new Date('2026-11-07T22:00:00Z');
@@ -170,5 +172,30 @@ describe('alert run: logging', () => {
     await m.seed();
     await m.run.run(NOW, ['bday']);
     expect(m.logged).toEqual([]);
+  });
+});
+
+describe('alert run: controller (/sync/alerts)', () => {
+  const ctl = (run: any) => makeSyncController({ sync: {} as never, reconcile: {} as never, nightSummary: {} as never, alerts: run });
+  const BODY = { contractVersion: LINK_CONTRACT_VERSION, consoleId: '0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a' };
+
+  it('POST with liveLink off still 200 (counts, no ModuleDisabledError)', async () => {
+    const subs = new InMemoryNoticePushRepository();
+    await subs.save(sub('d1', 'u1', lid(1)));
+    const run = makeAlertRun({
+      subs, users: { findAll: async () => [U('u1')] as any }, leaders: { findAll: async () => [{ id: lid(1), active: true }] as any },
+      settings: { getSettings: async () => ({ ministryConfig: { modules: { notices: 'on', liveLink: false }, structure: { timeZone: 'Australia/Brisbane' } } }) } as any,
+      claims: new InMemoryAlertSendRepository(), sender: async () => {}, env: VAPID, errorLog: { record: async () => {} },
+    }, [stubKind()]);
+    await expect(ctl(run).alerts({ body: BODY } as any)).resolves.toEqual({ bday: { leaders: 1, sent: 1, failed: 0, skipped: null } });
+  });
+
+  it('POST runs bday + lgrem, the cron runs bday only; a bad body never runs', async () => {
+    const calls: string[][] = [];
+    const c = ctl({ run: async (_n: Date, w: string[]) => { calls.push(w); return {}; } });
+    await c.alerts({ body: BODY } as any);
+    await c.alertsCron();
+    await expect(c.alerts({ body: { consoleId: BODY.consoleId } } as any)).rejects.toThrow();
+    expect(calls).toEqual([['bday', 'lgrem'], ['bday']]);
   });
 });

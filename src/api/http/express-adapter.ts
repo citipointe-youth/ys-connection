@@ -7,7 +7,7 @@ import type { AuthService } from '../../services/auth.service';
 import { resolveContext } from '../middleware/auth.middleware';
 import { errorResponse } from '../middleware/error.middleware';
 import { categoryForCode, type ErrorLogService } from '../../services/error-log.service';
-import { UnauthorizedError, MustChangePasswordError } from '../../core/errors/app-error';
+import { AppError, UnauthorizedError, MustChangePasswordError } from '../../core/errors/app-error';
 import { createLogger } from '../../utils/logger';
 import { RateLimiter } from '../../utils/rate-limiter';
 import { withTimeout } from '../../utils/timeout';
@@ -50,6 +50,9 @@ export const UNTIMED_ROUTES = new Set([
   'POST /admin/unsent/:id/retry',
   // Bus consent form (spec 2026-10-22): the same Elvanto send path, same reason.
   'POST /bus/consent-form',
+  // F4 leader alerts: the run bounds itself (stops claiming after 40 s, under Vercel's 60 s cap).
+  'POST /sync/alerts',
+  'GET /sync/alerts',
 ]);
 
 const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest();
@@ -62,6 +65,17 @@ const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest();
 function checkSyncToken(header: string | undefined): void {
   const token = readLinkSyncToken();
   if (!token) throw new LinkOff();
+  checkBearer(header, token);
+}
+
+/** F4: the Vercel cron's gate. CRON_SECRET unset or under 32 chars = 503 CRON_OFF (the route does nothing). */
+function checkCronSecret(header: string | undefined): void {
+  const secret = (process.env['CRON_SECRET'] ?? '').trim();
+  if (secret.length < 32) throw new AppError('CRON_OFF', 'The daily alert catch-up is off.', 503);
+  checkBearer(header, secret);
+}
+
+function checkBearer(header: string | undefined, token: string): void {
   const given = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : '';
   if (!timingSafeEqual(sha256(given), sha256(token)) || !given) throw new UnauthorizedError();
 }
@@ -154,6 +168,7 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
         }
 
         if (route.sync) checkSyncToken(req.headers['authorization']);
+        else if (route.cron) checkCronSecret(req.headers['authorization']);
         else {
           ctx = await resolveContext(req.headers['authorization'], authService, route.auth);
           if (route.auth && !ctx) throw new UnauthorizedError();
@@ -181,11 +196,13 @@ export function createApp(routes: Route[], authService: AuthService, health?: ()
         // T3: every 5xx goes to the admin Error log (code + route + role only), before the reply so serverless can't freeze it.
         if (r.status >= 500 && errorLog) {
           await errorLog.record({ category: categoryForCode(r.body.code), code: r.body.code, route: routeLabel, status: r.status,
-            role: ctx?.role ?? (route.sync ? 'console' : null) });
+            role: ctx?.role ?? (route.sync ? 'console' : route.cron ? 'cron' : null) });
         }
         // SY-06: a wrong /sync token leaves a row (code + route only). Session 401s are normal traffic.
         else if (r.status === 401 && route.sync && errorLog) {
           await errorLog.record({ category: 'link', code: 'sync-bad-token', route: routeLabel, status: 401, role: 'console' });
+        } else if (r.status === 401 && route.cron && errorLog) {
+          await errorLog.record({ category: 'server', code: 'cron-bad-token', route: routeLabel, status: 401, role: 'cron' });
         }
         res.status(r.status).json(r.body);
       }

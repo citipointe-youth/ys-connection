@@ -27,6 +27,9 @@ interface RouteBase {
   // The console's /sync routes: no session. The adapter checks `Authorization: Bearer <LINK_SYNC_TOKEN>` instead
   // (exact, timing-safe) and calls the handler with ctx === null. Use with auth: false.
   sync?: true;
+  // F4: the Vercel cron (GET /sync/alerts). The adapter checks `Authorization: Bearer <CRON_SECRET>` instead (same rules
+  // as `sync`; unset = 503 CRON_OFF). Use with auth: false.
+  cron?: true;
 }
 
 export type Route =
