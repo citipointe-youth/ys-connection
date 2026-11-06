@@ -5,6 +5,7 @@ import type {
 } from '../core/link-types';
 import { NOTE_FAILED_DETAIL, isDnc } from '../core/link-contract';
 import { isRealDob } from './terms';
+import type { Leader } from '../core/entities/leader';
 
 export const LINK_CUTOFF_DAYS = 3;
 export const LEASE_LOST_MS = 3_600_000;
@@ -103,6 +104,13 @@ const LONG = ['sun', 'mon', 'tues', 'wednes', 'thurs', 'fri', 'satur'];
 export function meetsWeekday(meets: string): number {
   const m = meets.toLowerCase().match(DAY_RE);
   return !m ? -1 : m[1] ? WEEKDAYS.indexOf(m[1]) : LONG.indexOf(m[2]!);
+}
+
+/** The time in `meets` ("Tue 6:30 PM") as minutes after midnight, or null (no readable h:mm AM/PM). */
+export function meetsTime(meets: string): number | null {
+  const m = meets.match(/\b(\d{1,2}):([0-5]\d)\s*([ap])\.?m\b/i);
+  if (!m || +m[1]! < 1 || +m[1]! > 12) return null;
+  return ((+m[1]! % 12) + (m[3]!.toLowerCase() === 'p' ? 12 : 0)) * 60 + +m[2]!;
 }
 
 /** The latest date ≤ today on the weekday named in `meets` ("Tue 6:30 PM", "Tuesday"); today if none. */
@@ -335,6 +343,31 @@ export interface MatchChange { personId: string; studentId: string | null; match
  *  "Faux-Cook" and "FauxCook" agree. First and last stay separate; a surname alone never matches. */
 export const matchFold = (s: string) => nameFold(s).replace(/[\s'.-]/g, '');
 const nameKey = (first: string, last: string) => `${matchFold(first)}|${matchFold(last)}`;
+
+/**
+ * Read-time name match (decision 20; B11): one active roster row of kind leader with the X8-folded name. No leader row
+ * means Not linked (never a same-name student or other, APP-10). Two active app leaders with the same folded name are
+ * both Not linked (APP-55). APP-79: the folded names are indexed once per call, not once per leader.
+ * T8 (2026-10-14b): keyed on matchFold (case, spaces, hyphens, apostrophes, dots), as students are; the console adds a leader
+ * found in Elvanto by exactly one non-archived person of that name. Shared by link.service and the lifegroup reminders.
+ */
+export function rosterPersonMatcher(roster: LinkRosterRow[], appLeaders: Leader[]): (l: Leader) => string | null {
+  const appCount = new Map<string, number>();
+  for (const x of appLeaders) if (x.active) { const k = matchFold(x.fullName); appCount.set(k, (appCount.get(k) ?? 0) + 1); }
+  const byName = new Map<string, LinkRosterRow[]>();
+  for (const r of roster) {
+    if (!r.active || r.kind !== 'leader') continue;
+    const k = matchFold(`${r.firstName} ${r.lastName}`.trim());
+    byName.set(k, [...(byName.get(k) ?? []), r]);
+  }
+  return (l) => {
+    const key = matchFold(l.fullName);
+    if ((appCount.get(key) ?? 0) > 1) return null;
+    const g = l.gender === 'male' || l.gender === 'female' ? l.gender : null;
+    const hits = (byName.get(key) ?? []).filter((r) => !g || !r.gender || r.gender === g);
+    return hits.length === 1 ? hits[0]!.personId : null;
+  };
+}
 /** Gender only blocks a match when both sides say male/female and differ; blank, null or YS 'other' is unknown. */
 export const genderFits = (a: string | null | undefined, b: string | null | undefined) => {
   const k = (g: string | null | undefined) => (g === 'male' || g === 'female' ? g : null);

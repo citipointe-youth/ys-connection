@@ -41,7 +41,7 @@ import { groupQuadOf } from '../core/types/enums';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
   noteRoom, pickList, matchFold, leaderFitsPerson, genderFits, serviceDay, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
-  instantOf, type SiteTime,
+  instantOf, rosterPersonMatcher, type SiteTime,
 } from './link-rules';
 import { checkInEvidence, saveRosterFixes } from './sync.service';
 
@@ -338,31 +338,6 @@ function currentOf(f: LinkFlowRow, assigned: Leader | undefined, leaders: Leader
 export function personVisible(a: Actor, r: LinkRosterRow, s: StructureScope): boolean {
   return isAdminRole(a) || (canAccessGrade(a, r.grade, s) && (r.gender ? canAccessGender(a, r.gender, s) : genderScopeOf(a, s) == null));
 }
-/**
- * Read-time name match (decision 20; B11): one active roster row of kind leader with the X8-folded name. No leader row
- * means Not linked (never a same-name student or other, APP-10). Two active app leaders with the same folded name are
- * both Not linked (APP-55). APP-79: the folded names are indexed once per call, not once per leader.
- * T8 (2026-10-14b): keyed on matchFold (case, spaces, hyphens, apostrophes, dots), as students are; the console adds a leader
- * found in Elvanto by exactly one non-archived person of that name.
- */
-function rosterPersonMatcher(roster: LinkRosterRow[], appLeaders: Leader[]): (l: Leader) => string | null {
-  const appCount = new Map<string, number>();
-  for (const x of appLeaders) if (x.active) { const k = matchFold(x.fullName); appCount.set(k, (appCount.get(k) ?? 0) + 1); }
-  const byName = new Map<string, LinkRosterRow[]>();
-  for (const r of roster) {
-    if (!r.active || r.kind !== 'leader') continue;
-    const k = matchFold(fullName(r));
-    byName.set(k, [...(byName.get(k) ?? []), r]);
-  }
-  return (l) => {
-    const key = matchFold(l.fullName);
-    if ((appCount.get(key) ?? 0) > 1) return null;
-    const g = l.gender === 'male' || l.gender === 'female' ? l.gender : null;
-    const hits = (byName.get(key) ?? []).filter((r) => !g || !r.gender || r.gender === g);
-    return hits.length === 1 ? hits[0]!.personId : null;
-  };
-}
-
 /** T10: the three link screens, each its own module mode (ministryConfig.modules). */
 type Feature = 'checkin' | 'lifegroupReport' | 'flows';
 const FEATURES: Feature[] = ['checkin', 'lifegroupReport', 'flows'];

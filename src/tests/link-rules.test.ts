@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
- nameFold, serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, meetsWeekday, dedupeKey,
+ nameFold, serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, meetsWeekday, meetsTime, rosterPersonMatcher, dedupeKey,
   LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, dobFixes, genderFixes, gradeFixes, graduations, gradeGlitch, peopleFlowName, isConsentStep,
 } from '../services/link-rules';
 import type { LinkServiceRow, OutboxRow, LinkRosterRow, ResultItem } from '../core/link-types';
@@ -109,6 +109,31 @@ describe('meetsWeekday (I2)', () => {
     expect(meetsWeekday('Monthly')).toBe(-1);
     expect(meetsWeekday('Sunset')).toBe(-1);
     expect(meetsWeekday('')).toBe(-1);
+  });
+});
+
+describe('meetsTime (Part L)', () => {
+  it('minutes after midnight, or null', () => {
+    expect(meetsTime('Fri 4:30 PM')).toBe(990);
+    expect(meetsTime('Tue 6:30 PM')).toBe(1110);
+    expect(meetsTime('Sat 10:30 AM')).toBe(630);
+    expect(meetsTime('Sun 12:00 PM')).toBe(720);
+    expect(meetsTime('Sun 12:00 AM')).toBe(0);
+    expect(meetsTime('')).toBeNull();
+    expect(meetsTime('Fri')).toBeNull();
+  });
+});
+
+describe('rosterPersonMatcher (shared from link-rules)', () => {
+  const ldr = (id: string, fullName: string) => ({ id, fullName, gender: null, grades: [], active: true, createdByGrade: null,
+    smsTemplate: null, createdAt: '', updatedAt: '' });
+  const roster = [ros(1, 'Jo', "O'Neil", null, { kind: 'leader' })];
+  it('maps a single folded-name leader', () => {
+    expect(rosterPersonMatcher(roster, [ldr('a', 'jo oneil')])(ldr('a', 'jo oneil'))).toBe(U(1));
+  });
+  it('two same-name app leaders are both unmapped', () => {
+    const two = [ldr('a', "Jo O'Neil"), ldr('b', 'Jo ONeil')];
+    expect(rosterPersonMatcher(roster, two)(two[0]!)).toBeNull();
   });
 });
 
