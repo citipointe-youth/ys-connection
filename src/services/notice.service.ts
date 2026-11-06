@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { generateId } from '../utils/id';
 import { assertCan, can, receivesNoticePush } from './access-control';
 import type { ILeaderRepository, INoticePushRepository, INoticeRepository, ISettingsRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
+import { alertModuleOn } from '../core/module-tree';
 import { NOTICE_QUADS, type Notice } from '../core/entities/notice';
 import type { Actor } from '../core/entities/user';
 import { AppError, ConflictError, NotFoundError, ModuleDisabledError } from '../core/errors/app-error';
@@ -60,7 +61,8 @@ export interface NoticeService {
   send(actor: Actor, input: unknown): Promise<Notice>;
   remove(actor: Actor, id: string): Promise<void>;
   /** `publicKey` null = VAPID env not set (alerts aren't set up yet). With `endpoint`, also this login's own device state. */
-  pushConfig(actor: Actor, endpoint?: string): Promise<{ publicKey: string | null; leaderId?: string | null; prefs?: { bday: boolean; lgrem: boolean } }>;
+  pushConfig(actor: Actor, endpoint?: string): Promise<{ publicKey: string | null; leaderId?: string | null; prefs?: { bday: boolean; lgrem: boolean };
+    modules: { birthdayAlerts: boolean; lifegroupReminders: boolean } }>;
   subscribe(actor: Actor, input: unknown): Promise<{ ok: true }>;
   unsubscribe(actor: Actor, input: unknown): Promise<{ ok: true }>;
 }
@@ -133,7 +135,9 @@ export function makeNoticeService(
       assertCan(actor, 'notice:alerts');
       const publicKey = (push && readVapid(env)?.publicKey) || null;
       const mine = endpoint && push ? await push.subs.findById(subId(endpoint)) : null;
-      return mine?.userId === actor.id ? { publicKey, leaderId: mine.leaderId, prefs: { bday: mine.bdayOn, lgrem: mine.lgremOn } } : { publicKey };
+      const m = settingsRepo ? (await settingsRepo.getSettings()).ministryConfig.modules : null;
+      const modules = { birthdayAlerts: !!m && alertModuleOn(m, 'birthdayAlerts'), lifegroupReminders: !!m && alertModuleOn(m, 'lifegroupReminders') };
+      return mine?.userId === actor.id ? { publicKey, leaderId: mine.leaderId, prefs: { bday: mine.bdayOn, lgrem: mine.lgremOn }, modules } : { publicKey, modules };
     },
     async subscribe(actor, input) {
       await assertOn();

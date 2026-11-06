@@ -35,7 +35,8 @@ describe('ID checks config', () => {
   });
   it('module tree lists idChecks after notices, with no parent or needs', () => {
     const keys = MODULE_TREE.map((n) => n.key);
-    expect(keys.indexOf('idChecks')).toBe(keys.indexOf('notices') + 1);
+    expect(keys.indexOf('idChecks')).toBe(keys.indexOf('birthdayAlerts') + 1); // birthdayAlerts sits right after notices (2026-11-06)
+    expect(keys.indexOf('birthdayAlerts')).toBe(keys.indexOf('notices') + 1);
     expect(MODULE_TREE.find((n) => n.key === 'idChecks')).toEqual({ key: 'idChecks', label: 'ID Checks' });
     expect(resolveModules({ ...MINISTRY_CONFIG_DEFAULTS.modules, idChecks: 'on' } as any).idChecks).toBe('on');
   });

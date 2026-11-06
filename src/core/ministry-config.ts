@@ -64,6 +64,9 @@ const ModulesSchema = z.object({
   prayers: z.boolean().default(true),
   // Notices (2026-10-15): admin/oversight messages to the four quad logins. Off by default; off = every /notices route answers 404.
   notices: z.enum(['off', 'on']).default('off'),
+  // Leader phone alerts (2026-11-06): a push when a connected student has a birthday / a lifegroup report is late. Need Notices (module-tree.ts).
+  birthdayAlerts: z.enum(['off', 'on']).default('off'),
+  lifegroupReminders: z.enum(['off', 'on']).default('off'),
   // ID Checks (2026-10-30): oversight's leader ID check records. A plain Off / On switch; off = every /id-checks route answers 404.
   idChecks: z.enum(['off', 'on']).default('off'),
   // T10 (2026-10-12): the Elvanto link screens, each off / admin (admin only) / on. Missing = the newYouthForms

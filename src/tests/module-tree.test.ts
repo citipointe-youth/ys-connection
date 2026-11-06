@@ -3,14 +3,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MinistryConfigSchema } from '../core/ministry-config';
-import { MODULE_TREE, resolveModules, moduleProblems, consentsHubOn } from '../core/module-tree';
+import { MODULE_TREE, resolveModules, moduleProblems, consentsHubOn, alertModuleOn } from '../core/module-tree';
 import { makeSettingsService } from '../services/settings.service';
 import { InMemorySettingsRepository, InMemoryAuditRepository, InMemoryUserRepository } from '../repositories/in-memory';
 import type { Actor } from '../core/entities/user';
 import LIVE_MODULES from './fixtures/live-modules.json';
 
 const NEW_KEYS = { liveLink: true, digest: true, camp: true, busConsentForm: true };
-const ID_CHECKS_OFF = { idChecks: 'off' }; // ID Checks (2026-10-30): a new Off / On module, off by default
+const ID_CHECKS_OFF = { idChecks: 'off', birthdayAlerts: 'off', lifegroupReminders: 'off' }; // new Off / On modules (ID Checks 2026-10-30, leader alerts 2026-11-06), off by default
 const LIVE = { ...LIVE_MODULES, ...NEW_KEYS, ...ID_CHECKS_OFF } as any; // live, as it reads after the migration
 const ALL_ON = { ...LIVE, notices: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'on' };
 const mods = (m: Record<string, unknown>) => MinistryConfigSchema.parse({ modules: m }).modules;
@@ -88,6 +88,32 @@ describe('MC4: live no-op', () => {
     expect(consentsHubOn(mods(LIVE))).toBe(true);
     expect(consentsHubOn(mods({ ...LIVE, intakeAdmin: 'off' }))).toBe(true);
     expect(consentsHubOn(mods({ ...LIVE, intakeAdmin: 'off', busConsentForm: false }))).toBe(false);
+  });
+});
+
+describe('leader alert modules', () => {
+  it('the tree has 16 entries; the two alert modules carry their requirements', () => {
+    expect(MODULE_TREE.length).toBe(16);
+    expect(MODULE_TREE.find((n) => n.key === 'birthdayAlerts')).toEqual({ key: 'birthdayAlerts', label: 'Birthday alerts', requires: ['notices'] });
+    expect(MODULE_TREE.find((n) => n.key === 'lifegroupReminders')).toEqual({ key: 'lifegroupReminders', label: 'Lifegroup report reminders', requires: ['notices', 'lifegroupReport'] });
+  });
+  it('lifegroupReminders follows Lifegroups through Live Elvanto link (a requirement resolves before its dependant)', () => {
+    expect(mods({ ...ALL_ON, liveLink: false, birthdayAlerts: 'on', lifegroupReminders: 'on' })).toMatchObject({ birthdayAlerts: 'on', lifegroupReminders: 'off' });
+  });
+  it('both default off in a parsed empty config', () => {
+    expect(mods({})).toMatchObject({ birthdayAlerts: 'off', lifegroupReminders: 'off' });
+  });
+  it('birthdayAlerts resolves off when notices is off; lifegroupReminders also off when lifegroupReport is off', () => {
+    expect(mods({ ...ALL_ON, birthdayAlerts: 'on', lifegroupReminders: 'on' })).toMatchObject({ birthdayAlerts: 'on', lifegroupReminders: 'on' });
+    expect(mods({ ...ALL_ON, notices: 'off', birthdayAlerts: 'on', lifegroupReminders: 'on' })).toMatchObject({ birthdayAlerts: 'off', lifegroupReminders: 'off' });
+    expect(mods({ ...ALL_ON, lifegroupReport: 'off', birthdayAlerts: 'on', lifegroupReminders: 'on' })).toMatchObject({ birthdayAlerts: 'on', lifegroupReminders: 'off' });
+  });
+  it('alertModuleOn resolves through the tree; admin counts as on', () => {
+    const on = { notices: 'on', birthdayAlerts: 'on', lifegroupReminders: 'on', lifegroupReport: 'off' } as any;
+    expect(alertModuleOn(on, 'birthdayAlerts')).toBe(true);
+    expect(alertModuleOn(on, 'lifegroupReminders')).toBe(false);
+    expect(alertModuleOn({ ...on, birthdayAlerts: 'admin' }, 'birthdayAlerts')).toBe(true);
+    expect(alertModuleOn({ ...on, notices: 'off' }, 'birthdayAlerts')).toBe(false);
   });
 });
 

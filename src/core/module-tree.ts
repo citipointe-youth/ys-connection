@@ -12,6 +12,7 @@ export type ModuleNode = { key: string; label: string; parent?: string; needsLin
 export const MODULE_TREE: readonly ModuleNode[] = [
   { key: 'prayers', label: 'Prayer' },
   { key: 'notices', label: 'Notices' },
+  { key: 'birthdayAlerts', label: 'Birthday alerts', requires: ['notices'] },
   { key: 'idChecks', label: 'ID Checks' },
   { key: 'digest', label: 'Digest email' },
   { key: 'busMinistry', label: 'Bus' },
@@ -21,6 +22,8 @@ export const MODULE_TREE: readonly ModuleNode[] = [
   { key: 'liveLink', label: 'Live Elvanto link' },
   { key: 'flows', label: 'Flows', parent: 'liveLink', adminMode: true },
   { key: 'lifegroupReport', label: 'Lifegroups', parent: 'liveLink', adminMode: true },
+  // After lifegroupReport, not right after notices: resolveModules is one pass in tree order and a requirement must resolve first.
+  { key: 'lifegroupReminders', label: 'Lifegroup report reminders', requires: ['notices', 'lifegroupReport'] },
   { key: 'checkin', label: 'Check-in', parent: 'liveLink', adminMode: true },
   { key: 'connectionAudit', label: 'Connection Audit', requires: ['flows', 'lifegroupReport', 'newYouthForms'] },
   { key: 'camp', label: 'Camp' },
@@ -51,6 +54,11 @@ export function resolveModules(m: ModulesIn): Modules {
   const out = filled(m);
   for (const n of MODULE_TREE) if (isOn(out[n.key]) && missing(n, out).length) out[n.key] = offOf(out[n.key]);
   return out as Modules;
+}
+
+/** Whether a leader alert module is on after the tree rules ('admin' counts as on). The one check every alert sweep and pushConfig use. */
+export function alertModuleOn(modules: ModulesIn, key: 'birthdayAlerts' | 'lifegroupReminders'): boolean {
+  return isOn(resolveModules(modules)[key]);
 }
 
 /** Derived, never stored: the Consents hub exists when something in the app tracks consents. */

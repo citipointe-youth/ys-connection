@@ -159,7 +159,9 @@ describe('0053 migration', () => {
       .filter((l) => /references\s+(public\.)?leaders\b/i.test(l)).map((l) => l.replace(/--.*/, '').trim()));
     expect(fks.length).toBeGreaterThan(0);
     for (const l of fks) expect(l, l).toMatch(/on delete (cascade|set null)/i);
-    expect(fks.filter((l) => /set null/i.test(l))).toEqual([expect.stringMatching(/^leader_id uuid references leaders\(id\) on delete set null/)]);
+    // id_check_entries.leader_id (0053) and notice_push_subscriptions.leader_id (0056, the device's "I am"; a Full Reset just clears the pick).
+    expect(fks.filter((l) => /set null/i.test(l))).toEqual([expect.stringMatching(/^leader_id uuid references leaders\(id\) on delete set null/),
+      expect.stringMatching(/^add column if not exists leader_id uuid references leaders\(id\) on delete set null/)]);
   });
 });
 

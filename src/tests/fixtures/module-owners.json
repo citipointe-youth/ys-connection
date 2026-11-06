@@ -1,6 +1,8 @@
 {
   "prayers": ["prayers"],
   "notices": ["notices"],
+  "birthdayAlerts": ["setup-birthdayAlerts"],
+  "lifegroupReminders": ["setup-lifegroupReminders"],
   "connectionAudit": [
     "ca-week",
     "ca-follow",

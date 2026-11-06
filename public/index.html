@@ -8257,7 +8257,7 @@ const MINISTRY_CONFIG_DEFAULTS_CLIENT = {
   structure: { cohortModel: 'grades-quads', gradeMin: 7, gradeMax: 12, gradeLabel: 'Grade', genderPolicy: 'strict', serviceDayOfWeek: 5,
     timeZone: 'Australia/Brisbane', consentCutoff: '09:00' }, // Y3a: the location's time zone and consent cut-off
   roles: { enabled: { oversight: true, grade: true, quad: true, leader: false } },
-  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', intakeAdmin: 'off', idChecks: 'off', flowHiddenStep: {}, prayers: true, liveLink: true, digest: true, camp: true, busConsentForm: true },
+  modules: { connectionAudit: true, lifegroups: true, exportGuides: 'elvanto', /*BUS-HOOK*/ busMinistry: false, /*NEW-YOUTH*/ newYouthForms: 'off', checkin: 'off', lifegroupReport: 'off', flows: 'off', intakeAdmin: 'off', idChecks: 'off', birthdayAlerts: 'off', lifegroupReminders: 'off', flowHiddenStep: {}, prayers: true, liveLink: true, digest: true, camp: true, busConsentForm: true },
   logins: { simple: false },
   import: { dateOrder: 'DMY', leaderTag: 'leader' },
   /*BUS-HOOK*/ // Mirrors src/core/ministry-config.ts's busMinistry block (Task 1) — not read by the
@@ -8357,7 +8357,13 @@ function _setupSetLoginStyle(style) { _setupDraft = _applyLoginStyle(_setupDraft
 // Notices: a checkbox like the other modules (stored 'on' / 'off'), offered only for Junior/Senior.
 function _setupNoticesHtml(md, style) {
   if (style !== 'junior-senior') return '';
-  return `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="setup-notices" ${md && md.notices === 'on' ? 'checked' : ''} onchange="_setupSet('modules.notices', this.checked ? 'on' : 'off')"> <span>Notices ${helpTip("Admin and oversight send a message to the four Junior/Senior logins (Junior or Senior, Guys or Girls). Shows under More and on Home for 24 hours. Off by default. Notices already sent are kept.")}</span></label>`;
+  md = md || {};
+  // Leader alerts (2026-11-06): two more switches under Notices, greyed with a reason while what they need is off (the server resolves them off too).
+  const lgr = md.lifegroupReport != null ? md.lifegroupReport : md.newYouthForms, lgrOn = lgr === 'on' || lgr === 'admin' || lgr === true;
+  const alertSwitch = (k, label, tip, why) => `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:${why ? 'default' : 'pointer'}"><input type="checkbox" id="setup-${k}" ${!why && md[k] === 'on' ? 'checked' : ''} ${why ? 'disabled' : ''} onchange="_setupSet('modules.${k}', this.checked ? 'on' : 'off')"> <span>${label} ${helpTip(tip)}${why ? `<span class="help-text" style="display:block;margin:0">${why}</span>` : ''}</span></label>`;
+  return `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="setup-notices" ${md.notices === 'on' ? 'checked' : ''} onchange="_setupSet('modules.notices', this.checked ? 'on' : 'off')"> <span>Notices ${helpTip("Admin and oversight send a message to the four Junior/Senior logins (Junior or Senior, Guys or Girls). Shows under More and on Home for 24 hours. Off by default. Notices already sent are kept.")}</span></label>`
+    + alertSwitch('birthdayAlerts', 'Birthday alerts', "A phone alert at 8 am when a student a leader is connected to has a birthday. Each leader picks it on their phone under More, Notices. Off by default.", md.notices === 'on' ? '' : 'Needs Notices. Turn Notices on first.')
+    + alertSwitch('lifegroupReminders', 'Lifegroup report reminders', "A phone alert to a lifegroup's leaders 2 hours after it meets, when its report isn't in yet. Off by default.", md.notices !== 'on' ? 'Needs Notices. Turn Notices on first.' : lgrOn ? '' : 'Needs Lifegroups. Turn Lifegroups on first.');
 }
 function _youthSetupBody(settings, users) {
   _ensureSetupDraft(settings);

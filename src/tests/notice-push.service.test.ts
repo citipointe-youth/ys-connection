@@ -16,11 +16,11 @@ const ADMIN = A('admin'), DIR = A('oversight'), JG = A('quad', 'b79'), SG = A('q
 const L1 = '11111111-1111-4111-8111-111111111111', L2 = '22222222-2222-4222-8222-222222222222';
 const LEADERS = [{ id: L1, active: true }, { id: L2, active: false }];
 
-function make(o: { notices?: 'on' | 'off'; env?: Record<string, string>; sender?: PushSender; users?: any[] } = {}) {
+function make(o: { notices?: 'on' | 'off'; env?: Record<string, string>; sender?: PushSender; users?: any[]; modules?: Record<string, unknown> } = {}) {
   const subs = new InMemoryNoticePushRepository();
   const sent: string[] = [];
   const logged: any[] = [];
-  const settingsRepo = { getSettings: async () => ({ ministryConfig: { modules: { notices: o.notices ?? 'on' } } }) } as any;
+  const settingsRepo = { getSettings: async () => ({ ministryConfig: { modules: { notices: o.notices ?? 'on', ...o.modules } } }) } as any;
   const users = o.users ?? [ADMIN, DIR, JG, SG, GR, LD].map((a) => U(a));
   const sender: PushSender = o.sender ?? (async (s, p) => { sent.push(s.endpoint); expect(JSON.parse(p).title).toBe('New notice'); });
   const svc = makeNoticeService(new InMemoryNoticeRepository(), settingsRepo, () => NOW, {
@@ -67,11 +67,11 @@ describe('notice push: subscribe / unsubscribe / RBAC / module', () => {
   });
   it('VAPID unset: config says null, subscribe refuses, send still works with no push', async () => {
     const { svc, sent } = make({ env: {} });
-    expect(await svc.pushConfig(JG)).toEqual({ publicKey: null });
+    expect(await svc.pushConfig(JG)).toEqual({ publicKey: null, modules: { birthdayAlerts: false, lifegroupReminders: false } });
     await expect(svc.subscribe(JG, sub('1'))).rejects.toMatchObject({ code: 'PUSH_OFF' });
     await expect(svc.send(ADMIN, { title: 't', body: 'b', recipients: ['b79'] })).resolves.toBeTruthy();
     expect(sent).toEqual([]);
-    expect(await make().svc.pushConfig(ADMIN)).toEqual({ publicKey: 'pub' });
+    expect(await make().svc.pushConfig(ADMIN)).toEqual({ publicKey: 'pub', modules: { birthdayAlerts: false, lifegroupReminders: false } });
   });
 });
 
@@ -162,5 +162,12 @@ describe('subscription carries leader and prefs', () => {
     const c = await svc.pushConfig(JG);
     expect(c).not.toHaveProperty('leaderId');
     expect(c).not.toHaveProperty('prefs');
+  });
+});
+
+describe('pushConfig modules', () => {
+  it('resolves the two alert modules through the tree', async () => {
+    const { svc } = make({ modules: { birthdayAlerts: 'on', lifegroupReminders: 'on', lifegroupReport: 'off' } });
+    expect((await svc.pushConfig(JG)).modules).toEqual({ birthdayAlerts: true, lifegroupReminders: false });
   });
 });

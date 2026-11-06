@@ -235,8 +235,8 @@ describe('night-summary service', () => {
   it("the console's module key list is current", () => {
     // A literal copy of the console's MODULE_KEYS (plan Appendix E). A new module fails here as a reminder to update the console;
     // until then the console reads the new key as `other`.
-    const MODULE_KEYS = ['prayers', 'notices', 'idChecks', 'digest', 'busMinistry', 'busConsentForm', 'newYouthForms', 'intakeAdmin', 'liveLink',
-      'flows', 'lifegroupReport', 'checkin', 'connectionAudit', 'camp'];
+    const MODULE_KEYS = ['prayers', 'notices', 'birthdayAlerts', 'idChecks', 'digest', 'busMinistry', 'busConsentForm', 'newYouthForms', 'intakeAdmin', 'liveLink',
+      'flows', 'lifegroupReport', 'lifegroupReminders', 'checkin', 'connectionAudit', 'camp'];
     expect(MODULE_TREE.map((n) => n.key)).toEqual(MODULE_KEYS);
   });
 });
