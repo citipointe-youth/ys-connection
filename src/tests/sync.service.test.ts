@@ -325,6 +325,41 @@ describe('sync.service push', () => {
     expect((await students.findAllWithGraduated()).length).toBe(2); // history kept
   });
 
+  describe('LINK_REV 23: roster dob (Elvanto wins, A5 glitch guard)', () => {
+    it("a roster push with dob saves the matched student's dateOfBirth; an odd value is dropped", async () => {
+      const { svc, students } = await setup();
+      await students.save({ id: 's-alex', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 9, dateOfBirth: null } as any);
+      await students.save({ id: 's-jamie', firstName: 'Jamie', lastName: 'Test', gender: 'female', grade: 9, dateOfBirth: null } as any);
+      expect(await svc.push('roster', fx('push-roster-rev23.json'))).toMatchObject({ applied: true, rows: 4 });
+      expect((await students.findById('s-alex'))!.dateOfBirth).toBe('2012-03-16');
+      expect((await students.findById('s-jamie'))!.dateOfBirth).toBeNull(); // '16/03/2012'
+    });
+    it("a grade fix from rematchRoster in the same push survives the dob save (no stale saveMany)", async () => {
+      const { svc, students } = await setup();
+      await students.save({ id: 's-alex', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 8, dateOfBirth: null } as any);
+      await svc.push('roster', fx('push-roster-rev23.json')); // Alex 8 -> 9 and dob filled in one push
+      expect(await students.findById('s-alex')).toMatchObject({ grade: 9, quad: 'b79', dateOfBirth: '2012-03-16' });
+    });
+    it('a glitch (over 20 changes and over half the stored DOBs) holds the changes, fills a blank, flags push-dob-held', async () => {
+      const link = new InMemoryLinkRepository();
+      const settings = new InMemorySettingsRepository();
+      await settings.init();
+      const students = new InMemoryStudentRepository();
+      const record = vi.fn(async () => {});
+      const svc = makeSyncService({ link, settings, students, users: new InMemoryUserRepository(), errorLog: { record } as never });
+      const pid = (i: number) => `a0000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
+      for (let i = 0; i < 31; i++) {
+        await students.save({ id: `s${i}`, firstName: 'Sample', lastName: `Dummyton${i}`, gender: 'male', grade: 9, dateOfBirth: i < 30 ? '2010-01-01' : null } as any);
+      }
+      const rows = Array.from({ length: 31 }, (_, i) => ({ personId: pid(i), firstName: 'Sample', lastName: `Dummyton${i}`, gender: 'male', grade: 9,
+        kind: 'student', dob: i < 30 ? '2011-02-02' : '2012-03-03' }));
+      await svc.push('roster', { ...fx('push-roster.json'), rows });
+      expect((await students.findById('s0'))!.dateOfBirth).toBe('2010-01-01');
+      expect((await students.findById('s30'))!.dateOfBirth).toBe('2012-03-03');
+      expect(record.mock.calls.map((c: any) => `${c[0].code}|${c[0].route}`)).toContain('push-dob-held|roster');
+    });
+  });
+
   describe('grade key absent = unknown (Elvanto hid the field); grade null = a real blank', () => {
     // Jamie starts at `from`, then the second push sends `to` ('absent' = no grade key on Jamie's row).
     async function run(from: number, to: number | null | 'absent') {
@@ -387,7 +422,7 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     }
     expect(await link.listConsoles()).toEqual([]);
     const ok = await svc.claim(claimReq);
-    expect(ClaimResponse.parse(ok).linkRev).toBe(22);
+    expect(ClaimResponse.parse(ok).linkRev).toBe(23);
     expect((await link.listConsoles())[0]!.linkRev).toBe(12);
   });
   it('X1 (rev 14): the claim reply carries site from ministryConfig (structure + elvanto prefixes); a rev 12 console still claims', async () => {
@@ -423,7 +458,7 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     const cfg = (await settings.getSettings()).ministryConfig;
     await settings.updateSettings({ ministryConfig: { ...cfg, modules: MinistryConfigSchema.parse({ modules: LIVE_MODULES }).modules } } as any);
     const reply = await svc.claim(claimReq);
-    expect(reply.linkRev).toBe(22);
+    expect(reply.linkRev).toBe(23);
     expect(reply.modules).toEqual({ checkin: 'admin', lifegroupReport: 'admin', flows: 'admin', newYouthForms: 'on', intakeAdmin: 'on', lifegroups: true, connectionAudit: true });
     expect(validModules(ClaimResponse.parse(reply).modules)).toEqual(reply.modules);
   });

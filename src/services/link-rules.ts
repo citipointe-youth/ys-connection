@@ -4,6 +4,7 @@ import type {
   ActionType, IgnoredWhy, LinkRosterRow, LinkServiceRow, Match, OutboxRow, ResultItem, Status,
 } from '../core/link-types';
 import { NOTE_FAILED_DETAIL, isDnc } from '../core/link-contract';
+import { isRealDob } from './terms';
 
 export const LINK_CUTOFF_DAYS = 3;
 export const LEASE_LOST_MS = 3_600_000;
@@ -360,6 +361,31 @@ export function gradeFixes<S extends MatchStudent>(roster: LinkRosterRow[], stud
     if (!s || !r.active || r.kind !== 'student' || g == null || !Number.isInteger(g) || g < 6 || g > 12 || s.grade === g) return [];
     return [{ student: s, grade: g }];
   });
+}
+
+/** A5: over this many changes of a stored DOB in one push (and over half of them) = an Elvanto read glitch, held. */
+export const DOB_CHANGE_LIMIT = 20;
+
+/**
+ * LINK_REV 23: a YS student's DOB follows Elvanto (B13). An active `student` roster row matched auto/manual whose incoming
+ * DOB passes isRealDob and differs gives the student that date; blank or absent never clears. A5 guard: over
+ * DOB_CHANGE_LIMIT changes of an already-stored DOB AND over half of the matched students with a stored DOB = the changes
+ * are held (`held`), first fills still apply. Run on the roster and students re-read after rematchRoster.
+ */
+export function dobFixes<S extends MatchStudent & { dateOfBirth: string | null }>(roster: LinkRosterRow[],
+  dobByPerson: Map<string, string>, students: S[], now: Date = new Date()): { rows: S[]; held: boolean } {
+  const byId = new Map(students.map((s) => [s.id, s]));
+  const fills: S[] = [], changes: S[] = [], stored = new Set<string>();
+  for (const r of roster) {
+    const s = matchedStudent(r, byId, new Map());
+    if (!s || !r.active || r.kind !== 'student') continue;
+    if (s.dateOfBirth) stored.add(s.id);
+    const v = dobByPerson.get(r.personId);
+    if (!v || !isRealDob(v, now) || v.slice(0, 10) === s.dateOfBirth?.slice(0, 10)) continue;
+    (s.dateOfBirth ? changes : fills).push({ ...s, dateOfBirth: v.slice(0, 10) });
+  }
+  const held = changes.length > DOB_CHANGE_LIMIT && changes.length * 2 > stored.size;
+  return { rows: held ? fills : [...fills, ...changes], held };
 }
 
 /**

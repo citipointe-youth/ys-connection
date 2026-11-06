@@ -71,6 +71,7 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'claim-request-rev6.json': C.ClaimRequest,
   'claim-response-rev6.json': C.ClaimResponse,
   'push-roster-rev6.json': C.PUSH_SCHEMAS.roster,
+  'push-roster-rev23.json': C.PUSH_SCHEMAS.roster, // rev 23: roster dob
   'push-flows-rev6.json': C.PUSH_SCHEMAS.flows,
   'push-consent-lookup-forms.json': C.PUSH_SCHEMAS.consentLookup,
   'push-consent-lookup-mismatches.json': C.PUSH_SCHEMAS.consentLookup,
@@ -208,7 +209,7 @@ describe('link contract: decisions 2026-10-12', () => {
 
 describe('UX batch 2026-10-12 additions (T1): all optional, LINK_CONTRACT_VERSION stays 1', () => {
   it('LINK_REV is 4 (T1 made it 2, X18 3, X19 4) and the contract version is still 1 (old fixtures above still parse)', () => {
-    expect(C.LINK_REV).toBe(22); // 2026-11-06: rev 22 = flows steps admins + type reassignStep; 2026-10-30: rev 21 = flows steps offered + claim reply consentSnap.askedAt; 2026-10-25: rev 20 = doorSearch type + push kind; 2026-10-22: rev 18 = bus consent forms; rev 17 = claim reply modules; rev 16 = push kind audit (Connection Audit sources); 2026-10-21 L7: rev 15 = recheck type + L2 unlinked formName/linkedIds, consentLink adds; 2026-10-20 X1: rev 14 = claim reply site (MIN_CONSOLE_REV stays 12); 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
+    expect(C.LINK_REV).toBe(23); // 2026-11-06: rev 23 = roster dob; rev 22 = flows steps admins + type reassignStep; 2026-10-30: rev 21 = flows steps offered + claim reply consentSnap.askedAt; 2026-10-25: rev 20 = doorSearch type + push kind; 2026-10-22: rev 18 = bus consent forms; rev 17 = claim reply modules; rev 16 = push kind audit (Connection Audit sources); 2026-10-21 L7: rev 15 = recheck type + L2 unlinked formName/linkedIds, consentLink adds; 2026-10-20 X1: rev 14 = claim reply site (MIN_CONSOLE_REV stays 12); 2026-10-20: rev 13 = flows serviceVisits (MIN_CONSOLE_REV stays 12); 2026-10-18 C01: rev 12 = own live leases re-handed; P4: rev 11 = consentLookup since; 2026-10-17 consents run R8: rev 10 = flows textedOn; R4: rev 9 = completeStep notReceived; 2026-10-16 Consents Other: rev 8 = consentLookup kind other; fix16 C-1: rev 7 = linked + note; 2026-10-14b: rev 5 = /sync/leaders + flows push steps; 2026-10-15: rev 6 = consent + 3 types
     expect(C.LINK_CONTRACT_VERSION).toBe(1);
   });
   it('claim: linkRev is an int >= 1 both ways', () => {
@@ -537,7 +538,7 @@ describe('link contract: rev 17 (claim reply modules)', () => {
 describe('link contract: rev 16 (Connection Audit push, spec 2026-10-22 §3)', () => {
   const svc = () => clone(load('push-audit-service.json'));
   it('LINK_REV is 18, MIN_CONSOLE_REV stays 12; audit is a push kind, never a mirror kind', () => {
-    expect(C.LINK_REV).toBe(22);
+    expect(C.LINK_REV).toBe(23);
     expect(C.MIN_CONSOLE_REV).toBe(12);
     expect(C.PUSH_KINDS).toContain('audit');
     expect(C.MIRROR_KINDS as readonly string[]).not.toContain('audit');
@@ -597,7 +598,7 @@ describe('link contract: rev 16 (Connection Audit push, spec 2026-10-22 §3)', (
 
 describe('link contract: rev 18 (bus consent forms, spec 2026-10-22 bus consent §7)', () => {
   it('LINK_REV 18, MIN_CONSOLE_REV 12; busConsentCheck is a type with an empty payload; busConsentForms is a push kind', () => {
-    expect(C.LINK_REV).toBe(22);
+    expect(C.LINK_REV).toBe(23);
     expect(C.MIN_CONSOLE_REV).toBe(12);
     expect(C.ACTION_TYPES).toContain('busConsentCheck');
     expect(C.PAYLOAD_SCHEMAS.busConsentCheck.parse({})).toEqual({});
@@ -642,7 +643,7 @@ describe('link contract: rev 18 (bus consent forms, spec 2026-10-22 bus consent 
 
 describe('link contract: rev 20 (door search, 2026-10-25)', () => {
   it('doorSearch is a type (payload {ref} only) and a push kind, never a mirror kind; MIN_CONSOLE_REV stays 12', () => {
-    expect(C.LINK_REV).toBe(22);
+    expect(C.LINK_REV).toBe(23);
     expect(C.MIN_CONSOLE_REV).toBe(12);
     expect(C.ACTION_TYPES).toContain('doorSearch');
     rejects(C.PAYLOAD_SCHEMAS.doorSearch, { ref: 'd5000000-0000-4000-8000-000000000001', q: 'Sam' }); // the name rides in the note only
@@ -700,4 +701,23 @@ describe('link contract: rev 22 (Reassign changes the leader in Elvanto, 2026-11
     expect(sql).not.toMatch(/(drop table|drop column|rename|alter column|truncate)/i);
     expect(sql).toContain("'reassignStep'");
   });
+});
+
+describe('link contract: rev 23 (roster dob, birthday alerts)', () => {
+  it('LINK_REV is 23, MIN_CONSOLE_REV stays 12; the rev 23 roster parses with dob on two student rows', () => {
+    expect(C.LINK_REV).toBe(23);
+    expect(C.MIN_CONSOLE_REV).toBe(12);
+    expect(C.PUSH_SCHEMAS.roster.parse(load('push-roster-rev23.json')).rows.map((r) => r.dob))
+      .toEqual(['2012-03-16', undefined, '16/03/2012', undefined]); // an odd string is kept here; dobFixes drops it
+    expect(C.PUSH_SCHEMAS.roster.parse(load('push-roster.json')).rows[0]!.dob).toBeUndefined(); // a rev 22 console sends none
+  });
+  it('A6: an odd dob never rejects the push (a non-string is dropped; a string is checked by dobFixes)', () => {
+    for (const v of [12345, null, { y: 1 }, ['2010-01-01']]) {
+      const b = clone(load('push-roster-rev23.json')); b.rows[0].dob = v;
+      expect(C.PUSH_SCHEMAS.roster.parse(b).rows[0]!.dob).toBeUndefined();
+    }
+    const b = clone(load('push-roster-rev23.json')); b.rows[0].dob = 'x';
+    expect(C.PUSH_SCHEMAS.roster.parse(b).rows[0]!.dob).toBe('x'); // spec 6.1: no format check here
+  });
+  it('the manifest lists the rev 23 fixture', () => expect(Object.keys(load('manifest.json').files)).toContain('push-roster-rev23.json'));
 });

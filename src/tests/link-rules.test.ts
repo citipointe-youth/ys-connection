@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
  nameFold, serviceDay,   brisbaneToday, addDays, weekdayOf, brisbaneHHMM, pickList, defaultService, lastMeetingDate, meetsWeekday, dedupeKey,
-  LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, genderFixes, gradeFixes, graduations, gradeGlitch, peopleFlowName, isConsentStep,
+  LINK_CUTOFF_DAYS, LEASE_LOST_MS, applyOutcome, autoMatch, effectiveCheckState, dobFixes, genderFixes, gradeFixes, graduations, gradeGlitch, peopleFlowName, isConsentStep,
 } from '../services/link-rules';
 import type { LinkServiceRow, OutboxRow, LinkRosterRow, ResultItem } from '../core/link-types';
 import { readLinkSyncToken } from '../config/env';
@@ -257,6 +257,49 @@ describe('genderFixes (operator 2026-10-14)', () => {
     // an auto match made in the same push counts
     expect(genderFixes([ros(1, 'Olivia', 'Faux Cook', 'female')], st, [{ personId: U(1), studentId: 's1', match: 'auto' }])
       .map((x) => x.gender)).toEqual(['female']);
+  });
+});
+
+describe('dobFixes (LINK_REV 23: Elvanto wins on DOB, A5 glitch guard)', () => {
+  const NOW = new Date('2026-11-06T00:00:00Z');
+  const sd = (id: string, dob: string | null) => ({ ...stu(id, 'X', 'Y', 'male'), dateOfBirth: dob });
+  const m = (n: number, sid: string, over: Partial<LinkRosterRow> = {}) => ros(n, 'X', 'Y', 'male', { studentId: sid, match: 'manual', ...over });
+  const fix = (r: LinkRosterRow[], dobs: [number, string][], st: ReturnType<typeof sd>[]) =>
+    dobFixes(r, new Map(dobs.map(([n, d]) => [U(n), d])), st, NOW);
+  it('fills a blank and overwrites a different real date (B13); equal is no write', () => {
+    const st = [sd('s1', null), sd('s2', '2010-01-01'), sd('s3', '2011-05-05')];
+    const out = fix([m(1, 's1'), m(2, 's2', { match: 'auto' }), m(3, 's3')], [[1, '2010-03-16'], [2, '2010-02-02'], [3, '2011-05-05']], st);
+    expect(out.held).toBe(false);
+    expect(out.rows.map((s) => [s.id, s.dateOfBirth])).toEqual([['s1', '2010-03-16'], ['s2', '2010-02-02']]);
+  });
+  it('a blank or absent incoming DOB never clears', () => {
+    expect(fix([m(1, 's1'), m(2, 's2')], [[1, '']], [sd('s1', '2010-01-01'), sd('s2', '2010-01-01')]).rows).toEqual([]);
+  });
+  it('ignores unmatched, ignored, inactive, leader and other rows', () => {
+    const st = [sd('s1', null)];
+    const r = [m(1, 's1', { match: 'none' }), m(2, 's1', { match: 'ignored' }), m(3, 's1', { active: false }), m(4, 's1', { kind: 'leader' }), m(5, 's1', { kind: 'other' })];
+    expect(fix(r, [1, 2, 3, 4, 5].map((n) => [n, '2010-03-16'] as [number, string]), st).rows).toEqual([]);
+  });
+  it('drops odd Elvanto DOBs (Review Focus 5)', () => {
+    const odd = ['2010-02-30', '2027-01-01', '0000-00-00', '16/03/2010'];
+    const st = odd.map((_, i) => sd(`s${i}`, null));
+    expect(fix(odd.map((_, i) => m(i + 1, `s${i}`)), odd.map((d, i) => [i + 1, d] as [number, string]), st).rows).toEqual([]);
+  });
+  const glitch = (stored: number) => {
+    const st = [...Array.from({ length: stored }, (_, i) => sd(`s${i}`, '2010-01-01')), sd('blank', null)];
+    const r = [...st.map((s, i) => m(i + 1, s.id))];
+    const dobs: [number, string][] = [...Array.from({ length: 21 }, (_, i) => [i + 1, '2011-02-02'] as [number, string]), [stored + 1, '2012-03-03']];
+    return fix(r, dobs, st);
+  };
+  it('guard: 21 changes of 30 stored are held, first fills still applied', () => {
+    const out = glitch(30);
+    expect(out.held).toBe(true);
+    expect(out.rows.map((s) => [s.id, s.dateOfBirth])).toEqual([['blank', '2012-03-03']]);
+  });
+  it('guard: 21 changes of 50 stored are applied', () => {
+    const out = glitch(50);
+    expect(out.held).toBe(false);
+    expect(out.rows).toHaveLength(22);
   });
 });
 

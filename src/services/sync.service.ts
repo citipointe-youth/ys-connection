@@ -12,7 +12,7 @@ import type { ConnectionAuditService, IngestResult } from './connection-audit.se
 import type { IntakeService } from './link-intake.service';
 import type { ILinkRepository } from '../repositories/interfaces/link.repository';
 import type { ILeaderRepository, ISettingsRepository, IStudentRepository, IUserRepository } from '../repositories/interfaces/entity-repositories';
-import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, autoMatch, checkInLanded, claimNote, genderFixes, gradeFixes, gradeGlitch, graduations } from './link-rules';
+import { ATTRIBUTED_TYPES, LEASE_LOST_MS, LINK_CUTOFF_DAYS, autoMatch, checkInLanded, claimNote, dobFixes, genderFixes, gradeFixes, gradeGlitch, graduations } from './link-rules';
 import type { MatchChange } from './link-rules';
 import type { Student } from '../core/entities/student';
 import { computeQuad } from '../core/types/enums';
@@ -341,6 +341,14 @@ export function makeSyncService(d: SyncDeps) {
       const at = new Date().toISOString();
       for (const s of grads) await d.students.setGraduated(s.id, at);
       const changes = await rematchRoster(d.link, d.students);
+      // Rev 23: DOB follows Elvanto. Re-read roster AND students after rematchRoster's grade/gender saves, so saveMany never writes stale rows.
+      const dobByPerson = new Map((req.rows as { personId: string; dob?: string }[]).flatMap((r) => (r.dob ? [[r.personId, r.dob] as [string, string]] : [])));
+      if (dobByPerson.size) {
+        const [roster, all] = await Promise.all([d.link.roster(), d.students.findAllWithGraduated()]);
+        const dob = dobFixes(roster, dobByPerson, all, now());
+        if (dob.rows.length) await d.students.saveMany(dob.rows.map((s) => ({ ...s, updatedAt: at })));
+        if (dob.held) await flag('push-dob-held', pk);
+      }
       return { applied: true, rows: res.rows, matched: {
         auto: changes.filter((c) => c.match === 'auto').length,
         ambiguous: changes.filter((c) => c.match === 'ambiguous').length,

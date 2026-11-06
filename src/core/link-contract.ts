@@ -36,7 +36,10 @@ export const LINK_CONTRACT_VERSION = 1;
 // carry admins (the Elvanto person ids its Re-assign modal lists for the CURRENT step; missing or empty = unknown), and type
 // reassignStep {rowId, flowId, stepId, personId, assignTo} asks the console to change the row's assignee (never to unassign).
 // MIN_CONSOLE_REV stays 12: an older console never lists the type, so it is never leased one; an older app strips admins.
-export const LINK_REV = 22;
+// Rev 23 (2026-11-06, birthday alerts): a roster row may carry dob (Elvanto's birth date, a string; no format check here, so an odd
+// value is never a reason to reject the push; a non-string is dropped). dobFixes validates it and Elvanto wins (B13). MIN_CONSOLE_REV
+// stays 12: an older console sends none, an older app strips it.
+export const LINK_REV = 23;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
@@ -228,7 +231,8 @@ export const ResultResponse = z.object({
 // ---- POST /sync/push/:kind (spec 3.4). One bad row rejects the whole push.
 const Consent = z.enum(CONSENT_FLAGS);
 const RosterRow = z.object({ personId: Uuid, firstName: Name, lastName: z.string().trim().max(60), gender: Gender.nullable(), grade: Grade.optional(), // no grade key = unknown (Elvanto hid the field): the stored grade is kept; null = a real blank
-  kind: z.enum(['student', 'leader', 'other']), consent: Consent.optional() }); // rev 6 (R1); missing = unknown
+  kind: z.enum(['student', 'leader', 'other']), consent: Consent.optional(), // rev 6 (R1); missing = unknown
+  dob: z.string().optional().catch(undefined) }); // rev 23: never rejects the push (A6); dobFixes checks it
 const ServiceRow = z.object({ serviceTimeId: Uuid, serviceId: Uuid, name: Text(120), startsAt: Iso, ymd: Ymd,
   rooms: z.array(z.object({ id: Uuid, name: Text(120) })),
   // T3: the names, so a checked-in person with no roster row still shows by name.
