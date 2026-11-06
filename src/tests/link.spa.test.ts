@@ -1770,6 +1770,17 @@ describe('F3 flow steps', () => {
     h.fns._lkStepSend();
     expect('assignTo' in h.fns._lkQGet()[0].payload).toBe(false);
   });
+  it("(f) the picker lists only leaders Elvanto offers for the step, plus the current leader; no offered list = today's list", () => {
+    const h = admin([boy()]);
+    h.fns._lkOpenStep(F(1));
+    const L = h.get().LINK, ids = () => h.fns._lkPickList(L.flows[0]).map((l: any) => l.id);
+    expect(ids()).toEqual(['L1', 'L3', 'L4']);
+    L.fSteps = [{ flowId: F(100), stepId: F(200), offered: [] }];
+    expect(ids()).toEqual(['L1', 'L3', 'L4']);
+    L.fSteps = [{ flowId: F(100), stepId: F(200), offered: [P(72).toUpperCase()] }]; // L3 offered; L4 has no person id; L1 is current
+    expect(ids()).toEqual(['L1', 'L3']);
+    expect(h.fns._lkStepHtml()).toContain('Nobody');
+  });
   it('flows reassign: a failed Reassign toasts and changes nothing', async () => {
     const h = admin([boy()], (p) => (p === '/link/flows/assign' ? Promise.reject(new Error('nope')) : Promise.resolve({ results: [] })));
     h.fns._lkOpenStep(F(1));

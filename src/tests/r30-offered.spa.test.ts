@@ -1,5 +1,5 @@
 // Round 2026-10-30 (LINK_REV 21, ruling Q4 = never send an unoffered pick to Elvanto, and say so): the picker lists every fitting
-// leader (Reassign is app-only); Complete sends assignTo only for an offered pick. Missing or empty offered = unknown = allowed.
+// leader (Reassign is app-only; 2026-11-06: a known offered list now narrows it, the current leader stays); Complete sends assignTo only for an offered pick. Missing or empty offered = unknown = allowed.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { loadFns } from './helpers/extract-fn';
 
@@ -24,8 +24,10 @@ const ids = () => f._lkPickList(L.flows[0]).map((l: any) => l.id);
 
 describe('r30: the Assigned to picker follows the step\'s offered (rev 21)', () => {
   beforeEach(() => { L.fLeaders = LDRS; L.flows = [{ ...ROW }]; L.fs = null; f.PUSHED.length = 0; f.ASSIGNED.length = 0; });
-  it('fix 1: offered never hides a leader (Reassign is app-only); every fitting leader stays, known, unknown or empty', () => {
-    for (const o of [[P(71).toUpperCase()], undefined, []]) { L.fSteps = steps(o); expect(ids()).toEqual(['L1', 'L2', 'L3']); }
+  it('2026-11-06 (replaces fix 1): a known offered list narrows the picker to offered leaders; unknown or empty keeps every fitting leader', () => {
+    for (const o of [undefined, []]) { L.fSteps = steps(o); expect(ids()).toEqual(['L1', 'L2', 'L3']); }
+    L.fSteps = steps([P(71).toUpperCase()]);
+    expect(ids()).toEqual(['L2']);
   });
   it('_lkOffers: case-blind; unknown or empty = yes; known and no Elvanto person = no', () => {
     L.fSteps = steps([P(71).toUpperCase()]);
@@ -33,14 +35,14 @@ describe('r30: the Assigned to picker follows the step\'s offered (rev 21)', () 
     L.fSteps = steps([]);
     expect(f._lkOffers(ROW, P(70))).toBe(true);
   });
-  it.each([['a new pick', null, ['L1']], ['the current leader', 'L1', []]])('fix 1: an unoffered pick (%s) is sent with no assignTo; only a new pick is saved as the app assignment', (_n, cur, saved) => {
-    L.flows = [{ ...ROW, currentLeaderId: cur }];
+  it('an unoffered current leader stays listed and is sent with no assignTo; nothing new is saved', () => {
+    L.flows = [{ ...ROW, currentLeaderId: 'L1' }];
     L.fSteps = steps([P(71)]);
-    expect(ids()).toEqual(['L1', 'L2', 'L3']);
+    expect(ids()).toEqual(['L1', 'L2']);
     L.fs = { rowId: 'r1', note: '', priv: false, pick: 'L1' };
     f._lkStepSend();
     expect('assignTo' in f.PUSHED[0].payload).toBe(false);
-    expect(f.ASSIGNED.map((l: any) => l.id)).toEqual(saved); // the current pick is never unassigned
+    expect(f.ASSIGNED).toEqual([]); // the current pick is never unassigned
   });
   it('an offered pick is sent as assignTo', () => {
     L.fSteps = steps([P(71)]);
