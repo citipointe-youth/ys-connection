@@ -105,6 +105,16 @@ describe('Flow steps: no tiles; step 0 and Parent Consent step 1 are the hub\'s'
     expect(f.out().PUSHED.length).toBe(2);
     expect(f.out().TOASTS).toEqual(['2 queued to complete']);
   });
+  it('bulk bar: Reassign N next to Complete N for admin/oversight; other logins get no bar', () => {
+    for (const role of ['admin', 'oversight']) {
+      load(role); L.fsel = { a: true };
+      const h = f._lkFlowsHtml();
+      expect(h).toContain('onclick="_lkBulkReassignOpen()">Reassign 1</button>');
+      expect(h.indexOf('_lkBulkReassignOpen')).toBeGreaterThan(h.indexOf('Complete 1'));
+    }
+    load('quad'); L.fsel = { a: true };
+    expect(f._lkFlowsHtml()).not.toContain('_lkBulkReassignOpen');
+  });
   it('onclicks hold no id or name', () => {
     const src = ['_lkBulkOpen', '_lkStepHtml'].map((x) => extractFn(loadIndexHtml(), x)).join('\n');
     const handlers = [...src.matchAll(/onclick="([^"]*)"/g)].map((m) => m[1]);

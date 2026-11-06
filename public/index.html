@@ -12986,7 +12986,8 @@ function _lkFlowsHtml() {
   if (boss) {
     const n = _lkSelIds(shown, LINK.fsel).length;
     top += _lkFfHtml(_lkFfGet()) + (n ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
-      <button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} Complete ${n}</button></div>` : '');
+      <button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} Complete ${n}</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="_lkBulkReassignOpen()">Reassign ${n}</button></div>` : '');
   }
   return bar + top + _lkFlowGroups(shown, today, steps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {
     const id = 'lks-' + String(f.flowId + '-' + s.stepId).replace(/[^\w-]/g, '');
@@ -13172,6 +13173,55 @@ async function _lkReassign() {
   if (elv) _lkPush({ kind: 'action', id: _lkUuid(), type: 'reassignStep', payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId, assignTo: l.personId }, note: null, leaderId: getMyLeaderId() || null }, true);
   else _lkRefreshView();
   toast(l ? 'Assigned to ' + l.name : 'Unassigned'); // rev 22: the Elvanto line comes with the queue's answer (_lkFlush: saved, or duplicate = an earlier one still sending)
+}
+// Bulk Reassign (Tom, 6 Nov): the picker is the union of the ticked rows' own lists; a leader applies only where that row's own list
+// has them (the rest are skipped, never forced). Each row goes the single Reassign's way: YS save, then reassignStep when it reaches Elvanto.
+function _lkBulkPickList(rows) {
+  const seen = {}, out = [];
+  rows.forEach((r) => { if (r && r.personId) _lkPickList(r).forEach((l) => { if (!seen[l.id]) { seen[l.id] = true; out.push(l); } }); });
+  return out;
+}
+function _lkBulkReassignOpen() {
+  if (!_lkBoss()) return;
+  const ids = _lkSelIds(_lkFlowVisible(), LINK.fsel), n = ids.length;
+  if (!n) return;
+  if (n > 50) { toast('Up to 50 at a time. Untick some first.'); return; }
+  LINK.fr = { pick: null };
+  const ls = _lkBulkPickList(ids.map(_lkFlowRow));
+  modal(`<div class="mo-title">Reassign ${n} ${n === 1 ? 'person' : 'people'}</div><p class="lk-sub">Only people whose step lists that leader change. The rest are skipped.</p>
+    <div class="fg"><label class="fl" for="lk-fr-pick">Assign to</label><select class="fs" id="lk-fr-pick" onchange="if(LINK.fr)LINK.fr.pick=this.value||null"><option value="">Nobody (Elvanto's usual pick)</option>
+      ${ls.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div>
+    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="_lkBulkReassignSend()">Reassign ${n}</button></div>`, () => { LINK.fr = null; });
+}
+async function _lkBulkReassignSend() {
+  const f = LINK.fr, ids = _lkSelIds(_lkFlowVisible(), LINK.fsel);
+  if (!f || !_lkBoss() || !ids.length || ids.length > 50) return;
+  LINK.fr = null;
+  closeModal();
+  let done = 0, skip = 0, nop = 0, sent = 0, name = '';
+  const bad = [];
+  for (const id of ids) { // one at a time, like the single Reassign: the YS save first, then the Elvanto half
+    const r = _lkFlowRow(id);
+    if (!r || !r.personId) { nop++; continue; }
+    const l = f.pick ? _lkPickList(r).find((x) => x.id === f.pick) : null;
+    if (f.pick && !l) { skip++; continue; }
+    if (l) name = l.name;
+    const elv = _lkReassignElv(r, l);
+    try { await _lkAssignSave(r, l); } catch (e) { bad.push([r.name || 'Someone', (e && e.message) || 'Could not assign.']); continue; }
+    done++;
+    if (elv) { sent++; _lkPush({ kind: 'action', id: _lkUuid(), type: 'reassignStep', payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId, assignTo: l.personId }, note: null, leaderId: getMyLeaderId() || null }, false); }
+  }
+  LINK.fsel = {};
+  // a failure toast must not be overwritten by the queue's Elvanto line at once: the flush waits 6 s then (else the usual 300 ms)
+  if (sent) _lkSchedule(bad.length ? 6000 : 300);
+  _lkRefreshView();
+  _lkFlowsDraw();
+  const t = [f.pick ? (done ? 'Reassigned ' + done + (name ? ' to ' + name : '') + '.' : 'Nobody reassigned.') : 'Unassigned ' + done + '.'];
+  if (skip) t.push(skip + " skipped: that leader isn't on their step's list.");
+  if (nop) t.push(nop + ' skipped: no Elvanto profile.');
+  if (bad.length) t.push(bad.length + ' failed (' + bad.map((x) => x[0]).slice(0, 3).join(', ') + (bad.length > 3 ? ', …' : '') + '): ' + bad[0][1]);
+  toast(t.join(' '), bad.length || skip ? 8000 : 4000);
 }
 function _lkStepDraw() {
   const b = document.getElementById('lk-fs'), a = document.getElementById('lk-fs-act');

@@ -84,6 +84,64 @@ describe('r31: Reassign changes the leader in Elvanto too (rev 22)', () => {
   });
 });
 
+// Bulk Reassign (Tom, 6 Nov): the multi-select bar's Reassign N. The picker is the union of each ticked row's own list (deduped,
+// current leaders kept) plus Nobody; a leader applies only to rows whose own list has them, the rest are skipped, never forced.
+describe('bulk Reassign from the multi-select bar', () => {
+  const NB = ['_lkFlowRow', '_lkPickList', '_lkOffers', '_lkAdmins', '_lkReassignElv', '_lkFits', '_lkBulkPickList', '_lkBulkReassignOpen', '_lkBulkReassignSend'];
+  const b = loadFns(NB, `
+    var LINK = { flows: [], fSteps: [], fLeaders: [], fres: {}, fsel: {}, fr: null }, PUSHED = [], ASSIGNED = [], TOASTS = [], MODALS = [], FAIL = {}, SCHED = [];
+    function _lkBoss() { return true; } function getMyLeaderId() { return 'L9'; } function _lkUuid() { return 'u'; }
+    function closeModal() {} function toast(t) { TOASTS.push(t); } function _lkPush(it) { PUSHED.push(it); } function _lkRefreshView() {} function _lkSchedule(ms) { SCHED.push(ms); }
+    function _lkCap() { return 'live'; } function modal(h) { MODALS.push(h); } function _lkFlowsDraw() {} function icS() { return ''; }
+    function esc(v) { return String(v == null ? '' : v); }
+    function _lkFlowVisible() { return LINK.flows; } function _lkSelIds(rows, sel) { return rows.filter((r) => sel[r.rowId]).map((r) => r.rowId); }
+    function _lkAssignSave(r, l) { if (FAIL[r.rowId]) return Promise.reject(new Error('Network down')); ASSIGNED.push([r.rowId, l && l.id]); return Promise.resolve(); }
+  `, [...NB, 'LINK', 'PUSHED', 'ASSIGNED', 'TOASTS', 'MODALS', 'FAIL', 'SCHED']);
+  const B = b.LINK;
+  const LD = [
+    { id: 'L1', name: 'Cody', personId: P(70), gender: 'male', grades: [8] },
+    { id: 'L2', name: 'Carl', personId: P(71), gender: 'male', grades: [8, 9] },
+    { id: 'L4', name: 'Gina', personId: P(72), gender: 'female', grades: [9] },
+  ];
+  const row = (id: string, o: any = {}) => ({ ...ROW, rowId: id, personId: P(Number(id.slice(1)) + 10), name: 'Kid ' + id, ...o });
+  const send = async (pick: string | null) => { b._lkBulkReassignOpen(); B.fr.pick = pick; await b._lkBulkReassignSend(); };
+  beforeEach(() => {
+    B.fLeaders = LD; B.fSteps = [{ flowId: 'F1', stepId: 'S1', admins: [P(70), P(71), P(72)] }];
+    B.flows = [row('r1'), row('r2'), row('r3', { grade: 9, gender: 'female', currentLeaderId: 'L1' })];
+    B.fsel = { r1: true, r2: true, r3: true }; B.fr = null;
+    for (const a of [b.PUSHED, b.ASSIGNED, b.TOASTS, b.MODALS, b.SCHED]) a.length = 0;
+    for (const k of Object.keys(b.FAIL)) delete b.FAIL[k];
+  });
+  it('the list is the union of each row\'s list, deduplicated, with the current leaders kept; the sheet has Nobody and Reassign N', () => {
+    expect(b._lkBulkPickList(B.flows).map((l: any) => l.id)).toEqual(['L1', 'L2', 'L4']);
+    b._lkBulkReassignOpen();
+    expect(b.MODALS[0]).toContain('Nobody');
+    expect(b.MODALS[0]).toContain('Reassign 3');
+    expect(b.MODALS[0].match(/value="L1"/g)).toHaveLength(1);
+  });
+  it('a leader on 2 of 3 rows\' lists: reassigns 2, skips 1, queues reassignStep for the 2, clears the selection', async () => {
+    await send('L2'); // Carl: grades 8, 9 male; r3 is a girl, so not on her list
+    expect(b.ASSIGNED).toEqual([['r1', 'L2'], ['r2', 'L2']]);
+    expect(b.PUSHED.map((x: any) => [x.type, x.payload.rowId, x.payload.assignTo])).toEqual([['reassignStep', 'r1', P(71)], ['reassignStep', 'r2', P(71)]]);
+    expect(b.TOASTS[0]).toBe("Reassigned 2 to Carl. 1 skipped: that leader isn't on their step's list.");
+    expect(B.fsel).toEqual({});
+  });
+  it('Nobody: YS-only on every ticked row, nothing queued', async () => {
+    await send(null);
+    expect(b.ASSIGNED).toEqual([['r1', null], ['r2', null], ['r3', null]]);
+    expect(b.PUSHED).toEqual([]);
+    expect(b.TOASTS[0]).toBe('Unassigned 3.');
+  });
+  it('a partial failure is reported with the name, the rest still go through, and the queue waits so the toast is seen', async () => {
+    b.FAIL.r2 = true;
+    await send('L2');
+    expect(b.ASSIGNED).toEqual([['r1', 'L2']]);
+    expect(b.PUSHED.map((x: any) => x.payload.rowId)).toEqual(['r1']);
+    expect(b.TOASTS[0]).toBe("Reassigned 1 to Carl. 1 skipped: that leader isn't on their step's list. 1 failed (Kid r2): Network down");
+    expect(b.SCHED).toEqual([6000]);
+  });
+});
+
 // Review fix 2 (2026-11-06): the Elvanto line follows the queue's answer. A duplicate = an earlier Reassign of the row is still being sent.
 describe('r31: the queue answer for a reassignStep', () => {
   const R = loadFns(['_lkResults', '_lkSay'], `
