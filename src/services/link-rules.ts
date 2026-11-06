@@ -366,11 +366,11 @@ export function gradeFixes<S extends MatchStudent>(roster: LinkRosterRow[], stud
  * stored row (`before`, the roster before this push) had grade 12, matched to a YS student of grade 12 who is not yet
  * graduated, = that student graduated. A grade that was already null before is never a graduation.
  */
-type GradeIn = { personId: string; grade: number | null; kind?: string };
+type GradeIn = { personId: string; grade?: number | null; kind?: string }; // grade undefined (no key) = unknown, never a blank
 
 /** r25 guard: more than half of the pushed student rows with a blank grade = a field-read glitch, not a graduation. Never a count cap (January graduates ~90 at ~14% null). */
 export function gradeGlitch(incoming: GradeIn[]): boolean {
-  const stu = incoming.filter((x) => (x.kind ?? 'student') === 'student');
+  const stu = incoming.filter((x) => (x.kind ?? 'student') === 'student' && x.grade !== undefined);
   return stu.length > 0 && stu.filter((x) => x.grade == null).length / stu.length > 0.5;
 }
 
@@ -382,7 +382,7 @@ export function graduations<S extends MatchStudent>(before: LinkRosterRow[], inc
   const out = new Map<string, S>();
   for (const x of incoming) {
     const r = prev.get(x.personId);
-    if (x.grade != null || !r || r.grade !== 12) continue;
+    if (x.grade !== null || !r || r.grade !== 12) continue; // only a real blank; unknown (undefined) is skipped
     const s = matchedStudent(r, byId, new Map());
     if (s && s.grade === 12 && !s.graduatedAt) out.set(s.id, s);
   }

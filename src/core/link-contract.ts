@@ -221,7 +221,7 @@ export const ResultResponse = z.object({
 
 // ---- POST /sync/push/:kind (spec 3.4). One bad row rejects the whole push.
 const Consent = z.enum(CONSENT_FLAGS);
-const RosterRow = z.object({ personId: Uuid, firstName: Name, lastName: z.string().trim().max(60), gender: Gender.nullable(), grade: Grade,
+const RosterRow = z.object({ personId: Uuid, firstName: Name, lastName: z.string().trim().max(60), gender: Gender.nullable(), grade: Grade.optional(), // no grade key = unknown (Elvanto hid the field): the stored grade is kept; null = a real blank
   kind: z.enum(['student', 'leader', 'other']), consent: Consent.optional() }); // rev 6 (R1); missing = unknown
 const ServiceRow = z.object({ serviceTimeId: Uuid, serviceId: Uuid, name: Text(120), startsAt: Iso, ymd: Ymd,
   rooms: z.array(z.object({ id: Uuid, name: Text(120) })),

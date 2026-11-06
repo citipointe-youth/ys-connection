@@ -60,7 +60,7 @@ describe('offRoster', () => {
 
 describe('the off-roster routes', () => {
   const roster = [...filler(), row('Keep')];
-  const students = [stu('s-keep', 'Keep'), stu('s-new', 'Newer'), stu('s-old', 'Older'), stu('s-none', 'Aaron'), stu('s-5', 'E'), stu('s-6', 'F'), stu('s-7', 'G'), stu('s-8', 'H', { graduatedAt: T })];
+  const students = [stu('s-keep', 'Keep'), stu('s-new', 'Newer', { grade: 12 }), stu('s-old', 'Older'), stu('s-none', 'Aaron', { grade: null as never }), stu('s-5', 'E'), stu('s-6', 'F'), stu('s-7', 'G'), stu('s-8', 'H', { graduatedAt: T })];
   const on = Array.from({ length: 8 }, (_, i) => stu(`x${i}`, `Filler${i}`)); // on the roster, so the candidates stay under half
 
   it('admin only, both routes', async () => {
@@ -76,7 +76,7 @@ describe('the off-roster routes', () => {
     const r = await svc.listOffRoster(ADMIN);
     expect(r.held).toBe(false);
     expect(r.rosterAt).toBe(T);
-    expect(r.rows[0]).toEqual({ id: 's-new', name: 'Newer Dummyton', grade: 9, lastAttended: '2026-10-30' });
+    expect(r.rows[0]).toEqual({ id: 's-new', name: 'Newer Dummyton', grade: 12, lastAttended: '2026-10-30' });
     expect(r.rows[1]).toMatchObject({ id: 's-old', lastAttended: '2026-05-04' }); // the lifegroup is newer than its service; a missed one does not count
     expect(r.rows.slice(2).map((x) => x.lastAttended)).toEqual([null, null, null, null]);
     expect(r.rows.map((x) => x.id)).not.toContain('s-8');
@@ -99,6 +99,12 @@ describe('the off-roster routes', () => {
     expect((await repo.findById('s-8'))!.graduatedAt).toBe(T); // stamp unchanged
   });
 
+  it('(e) only a Year 12 or a student with no grade graduates; a known younger grade is skipped', async () => {
+    const { svc, repo } = await world([...students, ...on], roster);
+    expect(await svc.graduateOffRoster(ADMIN, { ids: ['s-new', 's-5', 's-none'] })).toEqual({ graduated: ['s-new', 's-none'], skipped: ['s-5'] });
+    expect((await repo.findById('s-5'))!.graduatedAt ?? null).toBeNull();
+  });
+
   it('refuses an empty list and over 50', async () => {
     const { svc } = await world(students, roster);
     await expect(svc.graduateOffRoster(ADMIN, { ids: [] })).rejects.toBeTruthy();
@@ -107,9 +113,9 @@ describe('the off-roster routes', () => {
 });
 
 describe('the card', () => {
-  const { _offHtml } = loadFns(['esc', '_icJs', '_offHtml'],
+  const { _offHtml } = loadFns(['esc', '_icJs', '_offCan', '_offHtml'],
     "const _OFF_PAGE = 50; const _gradeWord = () => 'Year'; const fmtDay = (d) => String(d);", ['_offHtml']);
-  const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `i${i}`, name: `S${i}`, grade: 9, lastAttended: null }));
+  const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `i${i}`, name: `S${i}`, grade: 12, lastAttended: null }));
 
   it('escapes the name and guards the id in the onclick', () => {
     const h = _offHtml({ rows: [{ id: "x');alert(1)//\"", name: '<img src=x onerror=alert(1)>', grade: null, lastAttended: null }], from: 0 }, false);
@@ -120,9 +126,16 @@ describe('the card', () => {
   it('"all shown" is one page of at most 50, and the count is the whole list', () => {
     const h = _offHtml({ rows: rows(60), from: 0 }, true);
     expect(h).toContain('Not on the Elvanto roster (60)');
-    expect(h).toContain('Graduate all shown (50)');
+    expect(h).toContain('Graduate Year 12s shown (50)');
     expect(h).toContain('1-50 of 60');
-    expect(_offHtml({ rows: rows(60), from: 50 }, true)).toContain('Graduate all shown (10)');
+    expect(_offHtml({ rows: rows(60), from: 50 }, true)).toContain('Graduate Year 12s shown (10)');
+  });
+  it('a younger student stays listed with no Graduate button and is not in the bulk count', () => {
+    const h = _offHtml({ rows: [{ id: 'y9', name: 'Nine', grade: 9, lastAttended: null }, { id: 'n', name: 'None', grade: null, lastAttended: null }], from: 0 }, true);
+    expect(h).toContain('Not on the Elvanto roster (2)');
+    expect(h).toContain('Graduate Year 12s shown (1)');
+    expect(h).not.toContain('y9');
+    expect(_offHtml({ rows: [{ id: 'y9', name: 'Nine', grade: 9, lastAttended: null }], from: 0 }, true)).not.toContain('Graduate');
   });
   it('held says why and offers nothing; an empty list shows nothing', () => {
     const h = _offHtml({ rows: [], held: true, from: 0 }, false);

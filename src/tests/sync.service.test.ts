@@ -325,6 +325,36 @@ describe('sync.service push', () => {
     expect((await students.findAllWithGraduated()).length).toBe(2); // history kept
   });
 
+  describe('grade key absent = unknown (Elvanto hid the field); grade null = a real blank', () => {
+    // Jamie starts at `from`, then the second push sends `to` ('absent' = no grade key on Jamie's row).
+    async function run(from: number, to: number | null | 'absent') {
+      const { svc, students, link } = await setup();
+      await students.save({ id: 's-jamie', firstName: 'Jamie', lastName: 'Test', gender: 'female', grade: from } as any);
+      const base = fx('push-roster.json');
+      const at = (t: string, g: number | null | 'absent') => ({ ...base, takenAt: t, rows: base.rows.map((r: any) => {
+        if (r.firstName !== 'Jamie') return r;
+        if (g !== 'absent') return { ...r, grade: g };
+        const { grade: _g, ...rest } = r; return rest;
+      }) });
+      await svc.push('roster', at('2026-10-16T09:30:00.000Z', from));
+      await svc.push('roster', at('2026-10-16T09:40:00.000Z', to));
+      const s = (await students.findAllWithGraduated()).find((x) => x.id === 's-jamie')!;
+      return { graduated: !!s.graduatedAt, studentGrade: s.grade, rosterGrade: (await link.roster()).find((r) => r.firstName === 'Jamie')!.grade };
+    }
+    it('(a) Year 9, key absent: not graduated, stored grade kept', async () => {
+      expect(await run(9, 'absent')).toEqual({ graduated: false, studentGrade: 9, rosterGrade: 9 });
+    });
+    it('(b) Year 9 -> null: not graduated', async () => {
+      expect((await run(9, null)).graduated).toBe(false);
+    });
+    it('(c) Year 12 -> null: graduated', async () => {
+      expect((await run(12, null)).graduated).toBe(true);
+    });
+    it('(d) Year 12, key absent: not graduated, stored grade kept', async () => {
+      expect(await run(12, 'absent')).toEqual({ graduated: false, studentGrade: 12, rosterGrade: 12 });
+    });
+  });
+
   it('roster: an ambiguous name is counted', async () => {
     const { svc, students } = await setup();
     await students.save({ id: 's-a1', firstName: 'Alex', lastName: 'Sample', gender: 'male', grade: 9 } as any);

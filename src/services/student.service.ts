@@ -254,7 +254,8 @@ export function makeStudentService(
     async graduateOffRoster(actor, input) {
       assertCan(actor, 'admin:manage');
       const { ids } = GraduateOffRosterSchema.parse(input);
-      const still = new Set((await offRosterNow()).rows.map((s) => s.id));
+      // Only a Year 12 or a student with no grade graduates here; a known younger grade is skipped (stays listed).
+      const still = new Set((await offRosterNow()).rows.filter((s) => s.grade == null || s.grade >= 12).map((s) => s.id));
       const at = new Date().toISOString(), graduated: string[] = [], skipped: string[] = [];
       for (const id of new Set(ids)) {
         if (still.has(id) && await repo.setGraduated(id, at)) graduated.push(id); else skipped.push(id);

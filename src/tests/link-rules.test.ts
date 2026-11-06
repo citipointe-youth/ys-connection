@@ -318,6 +318,15 @@ describe('graduations (r25: Elvanto blanks a Year 12 grade)', () => {
     expect(gradeGlitch(rows(7, 1))).toBe(false);
     expect(graduations(before, rows(7, 1), st).map((s) => s.id)).toEqual(['s1']);
   });
+  it('a row with no grade key (Elvanto hid the field) is unknown: never a graduation, never counted by the guard', () => {
+    const rest = [{ personId: U(9), grade: 10 }, { personId: U(8), grade: 9 }];
+    expect(ids([was(1, 's1', 12)], [{ personId: U(1) } as never, ...rest])).toEqual([]);
+    // Unknown rows are outside the guard: 6 hidden + 1 blank of 10 is 1 blank in 4 known, not a glitch.
+    const rows = [...Array.from({ length: 6 }, (_, i) => ({ personId: U(i + 20), kind: 'student' })), { personId: U(1), grade: null },
+      { personId: U(2), grade: 10 }, { personId: U(3), grade: 10 }, { personId: U(4), grade: 10 }] as never[];
+    expect(gradeGlitch(rows)).toBe(false);
+    expect(graduations([was(1, 's1', 12)], rows, st).map((s) => s.id)).toEqual(['s1']);
+  });
   it('autoMatch keeps a graduated student matched but never offers it as a new match', () => {
     const g = [{ ...stu('s1', 'Amy', 'Ng', 'female', 12), graduatedAt: '2026-01-01' }];
     expect(autoMatch([ros(1, 'Amy', 'Ng', 'female', { grade: null, studentId: 's1', match: 'auto' })], g)).toEqual([]);

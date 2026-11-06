@@ -6851,28 +6851,30 @@ function _offHtml(s, open) {
     <p class="li-sub">Nobody is listed, because no full Elvanto roster is stored here yet.</p></div>`;
   const n = s.rows.length;
   if (!n) return '';
-  const page = s.rows.slice(s.from, s.from + _OFF_PAGE);
+  const page = s.rows.slice(s.from, s.from + _OFF_PAGE), can = page.filter(_offCan).length;
   const row = r => `<div class="li" style="cursor:default"><div class="li-body"><span class="li-title" style="display:block;white-space:normal;overflow-wrap:anywhere">${esc(r.name)}</span>
       <div class="li-sub">${r.grade == null ? 'No ' + esc(_gradeWord().toLowerCase()) : esc(_gradeWord() + ' ' + r.grade)} · ${r.lastAttended ? 'Last attended ' + esc(fmtDay(r.lastAttended)) : 'No attendance on file'}</div></div>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="_offGrad(this, ${_icJs(r.id)})">Graduate</button></div>`;
+      ${_offCan(r) ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_offGrad(this, ${_icJs(r.id)})">Graduate</button>` : ''}</div>`;
   const pager = n > _OFF_PAGE ? `<div style="display:flex;align-items:center;gap:8px;margin-top:8px">
       <button type="button" class="btn btn-secondary btn-sm" ${s.from ? '' : 'disabled'} onclick="_offPage(-1)">Back</button>
       <span class="li-sub" style="flex:1;text-align:center">${s.from + 1}-${s.from + page.length} of ${n}</span>
       <button type="button" class="btn btn-secondary btn-sm" ${s.from + _OFF_PAGE < n ? '' : 'disabled'} onclick="_offPage(1)">Next</button></div>` : '';
   return `<details class="card"${open ? ' open' : ''}><summary>Not on the Elvanto roster (${n})</summary>
-    <p class="li-sub" style="margin:8px 0">No Elvanto link and no active entry on the roster${s.rosterAt ? ' from ' + esc(fmtDay(s.rosterAt)) : ''}. Most recently attended first: check these ones, as they are the likeliest not to belong here. Graduating hides a student from every list and keeps their data.</p>
-    <button type="button" class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="_offAll()">Graduate all shown (${page.length})</button>
+    <p class="li-sub" style="margin:8px 0">No Elvanto link and no active entry on the roster${s.rosterAt ? ' from ' + esc(fmtDay(s.rosterAt)) : ''}. Most recently attended first: check these ones, as they are the likeliest not to belong here. Graduating hides a student from every list and keeps their data. Only ${esc(_gradeWord())} 12s and students with no ${esc(_gradeWord().toLowerCase())} can be graduated here.</p>
+    ${can ? `<button type="button" class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="_offAll()">Graduate ${esc(_gradeWord())} 12s shown (${can})</button>` : ''}
     ${page.map(row).join('')}${pager}</details>`;
 }
+// Same rule as graduateOffRoster: a known grade below 12 is never graduated from this list.
+function _offCan(r) { return r.grade == null || r.grade >= 12; }
 function _offPage(d) {
   _offS.from = Math.max(0, _offS.from + d * _OFF_PAGE);
   _offPaint();
 }
 function _offAll() {
-  _offS.ids = _offS.rows.slice(_offS.from, _offS.from + _OFF_PAGE).map(r => r.id);
+  _offS.ids = _offS.rows.slice(_offS.from, _offS.from + _OFF_PAGE).filter(_offCan).map(r => r.id);
   const n = _offS.ids.length, who = n === 1 ? '1 student' : n + ' students';
   modal(`<div class="mo-title">Graduate ${who}?</div>
-    <p style="color:var(--ink-mid);margin-bottom:14px">They disappear from every list. Their data stays, and Undo is under Students > Graduated, one student at a time.</p>
+    <p style="color:var(--ink-mid);margin-bottom:14px">Only the ${esc(_gradeWord())} 12s and students with no ${esc(_gradeWord().toLowerCase())} shown. They disappear from every list. Their data stays, and Undo is under Students > Graduated, one student at a time.</p>
     <div style="display:flex;gap:8px"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
     <button type="button" class="btn btn-primary" style="flex:1" onclick="closeModal(); _offPost(_offS.ids)">Graduate ${who}</button></div>`);
 }
@@ -6887,7 +6889,7 @@ async function _offPost(ids) {
   Cache.clear();
   _offPaint();
   const done = r.graduated.length, left = r.skipped.length;
-  toast(`Graduated ${done}.${left ? ` ${left} left alone: no longer on this list.` : ''} Undo is under Students > Graduated.`, 5000);
+  toast(`Graduated ${done}.${left ? ` ${left} left alone: no longer on this list, or below ${esc(_gradeWord())} 12.` : ''} Undo is under Students > Graduated.`, 5000);
 }
 
 // ── XLSX READER (lazy SheetJS) ────────────────────────────────

@@ -328,11 +328,14 @@ export function makeSyncService(d: SyncDeps) {
           rows = pushed.map((r) => (lifts(r) ? { ...r, consent: old.get(r.personId) } : r));
           await flag('push-dnc-held', pk);
         }
+        // No grade key = unknown (Elvanto hid the field): keep the stored grade (a new row gets null). Null stays a real blank.
+        const was = new Map(before.map((r) => [r.personId, r.grade]));
+        rows = (rows as { personId: string; grade?: number | null }[]).map((r) => (r.grade === undefined ? { ...r, grade: was.get(r.personId) ?? null } : r));
       }
       const res = await d.link.replaceMirror(k, rows, { takenAt: req.takenAt, consoleId: req.consoleId, ...(req.steps ? { steps: req.steps } : {}) });
       if (!res.applied) return { applied: false };
       if (k !== 'roster') return { applied: true, rows: res.rows };
-      const inRows = req.rows as { personId: string; grade: number | null; kind?: string }[];
+      const inRows = req.rows as { personId: string; grade?: number | null; kind?: string }[]; // raw: unknown grades stay undefined
       if (gradeGlitch(inRows)) console.warn('roster push: over half of the student grades are blank, graduations skipped'); // r25 guard
       const grads = graduations(before, inRows, await d.students.findAll());
       const at = new Date().toISOString();
