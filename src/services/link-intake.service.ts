@@ -20,7 +20,7 @@ import { canUseIntakeAdmin } from './access-control';
 import { addDays, brisbaneToday } from './link-rules';
 
 export const INTAKE_STALE_MS = 2 * 3_600_000;  // a plan older than this greys out; Save / Text refuse
-export const INTAKE_KEEP_DAYS = 28;           // rows and dates older than this are deleted (consent hub: Done shows the last 4 weeks; was 14)
+export const INTAKE_KEEP_DAYS = 28;           // done rows older than this are deleted, and a date once it has no rows left; unprocessed rows stay (consent hub: Done shows the last 4 weeks; was 14)
 export const INTAKE_NOTE_MAX = 1900;
 const HURRY_LOOKUP_MS = 5 * 60_000;           // L8: a consentLookup made in the last 5 min (any status: its own claim leased it)
 const HURRY_VIEW_MS = 30 * 60_000;             // R1: an admin opened Intake in the last 30 min
@@ -179,7 +179,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       for (const r of await d.link.listActions({ types: [...INTAKE_TYPES], statuses: ['pending'] })) await d.link.cancelPending(r.id);
     },
 
-    /** The claim reply's intake hint (§3.2), for a console at rev >= 4. Also runs the 14-day purge, at most hourly. Off clears nothing: the Off save does (off()). */
+    /** The claim reply's intake hint (§3.2), for a console at rev >= 4. Also runs the 28-day purge, at most hourly. Off clears nothing: the Off save does (off()). */
     async hint(settings: AppSettings, caps?: Capabilities, inWindow = false): Promise<{ mode: 'off' | 'on'; hurry: boolean; refresh: { mode: IntakeMode; date: string }[] }> {
       const t = clock();
       const mode = settings.ministryConfig.modules.intakeAdmin === 'on' ? 'on' : 'off';

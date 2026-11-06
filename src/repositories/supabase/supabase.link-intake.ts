@@ -93,9 +93,10 @@ export class SupabaseLinkIntakeRepository implements ILinkIntakeRepository {
     return iso(r?.viewed_at);
   }
 
+  // Unprocessed rows (needs-you, ready) are never purged; their date stays so the hub still lists them.
   async purge(before: string) {
-    await this.sql`delete from link_intake_rows where date < ${before}`;
-    await this.sql`delete from link_intake_dates where date < ${before}`;
+    await this.sql`delete from link_intake_rows where date < ${before} and status = 'done'`;
+    await this.sql`delete from link_intake_dates d where date < ${before} and not exists (select 1 from link_intake_rows r where r.mode = d.mode and r.date = d.date)`;
   }
 
   async clear() {
