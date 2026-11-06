@@ -11,7 +11,7 @@ const ROOT = join(__dirname, '..', '..');
 describe('migration 0054', () => {
   it('drops the 0043 safety copy and nothing else; no code reads it', () => {
     const sql = readFileSync(join(ROOT, 'supabase', 'migrations', '0054_drop_connection_audits_bak.sql'), 'utf8');
-    expect(sql.split('\n').filter((l) => l.trim() && !l.startsWith('--'))).toEqual(['drop table if exists connection_audits_bak_0043;']);
+    expect(sql.split(/\r?\n/).filter((l) => l.trim() && !l.startsWith('--'))).toEqual(['drop table if exists connection_audits_bak_0043;']);
   });
 });
 
