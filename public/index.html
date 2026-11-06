@@ -77,7 +77,7 @@
    'clip' clips horizontal overflow the same as 'hidden' but never creates a scroll
    container, so overflow-y stays 'visible' and window is the sole scroller again, per
    the "Scroll handling" architecture note in CLAUDE.md. Don't revert to 'hidden' here. */
-html{font-size:16px;-webkit-text-size-adjust:100%;overflow-x:clip;touch-action:pan-x pan-y;overscroll-behavior-y:contain}
+html{scroll-padding-top:calc(var(--hdr-h,56px) + 12px);font-size:16px;-webkit-text-size-adjust:100%;overflow-x:clip;touch-action:pan-x pan-y;overscroll-behavior-y:contain}
 @media(min-width:768px){html{font-size:17px}}
 @media(min-width:1280px){html{font-size:18px}}
 /* overscroll-behavior-y:contain on the window scroller stops the native pull-to-refresh/
@@ -1017,12 +1017,19 @@ window.addEventListener('resize', _positionNprog);
 // both visualViewport.resize (fires reliably on keyboard show/hide) and a
 // delegated focusout as a fallback, since the exact trigger is inconsistent
 // across iOS Safari versions.
+// Keyboard-open test shared with _moFitViewport. The nudge below only runs once the keyboard is
+// closed, and not when focus just moved to another field - a scrollTo mid-keyboard interrupts iOS
+// scrolling the focused field into view (full-page New person form).
+function _kbOpen() { return !!window.visualViewport && window.innerHeight - window.visualViewport.height > 120; }
 function _fixViewportGap() {
+  if (_kbOpen()) return;
   requestAnimationFrame(() => window.scrollTo(0, window.scrollY));
 }
 if (window.visualViewport) window.visualViewport.addEventListener('resize', _fixViewportGap);
 document.addEventListener('focusout', e => {
-  if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) setTimeout(_fixViewportGap, 60);
+  if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) setTimeout(() => {
+    if (!/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || '')) _fixViewportGap();
+  }, 60);
 });
 
 // iOS home-screen reload gap fix (2026-10-09): after location.reload() (Bus "I am"/"Not you?",
@@ -1695,7 +1702,7 @@ function _moFitViewport() {
   const vv = window.visualViewport, mo = document.getElementById('mo-overlay');
   if (!vv || !mo) return;
   // Only while the keyboard is up — a stale size after it closed pushed the sheet off the top.
-  const kb = window.innerHeight - vv.height > 120;
+  const kb = _kbOpen();
   mo.style.top = kb ? vv.offsetTop + 'px' : ''; mo.style.height = kb ? vv.height + 'px' : ''; mo.style.bottom = kb ? 'auto' : '';
 }
 if (window.visualViewport) { window.visualViewport.addEventListener('resize', _moFitViewport); window.visualViewport.addEventListener('scroll', _moFitViewport); }
