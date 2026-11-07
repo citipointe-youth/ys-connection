@@ -21,6 +21,10 @@ function method(name: string): string {
 const flat = (s: string) => s.replace(/\s+/g, ' ');
 
 describe('SupabaseLinkRepository SQL text', () => {
+  it('BK1: a door search (addRoster) never blanks a stored grade; the full roster build (replaceMirror) still can', () => {
+    expect(flat(method('addRoster'))).toContain('grade = coalesce(excluded.grade, link_roster.grade)');
+    expect(flat(method('replaceMirror'))).toContain('grade = excluded.grade');
+  });
   it('claim: one transaction; console heartbeat on the DB clock', () => {
     const c = flat(method('claim'));
     expect(c).toContain('.begin(');

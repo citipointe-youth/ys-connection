@@ -324,7 +324,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
         insert into link_roster ${tx(rows.map((p) => ({ person_id: p.personId, first_name: p.firstName, last_name: p.lastName,
           gender: p.gender, grade: p.grade, kind: p.kind, active: true, consent: p.consent ?? null })))}
         on conflict (person_id) do update set first_name = excluded.first_name, last_name = excluded.last_name,
-          gender = excluded.gender, grade = excluded.grade,
+          gender = excluded.gender, grade = coalesce(excluded.grade, link_roster.grade),
           kind = case when link_roster.active then link_roster.kind else excluded.kind end, active = true, updated_at = now()`;
       return rows.length;
     });

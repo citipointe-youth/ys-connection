@@ -249,7 +249,7 @@ export class InMemoryLinkRepository implements ILinkRepository {
     const now = this.nowIso();
     for (const p of rows) {
       const old = this.rosterRows.get(p.personId);
-      this.rosterRows.set(p.personId, { personId: p.personId, firstName: p.firstName, lastName: p.lastName, gender: p.gender, grade: p.grade,
+      this.rosterRows.set(p.personId, { personId: p.personId, firstName: p.firstName, lastName: p.lastName, gender: p.gender, grade: p.grade ?? old?.grade ?? null,
         kind: old?.active ? old.kind : p.kind, active: true, studentId: old?.studentId ?? null, match: old?.match ?? 'none', updatedAt: now,
         consent: old?.consent ?? p.consent ?? null });
     }

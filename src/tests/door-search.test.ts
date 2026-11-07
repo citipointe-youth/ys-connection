@@ -112,6 +112,20 @@ describe("rev 20 door search: the console's answer", () => {
     await h.sync.push('doorSearch', pushBody(s.id, [SAM]));
     expect((await h.link.roster()).filter((r) => r.active).map((r) => r.personId).sort()).toEqual([P_AMY, P_SAM].sort());
   });
+  it('a door-search push with grade null keeps the stored grade', async () => {
+    const h = await setup(); // Amy is seeded at grade 9 through the roster push
+    const s = search('Amy');
+    await h.one(GRADE, s); await h.claim(20);
+    await h.sync.push('doorSearch', pushBody(s.id, [{ personId: P_AMY, firstName: 'Amy', lastName: 'Adams', gender: 'female', grade: null }]));
+    expect((await h.link.roster()).find((r) => r.personId === P_AMY)!.grade).toBe(9);
+  });
+  it('a brand-new person from a door search still stores null', async () => {
+    const h = await setup();
+    const s = search('Samuel');
+    await h.one(GRADE, s); await h.claim(20);
+    await h.sync.push('doorSearch', pushBody(s.id, [SAMUEL]));
+    expect((await h.link.roster()).find((r) => r.personId === P_SAMUEL)!.grade).toBeNull();
+  });
   it('a push for a row this console does not hold (pending, another console, unknown id) is not applied', async () => {
     const h = await setup();
     const s = search('Sam');
