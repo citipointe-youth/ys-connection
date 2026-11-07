@@ -325,7 +325,7 @@ describe('RV-I-m9 dead token at logout: the link tap queue is still cleared by t
     const src = extractFn(HTML, 'doLogout');
     const cap = src.indexOf('= _lkKey()');
     expect(cap).toBeGreaterThan(-1);
-    expect(cap).toBeLessThan(src.indexOf('await _ikQLogout('));
+    expect(cap).toBeLessThan(src.indexOf('_ikQLogout('));
     expect(src).toMatch(/_lkClear\(\w+\)/);
   });
   it('_lkClear(k) removes that key even when S.user is already gone', () => {

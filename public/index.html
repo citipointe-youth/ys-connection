@@ -2197,7 +2197,7 @@ function _icOn() {
 function _icGet(p) { Cache.del('/id-checks'); return API.get(p); }
 // A section heading: the "general" section has no subtitle, so never a trailing dash.
 function _icSectionTitle(sec) { return sec.subtitle ? sec.title + ' – ' + sec.subtitle : sec.title; }
-// Logout: drop every ysc.ic.* key (drafts, filters) so the next login on this phone starts clean.
+// Logout: after _icLogout has tried to send for up to 5 s, drop every ysc.ic.* key so the next login on this phone starts clean.
 function _icClearLocal() {
   try {
     const ks = [];
@@ -2325,7 +2325,7 @@ async function _icDelete(id) {
 // ── Check / note editor with autosave (Task 14) ──
 // Every change goes to a draft on this phone at once and to the server 1.5 s later. The draft goes only when the server
 // confirms the exact state it holds. The key carries the login id and the value its uid, so a draft can only come back
-// for the login that typed it (logout also removes every ysc.ic. key; an expired session does not, hence the uid).
+// for the login that typed it (logout sends for up to 5 s, then removes every ysc.ic. key; an expired session does not, hence the uid).
 const _IC_BACKOFF = [2000, 5000, 15000]; // then every 30 s
 function _icDraftKey(id) { return 'ysc.ic.' + (S.user ? S.user.id : '') + '.' + id; }
 function _icDraftGet(key) {
@@ -2518,6 +2518,30 @@ async function _icResendDrafts(leaderId, entries) {
     else if (ed.status === 'error') _icDraftDrop(key);
   }
   return n;
+}
+// S-B1 (ruling Q2 b): at logout, one capped try (ms) to send this login's drafts, like _ikQLogout: the open editor, and
+// every leader with a draft read first (IA-1) so a server copy edited elsewhere is never overwritten. doLogout's
+// _icClearLocal then removes every ysc.ic. key. Returns how many drafts were still unsent (doLogout's one toast).
+// ponytail: a send still out after the cap is not stopped (IA-5); _icFlush refuses once S.user is null.
+async function _icLogout(ms) {
+  if (!S.user) return 0;
+  const pre = 'ysc.ic.' + S.user.id + '.', live = _IC.ed;
+  const keys = () => { const ks = []; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf(pre) === 0) ks.push(k); } } catch (e) {} return ks; };
+  const lids = new Set(keys().map((k) => (_icDraftGet(k) || {}).leaderId).filter(Boolean)); // C-5: the open leader too; the resend skips the open entry
+  const send = Promise.all([live && _icFlush(live), ...[...lids].map(async (lid) => {
+    try { const d = await _icGet('/id-checks/leaders/' + encodeURIComponent(lid)); await _icResendDrafts(lid, d.entries); } catch (e) {}
+  })]);
+  let t;
+  try { await Promise.race([send, new Promise((r) => { t = setTimeout(r, ms); })]); } catch (e) {} finally { clearTimeout(t); }
+  _icLetGo(); // no debounce or retry from the open editor after this
+  return keys().length;
+}
+// The one Sign out toast (IA-2): what was not sent and is now deleted, or '' when nothing was lost.
+function _logoutLostText(ik, ic) {
+  const parts = [];
+  if (ik > 0) parts.push(ik === 1 ? '1 intake save' : ik + ' intake saves');
+  if (ic > 0) parts.push(ic === 1 ? '1 ID check' : ic + ' ID checks');
+  return parts.length ? 'Signed out. Not sent and deleted: ' + parts.join(', ') + '.' : '';
 }
 /*IC-EDIT*/
 // ── Assign leaders grid + archived leaders' history (admin only, Task 15; spec 7.7, 7.7a, 7.8) ──
@@ -3863,7 +3887,7 @@ async function doLogout() {
   if (_setupLeaveAsk(doLogout)) return; // QA 27
   if (!(await _lkLogoutGuard())) return; /*LINK*/
   const lkK = _lkKey(); /*LINK RV-I-m9: captured first: a dead token (401) in _ikQLogout nulls S.user */
-  await _ikQLogout(5000); // R7: send the intake queue once (max 5 s), then clear it
+  const [ik, ic] = await Promise.all([_ikQLogout(5000), _icLogout(5000)]); // R7 + S-B1: send intake + ID checks once (max 5 s together), then clear
   _lkClear(lkK); /*LINK: before S.user goes, the queue key holds the login id */
   try { await API.post('/auth/logout', { token: API.token }); } catch {}
   navReset();
@@ -3876,6 +3900,7 @@ async function doLogout() {
   _previewStash = null;
   nyReset(); /*NEW-YOUTH*/
   _icClearLocal();
+  const t = _logoutLostText(ik, ic); if (t) toast(t, 6000); // IA-2: one toast for both
   _vgReset(); // unsaved grade taps never fire after logout or carry into the next login
   try { localStorage.removeItem('yap_preview_stash'); } catch (e) {}
   try {
@@ -14242,17 +14267,17 @@ function _ikQApply(items, res, bad) {
   if (fx) { _ikDraw(); _ikFixPoll(); }
 }
 // R7 (ruling 7): at logout, one try to send what is kept (capped, so a dead network never blocks logout), then the key
-// is cleared; anything still unsent is dropped and the toast says how many.
+// is cleared; anything still unsent is dropped. Returns how many (doLogout's one toast, _logoutLostText).
 // ponytail: an item a sheet Save is sending at that instant counts as dropped even if it lands later.
 async function _ikQLogout(ms) {
-  if (!S.user) return;
+  if (!S.user) return 0;
   const k = _ikQKey();
   let t;
   try { await Promise.race([_ikQFlush(), new Promise((r) => { t = setTimeout(r, ms); })]); } catch (e) {} finally { clearTimeout(t); }
   LINK.ikStop = k; // RV-I-M2: a reply after this point never sends the next entry nor writes the key back (cleared at login)
   const n = _ikQGet(k).reduce((c, e) => c + e.items.length, 0);
   _ikQSet([], k);
-  if (n) toast(n === 1 ? '1 unsent intake save was dropped' : n + ' unsent intake saves were dropped', 6000);
+  return n;
 }
 // At login (doLogin): the logout stop is lifted. Ruling 8: an expired session keeps its queue (24 h max, the flush drops
 // older) for that same login's return; any OTHER login signing in on this phone clears those queues.

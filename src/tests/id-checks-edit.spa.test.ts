@@ -1,12 +1,12 @@
 // ID check editor with autosave (Task 14): debounce, draft kept until the server confirms, retry, Finish ordering,
-// draft restore only for the same login, logout clearing, "Last time" and retired questions. Fake timers, stubbed API.put.
+// draft restore only for the same login, logout sends, then clears, "Last time" and retired questions. Fake timers, stubbed API.put.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
 const FNS = ['esc', '_icJs', '_icDraftDropIf', '_icLetGo', '_icWaitFlying', '_icSectionTitle', '_icLastTime', '_icMine', '_icDraftKey', '_icDraftGet', '_icDraftSave', '_icDraftDrop', '_icEd', '_icAnswered', '_icHasContent',
   '_icNew', '_icEdit', '_icStatusText', '_icEditHtml', 'renderIdCheckEdit', '_icTouch', '_icSet', '_icAns', '_icAsk', '_icNote', '_icSchedule',
-  '_icPaint', '_icFlush', '_icFinish', '_icClose', '_icWire', '_icResendDrafts', '_icClearLocal'];
+  '_icPaint', '_icFlush', '_icFinish', '_icClose', '_icWire', '_icResendDrafts', '_icClearLocal', '_icLogout', '_logoutLostText'];
 const CONSTS = ['_IC', '_IC_BTN', '_IC_BACKOFF'].map((n) => HTML.match(new RegExp(`^const ${n} = .*$`, 'm'))![0]).join('\n');
 
 const BANK = [{ key: 'faith', title: 'FAITH', subtitle: 'their walk with God', questions: [{ key: 'faith01', text: 'How is it going?' }, { key: 'faith02', text: 'Old question', retired: true }] }];
@@ -28,6 +28,7 @@ function setup(user = 'u1', store = new Map<string, string>()) {
       get length() { return store.size; }, key: (i: number) => [...store.keys()][i] ?? null,
       getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); }, removeItem: (k: string) => { store.delete(k); },
     },
+    _icGet: () => Promise.resolve({ entries: [] }), // C-3: tests 3 and 4 script the leader read
     API: { put: (path: string, body: any) => new Promise((resolve, reject) => puts.push({ path, body: JSON.parse(JSON.stringify(body)), resolve, reject })) },
   };
   const src = FNS.map((n) => extractFn(HTML, n)).join('\n');
@@ -393,5 +394,67 @@ describe('editor page', () => {
     const h = t.f._icEditHtml(st({ leaderName: '<b>x</b>', content: { answers: { faith01: { asked: true, note: '<b>x</b>' } }, nextTime: '<b>x</b>' } }));
     expect(h).not.toContain('<b>x</b>');
     expect(h).toContain('&lt;b&gt;x&lt;/b&gt;');
+  });
+});
+
+describe('Sign out sends unsent ID checks for up to 5 s (S-B1)', () => {
+  const d2 = (o: any = {}) => JSON.stringify({ uid: 'u1', leaderId: 'l2', kind: 'note', at: '2026-10-30T00:00:00Z', heldOn: '2026-10-29', content: { text: 'kept' }, tok: 't:1', ...o });
+  const icKeys = (store: Map<string, string>) => [...store.keys()].filter((k) => k.startsWith('ysc.ic.u1.'));
+  it('1. the open editor is sent before the debounce; resolves 0 and leaves no draft', async () => {
+    const t = setup();
+    t.f._icNew('check'); t.f._icSet('nextTime', 'x');
+    const p = t.f._icLogout(5000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.puts).toHaveLength(1);
+    t.puts[0]!.resolve(ok);
+    expect(await p).toBe(0);
+    expect(icKeys(t.store)).toEqual([]);
+    expect(t.toasts).toEqual([]);
+  });
+  it('2. a PUT that never settles: resolves 1 after 5 s, and no PUT in the next 60 s (IA-5)', async () => {
+    const t = setup();
+    t.f._icNew('check'); t.f._icSet('nextTime', 'x');
+    let v: any = 'pending';
+    t.f._icLogout(5000).then((n: number) => { v = n; });
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(v).toBe('pending');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(v).toBe(1);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(t.puts).toHaveLength(1);
+  });
+  it('3. a closed-editor draft the server already covers is not sent (IA-1, fetch first)', async () => {
+    const t = setup('u1', new Map([['ysc.ic.u1.e9', d2()]]));
+    const gets: string[] = [];
+    t.env._icGet = (p: string) => { gets.push(p); return Promise.resolve({ entries: [entry({ id: 'e9', leaderId: 'l2', updatedAt: '2026-10-31T00:00:00Z' })] }); };
+    expect(await t.f._icLogout(5000)).toBe(0);
+    expect(gets).toEqual(['/id-checks/leaders/l2']);
+    expect(t.puts).toHaveLength(0);
+  });
+  it('4. a closed-editor draft newer than the server: one PUT; a 4xx removes it, 0, no toast', async () => {
+    const t = setup('u1', new Map([['ysc.ic.u1.e9', d2()]]));
+    t.env._icGet = () => Promise.resolve({ entries: [entry({ id: 'e9', leaderId: 'l2', updatedAt: '2026-10-29T00:00:00Z' })] });
+    const p = t.f._icLogout(5000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.puts.map((x) => x.path)).toEqual(['/id-checks/entries/e9']);
+    t.puts[0]!.reject(Object.assign(new Error('bad'), { status: 400 }));
+    expect(await p).toBe(0);
+    expect(icKeys(t.store)).toEqual([]);
+    expect(t.toasts).toEqual([]);
+  });
+  it('5. one combined toast text (IA-2, IA-3)', () => {
+    const f = setup().f;
+    expect(f._logoutLostText(2, 1)).toBe('Signed out. Not sent and deleted: 2 intake saves, 1 ID check.');
+    expect(f._logoutLostText(0, 1)).toBe('Signed out. Not sent and deleted: 1 ID check.');
+    expect(f._logoutLostText(1, 3)).toBe('Signed out. Not sent and deleted: 1 intake save, 3 ID checks.');
+    expect(f._logoutLostText(0, 0)).toBe('');
+  });
+  it('6. doLogout: _lkKey() < _icLogout( < _icClearLocal() < S.user = null, in parallel with the intake flush', () => {
+    const src = extractFn(HTML, 'doLogout');
+    const at = (s: string) => { const i = src.indexOf(s); expect(i, s).toBeGreaterThan(-1); return i; };
+    expect(at('_lkKey()')).toBeLessThan(at('_icLogout('));
+    expect(at('_icLogout(')).toBeLessThan(at('_icClearLocal()'));
+    expect(at('_icLogout(')).toBeLessThan(at('S.user = null'));
+    expect(src).toContain('Promise.all([_ikQLogout(');
   });
 });

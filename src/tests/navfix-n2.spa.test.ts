@@ -388,22 +388,22 @@ describe('R7 logout: flush the intake queue once, then clear it', () => {
   it('network down: logout is not blocked, the key is cleared, the toast counts what was dropped', async () => {
     const { f, calls, store } = ikEnv({ fns, post: () => Promise.reject(new Error("Can't reach the server")) });
     seed(store, 2);
-    await f._ikQLogout(5000);
+    expect(await f._ikQLogout(5000)).toBe(2);
     expect(store.has('ysc.ikq.u1')).toBe(false);
-    expect(calls.toasts).toEqual(['2 unsent intake saves were dropped']);
+    expect(calls.toasts).toEqual([]); // S-B1: doLogout shows the one toast (_logoutLostText)
   });
   it('a send that hangs is capped: logout goes on after the cap', async () => {
     const { f, calls, store } = ikEnv({ fns, post: () => new Promise(() => {}) });
     seed(store);
     const t = Date.now();
-    await f._ikQLogout(50);
+    expect(await f._ikQLogout(50)).toBe(1);
     expect(Date.now() - t).toBeLessThan(1000);
     expect(store.has('ysc.ikq.u1')).toBe(false);
-    expect(calls.toasts).toEqual(['1 unsent intake save was dropped']);
+    expect(calls.toasts).toEqual([]);
   });
   it('doLogout runs it after the guard and before _lkClear / the token goes', () => {
     const src = extractFn(HTML, 'doLogout');
-    const i = src.indexOf('await _ikQLogout(');
+    const i = src.indexOf('_ikQLogout(');
     expect(i).toBeGreaterThan(src.indexOf('_lkLogoutGuard'));
     expect(i).toBeLessThan(src.indexOf('_lkClear(')); // RV-I-m9: _lkClear(lkK)
   });
