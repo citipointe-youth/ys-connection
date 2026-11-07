@@ -2440,6 +2440,7 @@ async function _icFlush(ed = _IC.ed, keep) {
   if (!S.user || S.user.id !== ed.uid) return false; // signed out, or another login: never send under its token
   await _icWaitFlying(ed.id); // one PUT per entry at a time, whichever editor sent it, so an older body never lands last
   if (ed.done || ed.dead) return true;
+  if (!S.user || S.user.id !== ed.uid) return false; // again: the login may have changed while it waited
   if (ed.ver === ed.sentVer) return true;
   const ver = ed.ver, body = JSON.parse(JSON.stringify({ leaderId: ed.leaderId, kind: ed.kind, heldOn: ed.heldOn, finished: false, content: ed.content }));
   const p = API.put('/id-checks/entries/' + encodeURIComponent(ed.id), body, 0, true, !!keep && JSON.stringify(body).length < 60000);
@@ -2539,8 +2540,8 @@ async function _icLogout(ms) {
 // The one Sign out toast (IA-2): what was not sent and is now deleted, or '' when nothing was lost.
 function _logoutLostText(ik, ic) {
   const parts = [];
-  if (ik > 0) parts.push(ik === 1 ? '1 intake save' : ik + ' intake saves');
-  if (ic > 0) parts.push(ic === 1 ? '1 ID check' : ic + ' ID checks');
+  if (ik > 0) parts.push(ik === 1 ? '1\u00a0intake save' : ik + '\u00a0intake saves'); // nbsp: the number never wraps from its noun
+  if (ic > 0) parts.push(ic === 1 ? '1\u00a0ID check' : ic + '\u00a0ID checks');
   return parts.length ? 'Signed out. Not sent and deleted: ' + parts.join(', ') + '.' : '';
 }
 /*IC-EDIT*/
@@ -3888,6 +3889,7 @@ async function doLogout() {
   if (!(await _lkLogoutGuard())) return; /*LINK*/
   const lkK = _lkKey(); /*LINK RV-I-m9: captured first: a dead token (401) in _ikQLogout nulls S.user */
   const [ik, ic] = await Promise.all([_ikQLogout(5000), _icLogout(5000)]); // R7 + S-B1: send intake + ID checks once (max 5 s together), then clear
+  S.reauth = false; document.getElementById('reauth')?.remove(); // a 401 during the sends opened "Sign in again": signing out anyway
   _lkClear(lkK); /*LINK: before S.user goes, the queue key holds the login id */
   try { await API.post('/auth/logout', { token: API.token }); } catch {}
   navReset();

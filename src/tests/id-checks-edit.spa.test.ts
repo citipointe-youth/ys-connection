@@ -443,7 +443,9 @@ describe('Sign out sends unsent ID checks for up to 5 s (S-B1)', () => {
     expect(t.toasts).toEqual([]);
   });
   it('5. one combined toast text (IA-2, IA-3)', () => {
-    const f = setup().f;
+    const raw = setup().f._logoutLostText;
+    expect(raw(2, 1)).toContain('2\u00a0intake saves, 1\u00a0ID check'); // nbsp: number and noun never wrap apart
+    const f = { _logoutLostText: (a: number, b: number) => raw(a, b).replace(/\u00a0/g, ' ') };
     expect(f._logoutLostText(2, 1)).toBe('Signed out. Not sent and deleted: 2 intake saves, 1 ID check.');
     expect(f._logoutLostText(0, 1)).toBe('Signed out. Not sent and deleted: 1 ID check.');
     expect(f._logoutLostText(1, 3)).toBe('Signed out. Not sent and deleted: 1 intake save, 3 ID checks.');
@@ -456,5 +458,45 @@ describe('Sign out sends unsent ID checks for up to 5 s (S-B1)', () => {
     expect(at('_icLogout(')).toBeLessThan(at('_icClearLocal()'));
     expect(at('_icLogout(')).toBeLessThan(at('S.user = null'));
     expect(src).toContain('Promise.all([_ikQLogout(');
+  });
+});
+
+describe('Y1 fix round 1', () => {
+  it('I2. a send waiting behind an in-flight PUT never goes out after the login changes', async () => {
+    const t = setup();
+    t.f._icNew('check'); t.f._icSet('nextTime', 'a');
+    const ed = t.f._IC.ed;
+    void t.f._icFlush(ed);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.puts).toHaveLength(1);
+    t.f._icSet('nextTime', 'ab');
+    const late = t.f._icFlush(ed); // waits for the first PUT
+    t.env.S.user = { id: 'u2', role: 'oversight' }; // another login while it waits
+    t.puts[0]!.resolve(ok);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t.puts).toHaveLength(1); // the bug: a second PUT under login u2's token
+    expect(await late).toBe(false);
+  });
+  it('I1. doLogout closes the "Sign in again" sheet a 401 during the sends opened', async () => {
+    const sheet = { removed: false, remove() { this.removed = true; } };
+    const noop: any = () => {};
+    const known: Record<string, any> = {
+      S: { user: { id: 'u1' }, reauth: false },
+      _lkLogoutGuard: () => Promise.resolve(true), _ikQLogout: () => Promise.resolve(0),
+      _icLogout: () => { known.S.reauth = true; return Promise.resolve(1); }, // a 401 opened the sheet (_reauthOpen)
+      _logoutLostText: () => '', toast: noop,
+      API: { token: null, post: () => Promise.resolve(), setToken: noop },
+      document: { getElementById: (id: string) => (id === 'reauth' && !sheet.removed ? sheet : null) },
+      localStorage: { removeItem: noop }, sessionStorage: { removeItem: noop },
+    };
+    const env = new Proxy(known, {
+      has: (_t, k) => typeof k === 'string',
+      get: (t, k) => (typeof k !== 'string' ? undefined : k in t ? t[k] : k in globalThis ? (globalThis as any)[k] : () => {}),
+      set: (t, k, v) => { t[k as string] = v; return true; },
+    });
+    const doLogout = new Function('__env', `with (__env) { ${extractFn(HTML, 'doLogout')}\n return doLogout; }`)(env);
+    await doLogout();
+    expect(sheet.removed).toBe(true);
+    expect(known.S.reauth).toBe(false);
   });
 });
