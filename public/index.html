@@ -13081,9 +13081,10 @@ function _lkHomeFlowsHtml() {
   const today = _lkToday(), rows = _lkMyFlowRows(LINK.flows, getMyLeaderId(), today);
   if (!rows.length) return '';
   return `<div class="sh" style="font-size:13px">My flow people</div>` + rows.map((r) => {
-    const href = _lkTextHref(r), inner = `${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)} ${dncChip(r)}</div>
-      <div class="lk-d">${esc(r.stepName)}${r.due && r.due < today && !_lkConsentWait(r) ? ' · <span class="lk-late">Overdue</span>' : ''}</div></div>${href ? icS('chevr') : ''}`;
-    return href ? `<a class="li lk-row lk-a" href="${esc(href)}">${inner}</a>` : `<div class="li lk-row${r.dnc ? ' lk-dnc' : ''}">${inner}</div>`;
+    // 14 Nov 2026: a tap opens that student's Complete screen (the step sheet), not a new text message.
+    const inner = `${_busGradeChip(r.grade, r.gender)}<div class="lk-grow"><div class="lk-nm">${esc(r.name)} ${dncChip(r)}</div>
+      <div class="lk-d">${esc(r.stepName)}${r.due && r.due < today && !_lkConsentWait(r) ? ' · <span class="lk-late">Overdue</span>' : ''}</div></div>${icS('chevr')}`;
+    return `<div class="li lk-row lk-a${r.dnc ? ' lk-dnc' : ''}" role="button" tabindex="0" onclick="_lkOpenStep('${esc(r.rowId)}')">${inner}</div>`;
   }).join('');
 }
 async function _lkHomeFlows() {

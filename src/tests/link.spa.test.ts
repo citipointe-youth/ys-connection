@@ -1808,9 +1808,10 @@ describe('F3 flow steps', () => {
     expect(out).toContain('Sam Lee');
     expect(out).toContain('Nia NoPhone');
     expect(out).not.toContain('Eve Other');
-    expect(out).toContain('href="sms:0412345678');
+    expect(out).toContain("onclick=\"_lkOpenStep('"); // 14 Nov: a tap opens the Complete screen, not a text
+    expect(out).not.toContain('sms:');
     expect(strip(out)).toContain('Call · Overdue');
-    expect(out.match(/<a /g)).toHaveLength(1); // no mobile: not a link
+    expect(out.split('_lkOpenStep(').length - 1).toBe(2);
     expect(setup(null).fns._lkHomeFlowsHtml()).toBe('');
     expect(setup('L9').fns._lkHomeFlowsHtml()).toBe('');
   });
