@@ -360,8 +360,8 @@ describe('Y6c DNC banner on Flow steps', () => {
 
 describe('Y6c DNC line on Home (Needs attention)', () => {
   const lines = (role: string, dncReady?: boolean) => {
-    const h = loadFns(['_attnCounts', '_attnLines', '_lkDncText', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], 'var S = {};');
-    return h._attnLines(h._attnCounts({ uid: 'u', role, st: st(dncReady) }, Date.now())).map((l: [string, string]) => l);
+    const h = loadFns(['_attnCounts', '_attnSeen', '_attnLines', '_lkDncText', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], 'var S = {};');
+    return h._attnLines(h._attnCounts({ uid: 'u', role, st: st(dncReady) }, Date.now())).map((l: any[]) => [l[0], l[1]]);
   };
   it('admin (opens Admin > Elvanto link) and oversight (plain text) see it when DNC is not fully on', () => {
     expect(lines('admin', false)).toContainEqual([DNC, "go('link-admin')"]);
@@ -373,7 +373,7 @@ describe('Y6c DNC line on Home (Needs attention)', () => {
   });
   it('the words name no console (leader-friction rule)', () => { expect(DNC).not.toMatch(/console/i); });
   it('fix round: a System check fix row reads as one plain sentence (no second colon)', () => {
-    const h = loadFns(['_attnCounts', '_attnLines', '_lkDncText', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], 'var S = {};');
+    const h = loadFns(['_attnCounts', '_attnSeen', '_attnLines', '_lkDncText', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], 'var S = {};');
     const setup = { checks: [{ id: 'link', label: 'Elvanto link token: not set', state: 'fix' }, { id: 'appOrigin', label: 'APP_ORIGIN', state: 'fix' }] };
     const one = { checks: [setup.checks[0]] };
     expect(h._attnLines(h._attnCounts({ uid: 'u', role: 'admin', setup: one }, Date.now())).map((l: string[]) => l[0]))
