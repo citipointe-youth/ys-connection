@@ -602,8 +602,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 /* ── CA MODULE CSS END ── */
 
 /* ── BUS MODULE CSS ── */
-.bus-tile{background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:16px;cursor:pointer}
-.bus-tile .bt-ic{width:28px;height:28px;border-radius:8px;background:var(--accent-light);color:var(--accent-dark);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.bus-tile{background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:6px 12px;display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer} /* 14 Nov 2026: more compact, smaller gaps (was 10px 14px, 16px) */
+.bus-tile .bt-ic{width:24px;height:24px;border-radius:8px;background:var(--accent-light);color:var(--accent-dark);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .bus-tile .bt-label{font-size:14.5px;font-weight:700;flex:1}
 .bus-tile .bt-count{font-size:11.5px;color:var(--ink-mid);font-weight:600;text-align:right;white-space:nowrap}
 .bus-head-act{display:flex;align-items:center;gap:6px;flex-shrink:0}
@@ -4358,11 +4358,11 @@ async function _renderHomeInner(stale, fromCache) {
     // here — leaving just Birthdays, which then gets the full-width single column.
     const qa = _homeTiles(u);
     if (qa.length) {
-      body += `<div class="qa-grid" style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : '1fr 1fr'};gap:8px;margin-bottom:16px">`;
+      body += `<div class="qa-grid" style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : '1fr 1fr'};gap:6px;margin-bottom:10px">`;
       for (const x of qa) {
         const warn = x.id === 'at-risk' && stats.atRiskTotal > 0;
         const wide = x.wide ? ';grid-column:1/-1' : '';
-        body += `<button class="btn btn-secondary" style="justify-content:flex-start${wide}${warn ? ';border-color:var(--danger);color:var(--danger)' : ''}" onclick="go('${x.id}')">${icS(x.ic)} ${esc(x.label)}</button>`;
+        body += `<button class="btn btn-secondary" style="justify-content:flex-start;padding-top:7px;padding-bottom:7px;min-height:40px${wide}${warn ? ';border-color:var(--danger);color:var(--danger)' : ''}" onclick="go('${x.id}')">${icS(x.ic)} ${esc(x.label)}</button>`;
       }
       body += '</div>';
     }
