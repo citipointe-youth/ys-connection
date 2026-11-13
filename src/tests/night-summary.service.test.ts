@@ -202,6 +202,7 @@ describe('night-summary service', () => {
     // outbox: leader_name, note, payload-adjacent columns, a free-text reason and detail
     const o = newRow({ leaderName: 'Sample Dummyton', note: 'Codeman', serviceDate: '2026-11-13' });
     await h.link.insertAction(o);
+    h.link._backdate('link_outbox', o.id, 'createdAt', '2026-11-13T10:00:00.000Z'); // 14 Nov: the row must sit inside FROM..TO whatever the real clock says
     h.link._backdate('link_outbox', o.id, 'status', 'refused');
     h.link._backdate('link_outbox', o.id, 'reason', 'Sample Dummyton');
     h.link._backdate('link_outbox', o.id, 'detail', 'Codeman');
