@@ -4,6 +4,24 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+NEEDS-ACTION ROUND 2026-11-14  (ysc-v175)
+-------------------------------------------------------------------------------
+- About page removed (More, login screen, the login scope sheet).
+- Home "Needs attention": every line has a Dismiss (this phone only; the line
+  returns if its count grows). "Families need you" no longer counts Waiting rows
+  (the early consent week, held only for parent replies).
+- Link intake dates list: counts.waiting added beside needsYou/ready/done.
+- Hero card: the "Seen / Weekly" hint line is gone.
+- Home flow people: a tap opens that student's Complete screen, not a text.
+- Quad Home: Attendance by Grade is one compact full-width bar per grade (four
+  numbers, no dropdown); Connection by Grade rows are tighter; Check-in, Bus,
+  Student Search and Birthdays tiles are more compact with smaller gaps.
+- Quad Trends: the grade filter, and one weekly service chart for the chosen
+  grades instead of per-grade lines.
+- Laptop fix: the desktop nav no longer clips its last pill (More) when the
+  pills wrap onto a third row.
+
+-------------------------------------------------------------------------------
 CLOSE-OUT 2026-11-04  (ysc-v168, not yet live)
 -------------------------------------------------------------------------------
 - Import (admin): "Not on the Elvanto roster" lists students with no Elvanto
