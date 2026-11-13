@@ -10,7 +10,7 @@ const ADMIN_TABS = [/^const ADMIN_TABS = .*$/m, /^const ADMIN_TAB_HOME = .*$/m].
 const NOW = Date.parse('2026-10-20T10:00:00.000Z');
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
 
-const ATTN = ['_modOn', '_attnCounts', '_attnLines', '_attnHtml', '_attnBadges', '_attnMine', '_attnSlot', '_attnLoad', '_adminTabsHtml',
+const ATTN = ['_modOn', '_attnCounts', '_attnSeen', '_attnDismiss', '_attnLines', '_attnHtml', '_attnBadges', '_attnMine', '_attnSlot', '_attnLoad', '_adminTabsHtml',
   '_lkSeen', '_lkTime', '_lkAt', 'fmtDay', 'esc'];
 
 // The routes, as each one answers today. A healthy Brisbane: every count zero, the console online.
@@ -276,5 +276,20 @@ describe('Y6b "Console out of date" branches on the intake page', () => {
     expect(old._ikPageHtml()).not.toContain('Try again'); // Brisbane's old-console page is unchanged
     expect(old._ikSaveBlock(DET, LIST, ST(3))).toBe('Console out of date: use New youth on the console PC');
     expect(old._ikOldConsole()).toBe('Console out of date: use New youth on the console PC');
+  });
+});
+
+// 13 Nov 2026: each line can be dismissed on this phone; it returns only when its count grows.
+describe('Needs attention: Dismiss', () => {
+  it('a dismissed line is hidden at the same count and returns when the count grows', () => {
+    const store: Record<string, string> = {};
+    vi.stubGlobal('localStorage', { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } });
+    const f = loadFns(ATTN, `const S = { user: { role: 'admin' }, settings: {} }; function icS() { return ''; }`);
+    const a = { role: 'admin', errors: 2, unsent: 0, unclear: 0, waiting: 0, offlineAt: null, dnc: false, fix: [], needsYou: 0 };
+    expect(f._attnHtml(a)).toContain('2 problems in the error log');
+    store['ys-attn-dismissed'] = JSON.stringify({ errors: 2 });
+    expect(f._attnHtml(a)).toBe('');
+    expect(f._attnHtml({ ...a, errors: 3 })).toContain('3 problems in the error log');
+    vi.unstubAllGlobals();
   });
 });

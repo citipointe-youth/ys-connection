@@ -227,7 +227,7 @@ describe('GET /link/intake*, POST /link/intake/refresh', () => {
     expect(r.consoleLinkRev).toBe(4);
     expect(r.console.online).toBe(true);
     expect((r as any).dates).toEqual([{ date: DATE, takenAt: '2026-10-16T09:41:00.000Z', stale: false, cut: false,
-      inputs: { from: 'app', at: '2026-10-16T09:40:12.000Z' }, refreshAskedAt: null, counts: { needsYou: 1, ready: 0, done: 1 } }]);
+      inputs: { from: 'app', at: '2026-10-16T09:40:12.000Z' }, refreshAskedAt: null, counts: { needsYou: 1, waiting: 0, ready: 0, done: 1 } }]);
     expect(await h.intakeRepo.viewedAt()).toBe(NOW.toISOString());
     h.clock.now = new Date(Date.parse('2026-10-16T09:41:00.000Z') + INTAKE_STALE_MS + 1000);
     expect(((await h.intake.list(ADMIN, { mode: 'intake' })) as any).dates[0].stale).toBe(true);
@@ -523,7 +523,7 @@ describe('consent hub (2026-10-23): person and family on list rows; 28-day keep'
     h.clock.now = new Date(NOW.getTime() + 29 * 864e5 + 2 * 3_600_000);
     const l = await h.intake.list(ADMIN, { mode: 'intake' }) as any;
     expect((await h.intakeRepo.rows('intake', DATE)).map((r) => r.status)).toEqual(['needs-you']);
-    expect(l.dates.map((x: any) => [x.date, x.counts])).toEqual([[DATE, { needsYou: 1, ready: 0, done: 0 }]]);
+    expect(l.dates.map((x: any) => [x.date, x.counts])).toEqual([[DATE, { needsYou: 1, waiting: 0, ready: 0, done: 0 }]]);
     h.clock.now = new Date(NOW.getTime() + 30 * 864e5 + 4 * 3_600_000); // the row is processed: the console pushes it done
     const p = fx('push-intake.json'); p.takenAt = h.clock.now.toISOString(); p.rows = p.rows.filter((r: any) => r.key === SUB_S).map((r: any) => ({ ...r, status: 'done' }));
     await h.sync.push('intakePlan', p);
@@ -533,5 +533,14 @@ describe('consent hub (2026-10-23): person and family on list rows; 28-day keep'
     h.clock.now = new Date(NOW.getTime() + 57 * 864e5); // 8 weeks: an unprocessed consent row can no longer be refreshed, so it goes
     await h.intake.list(ADMIN, { mode: 'intake' });
     expect([await h.intakeRepo.rows('consent', DATE), await h.intakeRepo.dates()]).toEqual([[], []]);
+  });
+});
+
+describe('isWaiting (13 Nov 2026)', () => {
+  it('a needs-you row held for replies is Waiting; any other row is not', async () => {
+    const { isWaiting } = await import('../services/link-intake.service');
+    expect(isWaiting({ status: 'needs-you', reason: 'Waiting for replies until Friday 6 am' })).toBe(true);
+    expect(isWaiting({ status: 'needs-you', reason: 'Same person?' })).toBe(false);
+    expect(isWaiting({ status: 'ready', reason: 'Waiting for replies until Friday 6 am' })).toBe(false);
   });
 });

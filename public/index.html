@@ -4165,25 +4165,33 @@ function _attnCounts(r, now) {
 function _attnLines(a) {
   if (!a) return [];
   const adm = a.role === 'admin', link = adm ? "go('link-admin')" : '', L = [];
-  if (a.errors) L.push([a.errors === 1 ? '1 problem in the error log.' : a.errors + ' problems in the error log.', "switchAdminTab('errors')"]);
+  if (a.errors) L.push([a.errors === 1 ? '1 problem in the error log.' : a.errors + ' problems in the error log.', "switchAdminTab('errors')", 'errors', a.errors]);
   // Unsent rows hold failed New person and bus consent sends; the line follows either module (data stays while both are off).
-  if (a.unsent && (_modOn('newYouthForms') || _modOn('busConsentForm'))) L.push([a.unsent === 1 ? "1 new person wasn't sent." : a.unsent + " new people weren't sent.", "switchAdminTab('unsent')"]);
+  if (a.unsent && (_modOn('newYouthForms') || _modOn('busConsentForm'))) L.push([a.unsent === 1 ? "1 new person wasn't sent." : a.unsent + " new people weren't sent.", "switchAdminTab('unsent')", 'unsent', a.unsent]);
   // 2026-10-22 B3: short; the Elvanto link page explains Check again and marking.
   if (a.unclear) L.push([(a.unclear === 1 ? '1 unclear save.' : a.unclear + ' unclear saves.')
-    + (adm ? ' See Admin > Elvanto link.' : a.unclear === 1 ? ' Check it in Elvanto.' : ' Check them in Elvanto.'), link]);
+    + (adm ? ' See Admin > Elvanto link.' : a.unclear === 1 ? ' Check it in Elvanto.' : ' Check them in Elvanto.'), link, 'unclear', a.unclear]);
   if (a.waiting) L.push([(a.waiting === 1 ? '1 first-timer has waited over 1 hour for Elvanto.' : a.waiting + ' first-timers have waited over 1 hour for Elvanto.')
-    + (adm ? ' See Admin > Elvanto link.' : ''), link]);
-  if (a.offlineAt) L.push(['The console is offline since ' + _lkSeen(a.offlineAt) + '.', link]);
-  if (a.dnc) L.push([_lkDncText(), link]);
-  if (a.fix.length) L.push(['System check: ' + (a.fix.length === 1 ? a.fix[0] + ' needs fixing.' : a.fix.length + ' things need fixing.'), "switchAdminTab('system')"]);
-  if (a.needsYou && _modOn('intakeAdmin')) L.push([a.needsYou === 1 ? '1 family needs you in More > New youth & consent.' : a.needsYou + ' families need you in More > New youth & consent.', "go('link-intake')"]);
+    + (adm ? ' See Admin > Elvanto link.' : ''), link, 'waiting', a.waiting]);
+  if (a.offlineAt) L.push(['The console is offline since ' + _lkSeen(a.offlineAt) + '.', link, 'offline', 1]);
+  if (a.dnc) L.push([_lkDncText(), link, 'dnc', 1]);
+  if (a.fix.length) L.push(['System check: ' + (a.fix.length === 1 ? a.fix[0] + ' needs fixing.' : a.fix.length + ' things need fixing.'), "switchAdminTab('system')", 'fix', a.fix.length]);
+  if (a.needsYou && _modOn('intakeAdmin')) L.push([a.needsYou === 1 ? '1 family needs you in More > New youth & consent.' : a.needsYou + ' families need you in More > New youth & consent.', "go('link-intake')", 'needsYou', a.needsYou]);
   return L;
 }
+// 13 Nov 2026: every Needs-attention line can be dismissed on this phone. It stays hidden until its count grows (a new problem), so a line that has
+// no fix the admin can make from here no longer sits on Home for ever. Per-viewer convenience only: localStorage, wrapped.
+function _attnSeen() { try { return JSON.parse(localStorage.getItem('ys-attn-dismissed') || '{}') || {}; } catch (e) { return {}; } }
+function _attnDismiss(key, n) {
+  try { const m = _attnSeen(); m[key] = n; localStorage.setItem('ys-attn-dismissed', JSON.stringify(m)); } catch (e) { /* no storage: the line stays */ }
+  const el = document.getElementById('home-attn'); if (el) el.innerHTML = _attnHtml(_attnMine());
+}
 function _attnHtml(a) {
-  const L = _attnLines(a);
+  const seen = _attnSeen(), L = _attnLines(a).filter((l) => !(l[2] && Number(seen[l[2]]) >= l[3]));
   if (!L.length) return '';
   return `<div class="card" style="padding:10px 12px;margin-bottom:10px;border-left:4px solid var(--warn)"><div style="font-weight:700;display:flex;align-items:center;gap:6px;margin-bottom:4px">${icS('info')} Needs attention</div>`
-    + L.map(([t, on]) => on ? `<div role="button" tabindex="0" onclick="${on}" style="padding:5px 0;cursor:pointer;color:var(--accent-dark)">${esc(t)} ›</div>` : `<div style="padding:5px 0">${esc(t)}</div>`).join('') + '</div>';
+    + L.map(([t, on, key, n]) => `<div style="display:flex;align-items:center;gap:8px">` + (on ? `<div role="button" tabindex="0" onclick="${on}" style="flex:1;padding:5px 0;cursor:pointer;color:var(--accent-dark)">${esc(t)} ›</div>` : `<div style="flex:1;padding:5px 0">${esc(t)}</div>`)
+      + (key ? `<button type="button" class="btn btn-secondary" style="padding:2px 8px;font-size:12px" onclick="_attnDismiss('${key}',${n})">Dismiss</button>` : '') + '</div>').join('') + '</div>';
 }
 function _attnBadges(a) { return a ? { problems: a.errors + a.unsent + a.fix.length, link: a.unclear + a.waiting } : {}; }
 function _attnSlot(role) { return role === 'admin' || role === 'oversight' ? `<div id="home-attn">${_attnHtml(_attnMine())}</div>` : ''; }
@@ -4289,7 +4297,6 @@ async function _renderHomeInner(stale, fromCache) {
     <td style="text-align:center;padding:5px 4px;border-radius:0 6px 6px 0"><span style="font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.01em;opacity:.82">${grpAvgWk}</span></td>
   </tr>`;
   body += `</tbody></table>`;
-  body += `<div style="font-size:11px;opacity:.7;margin-top:5px">Seen: different students who came at least once. Weekly: average per week.</div>`;
 
   // Previous-term summary
   const pSvcAtt = sc.reduce((a, s) => a + s.prevSvcAttended, 0), pSvcTot = sc.reduce((a, s) => a + s.prevSvcTotal, 0);
@@ -14652,7 +14659,7 @@ function _hubStage(c, now, cut, flowsKnown) {
 function _hubReasons(c, st, fixes) {
   const out = [], ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
   if (ir && ir.status === 'needs-you') out.push(['hold', ir.reason === 'Waiting for parent form' ? 'No parent form yet' : ir.reason || 'Needs a look']);
-  if (cr && cr.status === 'needs-you') out.push(['hold', cr.reason || 'Needs a look']);
+  if (cr && cr.status === 'needs-you') out.push([String(cr.reason || '').startsWith('Waiting for replies until') ? 'waiting' : 'hold', cr.reason || 'Needs a look']); // 13 Nov: Waiting = nothing to do yet, not counted
   if (c.mis) out.push(['differs', 'Profile differs from the consent form']);
   for (const r of [ir, cr]) {
     const a = r && _ikAct(r.actions);
@@ -14713,7 +14720,7 @@ function _hubModel(src, now, cut, st, fixes) {
     for (const c of f.kids) { c.stage = _hubStage(c, now, cut, known); c.reasons = _hubReasons(c, st, fixes); c.next = _hubNext(c); }
     f.title = _ikAnd(f.kids.map((c) => c.name));
     f.stage = f.kids.map((c) => c.stage).sort((a, b) => order.indexOf(a) - order.indexOf(b))[0];
-    f.needs = f.kids.some((c) => c.reasons.length > 0);
+    f.needs = f.kids.some((c) => c.reasons.some((r) => r[0] !== 'waiting'));
     f.date = f.kids.flatMap((c) => [c.intake && c.intake.date, c.consent && c.consent.date, c.flow && c.flow.due]).filter(Boolean).sort().pop() || '';
   }
   return { fams: fams.sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' })), loose };
@@ -14814,7 +14821,7 @@ function _hubFamRow(f, fi) {
   const many = f.kids.length > 1;
   return `<div class="li lk-row rc" role="button" tabindex="0" onclick="_hubOpen(${Number(fi)}, 0)"><div class="rc-top"><div class="lk-nm">${esc(f.title)}</div>`
     + `<span class="rc-pills">${f.kids.map((c) => _hubChip(c, many) + _hubSaveTag(c)).join('')}</span>${icS('chevr')}</div>`
-    + f.kids.flatMap((c) => c.reasons.map((r) => `<div class="lk-st ${r[0] === 'hold' ? 'wait' : 'bad'}">${esc((many ? c.name + ': ' : '') + r[1])}</div>`)).join('') + '</div>';
+    + f.kids.flatMap((c) => c.reasons.map((r) => `<div class="lk-st ${r[0] === 'hold' || r[0] === 'waiting' ? 'wait' : 'bad'}">${esc((many ? c.name + ': ' : '') + r[1])}</div>`)).join('') + '</div>';
 }
 // Fix round 24 Oct (Task 5): after Save all / Text all, how many of the batch the console has finished (sent, refused, cancelled, unclear).
 async function _hubSendPoll(I) {

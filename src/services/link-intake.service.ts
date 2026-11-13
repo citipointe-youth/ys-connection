@@ -89,6 +89,8 @@ export async function checkIntakeItem(repo: ILinkIntakeRepository, type: ActionT
 /** A list row's outbox action, for the chips and the per-step results (admin only: step keys hold value hashes). */
 export interface IntakeActionView { id: string; type: ActionType; status: OutboxRow['status']; reason: string | null;
   detail: string | null; steps: OutboxRow['steps']; stop: OutboxRow['stop']; createdAt: string; resultAt: string | null }
+/** A needs-you row whose hold is the early week's "Waiting for replies until ..." (the console's waitText). */
+export const isWaiting = (r: { status: string; reason?: string | null }) => r.status === 'needs-you' && String(r.reason ?? '').startsWith('Waiting for replies until');
 const actionView = (r: OutboxRow): IntakeActionView => ({ id: r.id, type: r.type, status: r.status, reason: r.reason,
   detail: r.detail, steps: r.steps ?? null, stop: r.stop ?? null, createdAt: r.createdAt, resultAt: r.resultAt });
 /** The row key an intake outbox row is about (the student form for an answer, else payload.row). */
@@ -139,7 +141,9 @@ export function makeIntakeService(d: IntakeServiceDeps) {
         return { ...head, dates: dates.map((x) => {
           const mine = rows.filter((r) => r.date === x.date);
           const n = (s: string) => mine.filter((r) => r.status === s).length;
-          return { ...dateView(x), counts: { needsYou: n('needs-you'), ready: n('ready'), done: n('done') } };
+          // 13 Nov 2026: a row held only for parent replies (the early consent week) is Waiting: nothing to do yet, so not a family that needs you.
+          const waiting = mine.filter((r) => isWaiting(r)).length;
+          return { ...dateView(x), counts: { needsYou: n('needs-you') - waiting, waiting, ready: n('ready'), done: n('done') } };
         }) };
       }
       const x = dates.find((y) => y.date === f.date);
