@@ -81,36 +81,14 @@ describe('what a grade login sees', () => {
   });
 });
 
-describe('About page', () => {
-  const mk = (user: any, roles: any) => loadFns(['_aboutHtml', '_roleLabel', '_roleDesc'], `
-    const S = { user: ${JSON.stringify(user)}, settings: { ministryConfig: { roles: { enabled: ${JSON.stringify(roles)} } } } };
-    const _ROLE_LABEL_DEFAULTS = { admin: 'Admin', oversight: 'Oversight', leader: 'Leader', grade: 'Grade', quad: 'Junior/Senior' };
-    function esc(s) { return String(s); } function appName() { return 'Test App'; } function ministryName() { return 'Test Ministry'; }
-    function _gradeWord() { return 'Year'; }`);
-  const text = (h: string) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  it('uses the configured names, lists only enabled roles, and tells the admin where to look', () => {
-    const t = text(mk({ role: 'quad' }, { grade: false, quad: true, oversight: true, leader: false })._aboutHtml());
-    expect(t).toContain('Test App is the Test Ministry app');
-    expect(t).toContain('Junior/Senior : Sees only its own Junior or Senior group (boys');
-    expect(text(mk({ role: 'grade' }, { grade: true })._aboutHtml())).toContain('Sees only its own years: boys, girls or both, as set on the login.');
-    expect(t).not.toContain('Leader : Sees only');
-    expect(t).not.toContain('Grade : Sees');
-    expect(t).toContain('Ask your admin');
-    expect(text(mk({ role: 'admin' }, null)._aboutHtml())).toContain('You are an admin');
-  });
-  it('makes no policy, retention or contact claims', () => {
-    expect(text(mk(null, null)._aboutHtml())).not.toMatch(/privacy|policy|retain|retention|delete[sd]? after|days|years of|legal|@|\d{4}/i);
-  });
-});
-
 // QA integrate: the two gaps the lanes left, and the merged buttons that must hand their button to _once.
 describe('integration: first paint, About reach, busy buttons', () => {
   const html = loadIndexHtml();
   it('the first paint says Loading, in the static HTML (MOB-15)', () => {
     expect(html).toMatch(/<div id="app">[^<]*<p[^>]*>Loading…<\/p><\/div>/);
   });
-  it('the login scope sheet links to About (a grade or quad login has no More)', () => {
-    expect(extractFn(html, 'showScopeInfo')).toContain('closeModal();showAbout()');
+  it('the About page is gone (13 Nov 2026): no showAbout anywhere', () => {
+    expect(html).not.toContain('showAbout');
   });
   it('Add Leader and Add Account pass their button to the save guard', () => {
     expect(html).toContain('onclick="submitAddLeader(this)"');

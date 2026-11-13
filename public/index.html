@@ -2837,38 +2837,12 @@ function _roleDesc(role, u) { // u: this login; left out when describing the rol
   }[role] || '';
 }
 // The header badge is a button (a hover tooltip does not work on a phone): tap it to read what this login can see.
-// About (QA item 28): plain facts drawn from the code (entities, access-control, doLogout, login activity). No policy,
-// retention or contact claims: the church writes those. Names follow Branding and Terminology (appName, ministryName, L).
-function _aboutHtml() {
-  const u = S.user;
-  const on = ((((S.settings || {}).ministryConfig || {}).roles || {}).enabled) || null;
-  const roles = ['grade', 'quad', 'oversight', 'admin', 'leader'].filter((r) => r === 'admin' || !on || on[r]);
-  const h = (t) => '<div class="fl" style="margin-top:14px">' + esc(t) + '</div>';
-  const p = (t) => '<p class="lk-sub">' + t + '</p>';
-  const gw = esc(_gradeWord().toLowerCase());
-  return h('What it is')
-    + p(esc(appName()) + ' is the ' + esc(ministryName()) + ' app for following up students. It shows attendance, connects each student to a leader, and keeps prayer requests. Your admin can switch other screens on or off.')
-    + h('What it stores')
-    + p('Students: name, ' + gw + ', gender, birthday, phone numbers and attendance. Leaders: name, gender and ' + gw + 's. Which leader each student is connected to. Prayer requests and notices your team enter. Logins: username, display name and sign-in times, with the kind of phone used.')
-    + h('What each login sees')
-    + roles.map((r) => p('<b>' + esc(_roleLabel(r)) + '</b>: ' + esc(_roleDesc(r)))).join('')
-    + p('A student marked do not contact has no phone numbers shown to any login except admin and oversight.')
-    + h('What stays on your phone')
-    + p('Your sign-in, your "Who are you?" choice, your screen filters, a code for this phone, and taps that are waiting to be sent. Signing out removes your sign-in. Your "Who are you?" choice stays for the same login.')
-    + h('Who to ask')
-    + p(u && u.role === 'admin' ? 'You are an admin. Accounts and settings are under Admin.' : 'Ask your admin about your login, what you can see, or a mistake in the data.');
-}
-function showAbout() {
-  modal('<div class="mo-title">About ' + esc(appName()) + '</div>' + _aboutHtml()
-    + '<div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Close</button></div>');
-}
 function showScopeInfo() {
   const u = S.user;
   if (!u) return;
   modal(`<div class="mo-title">${esc(roleBadgeInner(u))} login</div>
     <p class="lk-sub">${esc(_roleDesc(u.role, u))}</p>
     <p class="lk-sub">Prayers follow the same limits. Notices reach only the groups they are sent to.${S.user.role === 'admin' ? '' : ' If you cannot see something you need, ask your admin.'}</p>
-    <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal();showAbout()">About this app</button></div>
     <div class="bus-sheet-actions"><button type="button" class="btn btn-secondary btn-full" onclick="closeModal()">Close</button></div>`);
 }
 function roleBadgeInner(u) {
@@ -3536,8 +3510,7 @@ function openMore() {
     const here = S.page === m.id;
     return `<button type="button" class="more-row${here ? ' on' : ''}" onclick="closeModal();${here && m.id === 'new-youth' ? '' : m.open}">${icN(m.ic)}<span>${esc(m.label)}</span></button>`;
   }).join('') // Y5: a junior leader changes its password here (no Setup page); r21 L1: the other roles use Setup's button
-    + (S.user && S.user.role === 'leader' ? `<button type="button" class="more-row" onclick="closeModal();showChangeOwnPassword()">${icN('key')}<span>Change password</span></button>` : '')
-    + `<button type="button" class="more-row" onclick="closeModal();showAbout()">${icN('info')}<span>About</span></button>`;
+    + (S.user && S.user.role === 'leader' ? `<button type="button" class="more-row" onclick="closeModal();showChangeOwnPassword()">${icN('key')}<span>Change password</span></button>` : '');
   modal(`<div class="mo-title">More</div><div class="more-list">${rows}</div>
     <button type="button" class="btn btn-secondary btn-full" style="margin-top:10px" onclick="closeModal()">Cancel</button>`);
 }
@@ -3831,7 +3804,6 @@ function renderLogin() {
           <div class="fg"><label class="fl" for="lpw">Password</label><input class="fi" id="lpw" name="password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
           <button class="btn btn-primary btn-full" type="submit">Sign In</button>
         </form>
-        <p style="text-align:center;font-size:12px;margin-top:14px"><a onclick="showAbout()" style="color:var(--accent);cursor:pointer;text-decoration:underline">About this app</a></p>
         ${/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? `<p style="text-align:center;font-size:12px;line-height:1.9;color:var(--ink-faint);margin-top:14px">Install as an app — <a href="/install.html" style="color:var(--accent)">how to add to Home Screen</a><br>Password not saving? — <a href="/save-password.html" style="color:var(--accent)">how to save it manually</a></p>` : ''}
       </div>
     </div>`;
