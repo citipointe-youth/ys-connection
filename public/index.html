@@ -6680,23 +6680,21 @@ async function renderTrends() {
         body += '</div>';
       }
     } else if (u.role === 'quad') {
-      const ql = students.filter(s => s.quad === u.quad);
+      // 14 Nov 2026: the same grade filter as Home; the numbers and ONE weekly chart follow the chosen grades (no per-grade lines).
+      const sel = _vgGrades() || quadGrades(u.quad);
+      body += _vgBar();
+      const ql = students.filter(s => s.quad === u.quad && sel.includes(s.grade));
       const c = _svcAgg(ql, false), p = _svcAgg(ql, true);
       body += `<div class="sh">${esc(quadLabel(u.quad))}</div><div class="card">`;
       body += statCard([c.uniq, c.avg], ['Seen','Weekly'], _svcPrevSub(p));
-      body += '<div class="sh" style="margin-top:10px">By Grade</div>';
-      const grades = quadGrades(u.quad);
-      for (const gr of grades) {
-        const gl2 = students.filter(s => s.grade === gr);
-        if (!gl2.length) continue;
-        const gc = _svcAgg(gl2, false), gp = _svcAgg(gl2, true);
-        body += `<div style="border-top:1px solid var(--paper-dark);padding:7px 0 5px 20px">
-          <div style="font-size:13px;font-weight:600">${esc(_gradeWord())} ${gr}${_gsfx(_loginGender(u))}</div>
-          <div style="font-size:12px;color:var(--ink-mid)"><b style="color:var(--ink)">${gc.uniq}</b> seen · <b style="color:var(--ink)">${gc.avg}</b> weekly</div>
-          ${gp.weeks>0?`<div style="font-size:11px;color:var(--ink-faint)">prev term: ${gp.uniq} seen · ${gp.avg} weekly</div>`:''}
-        </div>`;
-      }
       body += '</div>';
+      const qvalid = _mergeGradeSessions(trends, sel).filter(s => !s.isOutlier);
+      if (qvalid.length) {
+        const peak = Math.max(1, ...qvalid.map(s => s.totalAttended));
+        const cs = qvalid.map(s => ({ date: s.sessionDate, pct: Math.round(s.totalAttended / peak * 100), att: s.totalAttended, tot: s.totalPresent }));
+        body += `<div class="sh">Weekly Attendance</div><div class="card"><div style="font-size:12px;color:var(--ink-mid);margin-bottom:10px">${qvalid.length} ${esc(_serviceDayName())}${qvalid.length === 1 ? '' : 's'} this term</div>`;
+        body += colChart(cs, 56) + '</div>';
+      }
     } else {
       // Oversight / admin: collapsible quad cards (current + previous term)
       body += `<div class="sh">By Group</div>`;

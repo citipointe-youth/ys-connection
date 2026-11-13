@@ -253,8 +253,9 @@ describe('S1.4 the filter on six screens (quad login, filter [8])', () => {
       for (const n of needles) expect(body, `${fn} uses ${n}`).toContain(n);
     }
   });
-  it('not narrowed: Trends, My Connections, Bus, Connection Audit', () => {
+  it('not narrowed: My Connections, Bus, Connection Audit (Trends takes the filter from 14 Nov 2026, operator request)', () => {
     const src = loadIndexHtml();
-    for (const fn of ['renderTrends', 'renderMyStudents']) expect(extractFn(src, fn)).not.toMatch(/_vg[A-Za-z]/);
+    for (const fn of ['renderMyStudents']) expect(extractFn(src, fn)).not.toMatch(/_vg[A-Za-z]/);
+    expect(extractFn(src, 'renderTrends')).toContain('_vgBar()');
   });
 });
