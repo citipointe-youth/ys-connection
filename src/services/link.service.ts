@@ -577,7 +577,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const g = (await c.groups()).find((y) => y.groupId === p.groupId);
       return { kind: 'group', id: p.groupId ?? null, name: g?.name ?? null };
     }
-    if (isIntakeType(r.type) || r.type === 'doorSearch') return { kind: null, id: null, name: null }; // X19: the family is in the plan, not the roster; rev 20: the typed name stays in the note
+    if (isIntakeType(r.type)) return { kind: null, id: null, name: r.resultName ?? null }; // rev 24: the family's name an unclear result carried
+    if (r.type === 'doorSearch') return { kind: null, id: null, name: null }; // X19: the family is in the plan, not the roster; rev 20: the typed name stays in the note
     if (MEMBER_TYPES.includes(r.type)) {
       const x = (await c.roster()).find((y) => y.personId === p.personId);
       return { kind: 'person', id: p.personId ?? null, name: x ? fullName(x) : null };
@@ -915,7 +916,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
     const supersede = it.type === 'intakeAnswer' ? { type: it.type, dedupeKey: key }
       : it.type === 'consentLookup' ? { type: it.type, createdBy: c.actor.id, kind: String(p.kind) }
       : it.type === 'doorSearch' ? { type: it.type, createdBy: c.actor.id }
-      : it.type === 'reassignStep' ? { type: it.type, dedupeKey: key } : undefined; // rev 22: a newer Reassign of the row replaces a pending one
+      : it.type === 'reassignStep' || it.type === 'intakeMark' ? { type: it.type, dedupeKey: key } : undefined; // rev 22: a newer Reassign of the row replaces a pending one
     try {
       const row = await d.link.insertAction({ id: it.id, type: it.type, payload: p, note, dedupeKey: key,
         serviceDate, studentId, personId, createdBy: c.actor.id, leaderId: me.id, leaderName: me.name, ...(supersede ? { supersede } : {}) });

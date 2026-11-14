@@ -150,6 +150,7 @@ export function dedupeKey(type: ActionType, payload: Record<string, unknown>): s
     case 'busConsentCheck': return 'bcc'; // rev 18: one open bus consent check at a time
     case 'recheck': return `rc:${p.ref}`; // rev 15 (L7): one open re-check per unclear row
     case 'doorSearch': return `ds:${p.ref}`; // rev 20: each search its own request (a newer one supersedes, link.service)
+    case 'intakeMark': return `im:${p.mode}:${p.date}:${p.row}`; // rev 24: a newer decline/undo of the row supersedes a pending one (link.service)
     case 'reassignStep': return `ra:${p.rowId}`; // rev 22: one open Reassign per row (a newer one supersedes the pending one, link.service)
   }
 }
@@ -316,7 +317,8 @@ export function applyOutcome(row: OutboxRow | null, item: ResultItem, consoleId:
       case 'already': return { next: { ...base, status: 'sent', reason: 'already', detail: null, resultAt: at } };
       case 'planned': return { next: { ...base, status: 'sent', reason: 'planned', detail: null, resultAt: at } };
       case 'refused': return { next: { ...base, status: 'refused', reason: item.reason, detail: item.detail ?? null, resultAt: at } };
-      case 'unclear': return { next: { ...base, status: 'unclear', sentLogKey: item.sentLogKey, detail: item.detail ?? null, resultAt: at } };
+      case 'unclear': return { next: { ...base, status: 'unclear', sentLogKey: item.sentLogKey, detail: item.detail ?? null, resultAt: at,
+        ...(item.name ? { resultName: item.name } : {}) } };
       case 'retry': return { next: { ...base, status: 'pending', reason: item.reason,
         retryAt: new Date(now.getTime() + item.retrySeconds * 1000).toISOString(), leaseOwner: null, leaseUntil: null } };
     }

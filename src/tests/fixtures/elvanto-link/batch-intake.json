@@ -72,6 +72,19 @@
       },
       "note": null,
       "leaderId": null
+    },
+    {
+      "kind": "action",
+      "id": "0a000000-0000-4000-8000-000000000109",
+      "type": "intakeMark",
+      "payload": {
+        "mode": "intake",
+        "date": "2026-10-16",
+        "row": "5b000000-0000-4000-8000-000000000001",
+        "mark": "decline"
+      },
+      "note": null,
+      "leaderId": null
     }
   ]
 }

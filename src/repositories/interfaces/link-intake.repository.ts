@@ -13,7 +13,7 @@ export interface IntakeDateRow {
 /** A list row: no PII beyond the title (the name, as on the roster). */
 export interface IntakeRowLite {
   mode: IntakeMode; date: string; key: string; status: PlanStatus; title: string; reason: string;
-  fromApp: boolean; hasText: boolean; takenAt: string; doneAt: string | null;
+  fromApp: boolean; hasText: boolean; /** Rev 24: the console flagged the row declined (an admin's Decline); still pushed, shown under Declined. */ declined: boolean; takenAt: string; doneAt: string | null;
   /** Consent rows: the planned outcome ('' for intake rows). */
   outcome: string;
   /** Consent hub: the student's Elvanto person (intake once known; consent = key) and the parent form siblings share. */
@@ -22,7 +22,7 @@ export interface IntakeRowLite {
 export interface IntakePushMeta {
   date: string; takenAt: string; consoleId: string; cut: boolean; inputs: { from: 'console' | 'app'; at: string } | null;
 }
-export type IntakeRowWrite = Omit<IntakeRowLite, 'mode' | 'date' | 'takenAt' | 'doneAt'> & { detail: unknown };
+export type IntakeRowWrite = Omit<IntakeRowLite, 'mode' | 'date' | 'takenAt' | 'doneAt' | 'declined'> & { detail: unknown; declined?: boolean };
 
 export interface ILinkIntakeRepository {
   /** takenAt <= the stored one for (mode, date) -> not applied. Done rows are stored without detail. Clears refreshAskedAt. */

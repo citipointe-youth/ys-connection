@@ -38,7 +38,7 @@ const OVERSIGHT = actor(DIR_ID, 'oversight');
 const DEV = { id: 'dev-1', label: 'iPhone' };
 const BASE_CAPS: Capabilities = { checkIn: 'live', checkOut: 'live', submitReport: 'live', editReport: 'live', completeStep: 'live',
   firstTimerCheckIn: 'live' };
-const INTAKE_CAPS: Capabilities = { ...BASE_CAPS, intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'live' };
+const INTAKE_CAPS: Capabilities = { ...BASE_CAPS, intakeAnswer: 'live', intakeSave: 'live', consentSave: 'live', intakeText: 'live', intakeMark: 'live' };
 const SUB_S = '5b000000-0000-4000-8000-000000000001', SUB_P = '5b000000-0000-4000-8000-000000000002';
 const P_STU = '9e000000-0000-4000-8000-000000000011';
 const row1 = () => fx('push-intake.json').rows[0];
@@ -184,7 +184,7 @@ describe('intake repo (Supabase): SQL text + encryption at rest', () => {
 
 describe('link_outbox: intake expiry and purge', () => {
   const link = readFileSync(join(__dirname, '..', 'repositories', 'supabase', 'supabase.link.ts'), 'utf8').replace(/\s+/g, ' ');
-  const LIST = "('intakeAnswer','intakeSave','consentSave','intakeText')";
+  const LIST = "('intakeAnswer','intakeSave','consentSave','intakeText','intakeMark')";
   it('Supabase: a 24 h sweep for the intake types (too-old), notes nulled when final, rows deleted after 14 days', () => {
     expect(LIST).toBe(`(${INTAKE_TYPES.map((t) => `'${t}'`).join(',')})`);
     expect(link).toContain(`select id from link_outbox where status = 'pending' and created_at < now() - interval '24 hours' and type in ${LIST}`);
@@ -227,7 +227,7 @@ describe('GET /link/intake*, POST /link/intake/refresh', () => {
     expect(r.consoleLinkRev).toBe(4);
     expect(r.console.online).toBe(true);
     expect((r as any).dates).toEqual([{ date: DATE, takenAt: '2026-10-16T09:41:00.000Z', stale: false, cut: false,
-      inputs: { from: 'app', at: '2026-10-16T09:40:12.000Z' }, refreshAskedAt: null, counts: { needsYou: 1, waiting: 0, ready: 0, done: 1 } }]);
+      inputs: { from: 'app', at: '2026-10-16T09:40:12.000Z' }, refreshAskedAt: null, counts: { needsYou: 1, waiting: 0, ready: 0, done: 1, declined: 0 } }]);
     expect(await h.intakeRepo.viewedAt()).toBe(NOW.toISOString());
     h.clock.now = new Date(Date.parse('2026-10-16T09:41:00.000Z') + INTAKE_STALE_MS + 1000);
     expect(((await h.intake.list(ADMIN, { mode: 'intake' })) as any).dates[0].stale).toBe(true);
@@ -523,7 +523,7 @@ describe('consent hub (2026-10-23): person and family on list rows; 28-day keep'
     h.clock.now = new Date(NOW.getTime() + 29 * 864e5 + 2 * 3_600_000);
     const l = await h.intake.list(ADMIN, { mode: 'intake' }) as any;
     expect((await h.intakeRepo.rows('intake', DATE)).map((r) => r.status)).toEqual(['needs-you']);
-    expect(l.dates.map((x: any) => [x.date, x.counts])).toEqual([[DATE, { needsYou: 1, waiting: 0, ready: 0, done: 0 }]]);
+    expect(l.dates.map((x: any) => [x.date, x.counts])).toEqual([[DATE, { needsYou: 1, waiting: 0, ready: 0, done: 0, declined: 0 }]]);
     h.clock.now = new Date(NOW.getTime() + 30 * 864e5 + 4 * 3_600_000); // the row is processed: the console pushes it done
     const p = fx('push-intake.json'); p.takenAt = h.clock.now.toISOString(); p.rows = p.rows.filter((r: any) => r.key === SUB_S).map((r: any) => ({ ...r, status: 'done' }));
     await h.sync.push('intakePlan', p);
@@ -542,5 +542,58 @@ describe('isWaiting (13 Nov 2026)', () => {
     expect(isWaiting({ status: 'needs-you', reason: 'Waiting for replies until Friday 6 am' })).toBe(true);
     expect(isWaiting({ status: 'needs-you', reason: 'Same person?' })).toBe(false);
     expect(isWaiting({ status: 'ready', reason: 'Waiting for replies until Friday 6 am' })).toBe(false);
+  });
+});
+
+describe('rev 24: intakeMark (Decline / Undo) and declined plan rows', () => {
+  const markP = (over: Record<string, unknown> = {}) => ({ mode: 'intake', date: DATE, row: SUB_S, mark: 'decline', ...over });
+  it('decline then undo are queued for the row (admin only, no note), dedupe im:<mode>:<date>:<row>, the newer supersedes the pending one', async () => {
+    const h = await setup();
+    const d = await one(h, act('intakeMark', markP()));
+    expect(d.outcome).toBe('saved');
+    expect(dedupeKey('intakeMark', markP())).toBe(`im:intake:${DATE}:${SUB_S}`);
+    const u2 = await one(h, act('intakeMark', markP({ mark: 'undo' })));
+    expect(u2.outcome).toBe('saved');
+    expect((await h.link.getAction(d.id))!.status).toBe('cancelled'); // superseded while pending
+    const open = (await h.link.listActions({ types: ['intakeMark'] })).filter((r) => r.status === 'pending');
+    expect(open.map((r) => (r.payload as any).mark)).toEqual(['undo']);
+    // shown on the row's actions, taken by payload.mode
+    const l = await h.intake.list(ADMIN, { mode: 'intake', date: DATE }) as any;
+    expect(l.rows[0].actions.map((a: any) => a.type)).toEqual(['intakeMark']);
+    expect(((await h.intake.list(ADMIN, { mode: 'consent', date: DATE })) as any).rows.every((r: any) => r.actions.length === 0)).toBe(true);
+  });
+  it('refused: a date or row not in the plan, a note; works on a stale plan (no staleness check)', async () => {
+    const h = await setup();
+    expect(await one(h, act('intakeMark', markP({ row: u(9) })))).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST' });
+    expect(await one(h, act('intakeMark', markP({ date: '2026-10-09' })))).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST' });
+    expect(await one(h, act('intakeMark', markP(), 'a note'))).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST' });
+    expect(await one(h, act('intakeMark', markP({ mode: 'consent', row: u(9) })))).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST' });
+    h.clock.now = new Date(Date.parse('2026-10-16T09:41:00.000Z') + INTAKE_STALE_MS + 60_000);
+    expect((await one(h, act('intakeMark', markP()))).outcome).toBe('saved');
+    expect((await one(h, act('intakeMark', markP({ mode: 'consent', row: P_STU })))).outcome).toBe('saved');
+  });
+  it('a pending mark is cancelled by the Off save like the other intake rows', async () => {
+    const h = await setup();
+    const r = await one(h, act('intakeMark', markP()));
+    await h.intake.off();
+    expect((await h.link.getAction(r.id))!.status).toBe('cancelled');
+  });
+  it('a pushed declined row is stored, listed with declined: true and left out of the counts (shown apart)', async () => {
+    const h = await setup();
+    expect(await h.sync.push('intakePlan', fx('push-intake-rev24.json'))).toEqual({ applied: true, rows: 2 });
+    const dates = ((await h.intake.list(ADMIN, { mode: 'intake' })) as any).dates;
+    expect(dates[0].counts).toEqual({ needsYou: 0, waiting: 0, ready: 0, done: 1, declined: 1 });
+    const l = await h.intake.list(ADMIN, { mode: 'intake', date: DATE }) as any;
+    expect(l.rows.map((r: any) => [r.title, r.declined])).toEqual([['Ava Sample', true], ['Liam Example', false]]);
+    expect((await h.intake.row(ADMIN, { mode: 'intake', date: DATE, key: SUB_S })).row.declined).toBe(true);
+  });
+  it('an unclear result carries the family name, kept on the row and used as its target name', async () => {
+    const h = await setup();
+    const r = await one(h, act('intakeSave', saveP()));
+    const [c] = (await h.link.claim({ console: { consoleId: CONSOLE, label: 'Desk', contractVersion: 1, consoleVersion: 't', inWindow: true,
+      pollSeconds: 60, capabilities: INTAKE_CAPS, linkRev: 24 }, max: 3, leaseSeconds: 180, cutoffDays: 3, leaseLostMs: 3_600_000 }));
+    expect(c!.row.id).toBe(r.id);
+    await h.link.applyResults(CONSOLE, [{ id: r.id, outcome: 'unclear', sentLogKey: 'k', name: 'Ava Sample' }], NOW);
+    expect((await h.link.getAction(r.id))!.resultName).toBe('Ava Sample');
   });
 });

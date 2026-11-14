@@ -39,14 +39,17 @@ export const LINK_CONTRACT_VERSION = 1;
 // Rev 23 (2026-11-06, birthday alerts): a roster row may carry dob (Elvanto's birth date, a string; no format check here, so an odd
 // value is never a reason to reject the push; a non-string is dropped). dobFixes validates it and Elvanto wins (B13). MIN_CONSOLE_REV
 // stays 12: an older console sends none, an older app strips it.
-export const LINK_REV = 23;
+// Rev 24 (2026-11-14, needs-action round 2): type intakeMark {mode, date, row, mark: decline|undo} marks one plan row declined (or
+// undoes it) in Elvanto; an intake/consent push row may carry declined: true (the console keeps pushing declined rows, flagged); an
+// unclear result item may carry name (the family, for the unclear card). MIN_CONSOLE_REV stays 12: an older console never lists the type.
+export const LINK_REV = 24;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
 
 export const ACTION_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
   'addGroupMember', 'removeGroupMember', 'intakeAnswer', 'intakeSave', 'consentSave', 'intakeText',
-  'removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck', 'busConsentCheck', 'doorSearch', 'reassignStep'] as const;
+  'removeFromFlowStep', 'consentLookup', 'consentFix', 'consentLink', 'recheck', 'busConsentCheck', 'doorSearch', 'reassignStep', 'intakeMark'] as const;
 /** Rev 15 (L7): the unclear saves the console can re-check (read only). Not the intake chains, lookups or console-local links. */
 export const RECHECK_TYPES = ['checkIn', 'checkOut', 'submitReport', 'editReport', 'completeStep', 'firstTimerCheckIn',
   'addGroupMember', 'removeGroupMember', 'removeFromFlowStep', 'consentFix', 'reassignStep'] as const; // rev 22: reassignStep (the row's assignee uuid re-read)
@@ -63,7 +66,7 @@ export const isDnc = (c: string | null | undefined) => c === 'contact' || c === 
 export const stickyConsent = <C extends string>(old: C | null | undefined, next: C | null | undefined): C | null =>
   (next == null || next === 'unknown') && isDnc(old) ? (old as C) : (next ?? null);
 /** X19: the four intake types (24 h expiry, admin only, module intakeAdmin). */
-export const INTAKE_TYPES = ['intakeAnswer', 'intakeSave', 'consentSave', 'intakeText'] as const;
+export const INTAKE_TYPES = ['intakeAnswer', 'intakeSave', 'consentSave', 'intakeText', 'intakeMark'] as const;
 // PY-P3: 'shadowed' (the retired practice mode) is gone from the contract; the DB CHECK (0017) still allows it for old rows.
 export const STATUSES = ['pending', 'claimed', 'sent', 'refused', 'unclear', 'cancelled'] as const;
 export const OUTCOMES = ['sent', 'already', 'refused', 'unclear', 'retry', 'resolved', 'planned'] as const; // X19: planned = an intakeAnswer applied, nothing sent
@@ -164,6 +167,8 @@ export const PAYLOAD_SCHEMAS = {
   doorSearch: z.object({ ref: Uuid }).strict(), // rev 20: find a youth in Elvanto by the typed name (the note); ref = the row's own id
   // Rev 22: give the row to assignTo in Elvanto (admin/oversight; one of the step's admins). Never an unassign: Nobody stays YS-only.
   reassignStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable(), assignTo: Uuid }).strict(),
+  // Rev 24: decline (or undo declining) one intake/consent plan row; ids and words only, no note.
+  intakeMark: z.object({ mode: z.enum(['intake', 'consent']), date: Ymd, row: Uuid, mark: z.enum(['decline', 'undo']) }).strict(),
 } satisfies Record<(typeof ACTION_TYPES)[number], z.ZodTypeAny>;
 
 // ---- POST /sync/claim (spec 3.2)
@@ -178,7 +183,8 @@ export const ClaimRequest = z.object({
     intakeAnswer: Cap.optional(), intakeSave: Cap.optional(), consentSave: Cap.optional(), intakeText: Cap.optional(),
     // Rev 6: sent only when the app's linkRev >= 6.
     removeFromFlowStep: Cap.optional(), consentLookup: Cap.optional(), consentFix: Cap.optional(), consentLink: Cap.optional(),
-    recheck: Cap.optional(), busConsentCheck: Cap.optional(), doorSearch: Cap.optional(), reassignStep: Cap.optional() }).strict(), // rev 15 (L7); rev 18; rev 20; rev 22
+    recheck: Cap.optional(), busConsentCheck: Cap.optional(), doorSearch: Cap.optional(), reassignStep: Cap.optional(),
+    intakeMark: Cap.optional() }).strict(), // rev 15 (L7); rev 18; rev 20; rev 22; rev 24
   max: z.number().int().min(0).max(20).default(3),
   leaseSeconds: z.number().int().min(30).max(600).default(180),
   linkRev: LinkRev,
@@ -217,7 +223,9 @@ export const ResultItem = z.discriminatedUnion('outcome', [
     note: z.enum(['sent', 'failed']).optional(), ...chain }), // note: rev 7 (C-1, F-37)
   z.object({ id: Uuid, outcome: z.literal('already'), ...chain }),
   z.object({ id: Uuid, outcome: z.literal('refused'), reason: z.enum(REASONS), detail: Detail, ...chain }),
-  z.object({ id: Uuid, outcome: z.literal('unclear'), sentLogKey: LogKey, detail: Detail, ...chain }),
+  z.object({ id: Uuid, outcome: z.literal('unclear'), sentLogKey: LogKey, detail: Detail,
+    name: z.string().max(120).optional(), // rev 24: the family's name, for an intake row's unclear card
+    ...chain }),
   z.object({ id: Uuid, outcome: z.literal('retry'), retrySeconds: z.number().int().min(60).max(3600), reason: z.enum(RETRY_REASONS) }),
   z.object({ id: Uuid, outcome: z.literal('resolved'), landed: z.boolean() }),
   z.object({ id: Uuid, outcome: z.literal('planned') }), // X19: an intakeAnswer applied and that date re-pushed; nothing sent
@@ -288,7 +296,8 @@ const Profile = z.object({ id: Uuid, name: Cut(120), archived: z.boolean() }).st
 const Advice = z.object({ form: Cut(20), profile: Cut(20), state: Cut(20) }).strict();
 const Links = z.array(z.tuple([Cut(40), z.string().regex(/^https:\/\//).max(300)])).max(4);
 const PlanStatus = z.enum(['needs-you', 'ready', 'done']);
-export const IntakeRow = z.object({ key: Uuid, status: PlanStatus, title: Cut(120), holds: z.array(Hold).max(10), fromApp: z.boolean(),
+export const IntakeRow = z.object({ key: Uuid, status: PlanStatus, declined: z.literal(true).optional(), // rev 24
+  title: Cut(120), holds: z.array(Hold).max(10), fromApp: z.boolean(),
   siblings: z.array(Cut(60)).max(6),
   match: z.object({ kind: z.enum(['exact', 'near', 'manual', 'app']).nullable(), parentSub: Uuid.nullable(),
     options: z.array(z.object({ subId: Uuid, name: Cut(120), when: Cut(40) }).strict()).max(10) }).strict(),
@@ -301,7 +310,8 @@ export const IntakeRow = z.object({ key: Uuid, status: PlanStatus, title: Cut(12
   kept: z.array(z.enum(['parentName', 'parentPhone'])).max(2),
   dropped: z.array(z.object({ role: Role, key: FixKey }).strict()).max(14),
   links: Links }).strict();
-export const ConsentRow = z.object({ key: Uuid, status: PlanStatus, title: Cut(120), holds: z.array(Hold).max(10),
+export const ConsentRow = z.object({ key: Uuid, status: PlanStatus, declined: z.literal(true).optional(), // rev 24
+  title: Cut(120), holds: z.array(Hold).max(10),
   outcome: z.enum(['Contact allowed', 'No contact', 'No reply: assume consent', '']),
   consent: z.object({ ymd: Ymd.nullable(), contact: z.boolean(), total: Cut(40) }).strict().nullable(),
   consentNote: Cut(40), textedOn: Ymd.nullable(),

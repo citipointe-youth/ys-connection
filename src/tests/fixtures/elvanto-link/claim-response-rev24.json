@@ -1,0 +1,45 @@
+{
+  "contractVersion": 1,
+  "serverTime": "2026-11-14T09:05:05.000Z",
+  "linkRev": 24,
+  "rows": [
+    {
+      "id": "d7000000-0000-4000-8000-000000000001",
+      "type": "intakeMark",
+      "attempts": 1,
+      "reclaimed": false,
+      "createdAt": "2026-11-14T09:05:00.000Z",
+      "serviceDate": "2026-10-16",
+      "by": {
+        "login": "admin",
+        "leaderName": ""
+      },
+      "payload": {
+        "mode": "intake",
+        "date": "2026-10-16",
+        "row": "5b000000-0000-4000-8000-000000000001",
+        "mark": "decline"
+      },
+      "note": null
+    },
+    {
+      "id": "d7000000-0000-4000-8000-000000000002",
+      "type": "intakeMark",
+      "attempts": 1,
+      "reclaimed": false,
+      "createdAt": "2026-11-14T09:05:01.000Z",
+      "serviceDate": "2026-10-16",
+      "by": {
+        "login": "admin",
+        "leaderName": ""
+      },
+      "payload": {
+        "mode": "consent",
+        "date": "2026-10-16",
+        "row": "5b000000-0000-4000-8000-000000000001",
+        "mark": "undo"
+      },
+      "note": null
+    }
+  ]
+}

@@ -29,7 +29,7 @@ function readMobile(r: Row): string | null {
 const RESULT_COLS: Partial<Record<keyof OutboxRow, string>> = { status: 'status', reason: 'reason', detail: 'detail',
   retryAt: 'retry_at', leaseOwner: 'lease_owner', leaseUntil: 'lease_until', resultAt: 'result_at',
   sentLogKey: 'sent_log_key', reportId: 'report_id', personId: 'person_id', updatedAt: 'updated_at',
-  steps: 'steps', stop: 'stop' }; // X19: jsonb, written via sql.json()
+  steps: 'steps', stop: 'stop', resultName: 'result_name' }; // X19: jsonb, written via sql.json()
 const JSONB_COLS = new Set(['steps', 'stop']);
 const fail = (k: string): never => { throw new Error(`applyResults: unexpected column ${k}`); };
 
@@ -40,7 +40,7 @@ function toOutbox(r: Row, note: string | null): OutboxRow {
     reason: r.reason ?? null, detail: r.detail ?? null, attempts: r.attempts, retryAt: iso(r.retry_at),
     leaseOwner: r.lease_owner ?? null, leaseUntil: iso(r.lease_until), resultAt: iso(r.result_at),
     sentLogKey: r.sent_log_key ?? null, reportId: r.report_id ?? null, createdAt: toIso(r.created_at),
-    updatedAt: toIso(r.updated_at), steps: r.steps ?? null, stop: r.stop ?? null };
+    updatedAt: toIso(r.updated_at), steps: r.steps ?? null, stop: r.stop ?? null, resultName: r.result_name ?? null };
 }
 function toConsole(r: Row): ConsoleRow {
   return { consoleId: r.console_id, label: r.label, lastSeenAt: toIso(r.last_seen_at), contractVersion: r.contract_version,
@@ -188,11 +188,11 @@ export class SupabaseLinkRepository implements ILinkRepository {
       // X19: an intake row's note (fixes, keeps) goes as soon as it is final; the row itself after 14 days.
       await tx`
         update link_outbox set note = null
-        where type in ('intakeAnswer','intakeSave','consentSave','intakeText') and note is not null
+        where type in ('intakeAnswer','intakeSave','consentSave','intakeText','intakeMark') and note is not null
           and status in ('sent','refused','shadowed','cancelled','unclear')`;
       await tx`
         delete from link_outbox
-        where type in ('intakeAnswer','intakeSave','consentSave','intakeText') and created_at < now() - interval '14 days'
+        where type in ('intakeAnswer','intakeSave','consentSave','intakeText','intakeMark') and created_at < now() - interval '14 days'
           and status not in ('pending','claimed')`;
       // lease
       const types = (Object.keys(c.capabilities) as ActionType[]).filter((t) => c.capabilities[t] !== 'off');
@@ -264,7 +264,7 @@ export class SupabaseLinkRepository implements ILinkRepository {
       update link_outbox set status = 'refused', reason = 'too-old', result_at = now(), updated_at = now()
       where id in (
         select id from link_outbox where status = 'pending' and created_at < now() - interval '24 hours'
-          and type in ('intakeAnswer','intakeSave','consentSave','intakeText')
+          and type in ('intakeAnswer','intakeSave','consentSave','intakeText','intakeMark')
         order by id for update skip locked)
       returning type`;
     return [...tooOld, ...tooOldIntake].map((r) => ({ type: r.type as ActionType, reason: 'too-old' as const }));

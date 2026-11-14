@@ -28,7 +28,8 @@ const REFRESH_ASK_MS = 10 * 60_000;            // R2: a refresh ask is offered t
 const REFRESH_BACK_DAYS = 56;                  // a Refresh may ask for a date up to 8 weeks back
 const INTAKE: readonly string[] = INTAKE_TYPES;
 export const isIntakeType = (t: ActionType) => INTAKE.includes(t);
-const modeOf = (t: ActionType): IntakeMode => (t === 'consentSave' ? 'consent' : 'intake');
+const modeOf = (t: ActionType, p?: Record<string, unknown>): IntakeMode =>
+  (t === 'intakeMark' ? (p as { mode: IntakeMode }).mode : t === 'consentSave' ? 'consent' : 'intake');
 
 const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const Mode = z.enum(['intake', 'consent']);
@@ -52,7 +53,7 @@ interface StepLike { key: string; alone?: boolean; alts?: { key: string }[] }
  */
 export async function checkIntakeItem(repo: ILinkIntakeRepository, type: ActionType, p: Record<string, unknown>,
   note: string | null, now: Date): Promise<void> {
-  const mode = modeOf(type);
+  const mode = modeOf(type, p);
   const date = p.date as string;
   const d = (await repo.dates(mode)).find((x) => x.date === date && x.takenAt);
   if (!d) throw new BadRequestError('This date is not in the plan. Refresh.');
@@ -67,6 +68,10 @@ export async function checkIntakeItem(repo: ILinkIntakeRepository, type: ActionT
     return;
   }
   if (note !== null) throw new BadRequestError('A note can only go on an answer.');
+  if (type === 'intakeMark') { // rev 24: decline / undo needs only the row in the plan; no staleness check (a stale plan can still be declined)
+    if (!(await repo.rows(mode, date)).some((r) => r.key === p.row)) throw new BadRequestError('This family is not in the plan. Refresh.');
+    return;
+  }
   if (now.getTime() - Date.parse(d.takenAt!) > INTAKE_STALE_MS) throw new IntakeStale();
   const x = await repo.detail(mode, date, p.row as string);
   const plan = x?.detail as { steps?: StepLike[]; extras?: StepLike[] } | null | undefined;
@@ -122,7 +127,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
   const stale = (takenAt: string | null, t: Date) => !takenAt || t.getTime() - Date.parse(takenAt) > INTAKE_STALE_MS;
   const actionsOf = async (mode: IntakeMode, date: string) =>
     (await d.link.listActions({ types: [...INTAKE_TYPES], serviceDateFrom: date, serviceDateTo: date }))
-      .filter((r) => r.status !== 'cancelled' && modeOf(r.type) === mode);
+      .filter((r) => r.status !== 'cancelled' && modeOf(r.type, r.payload) === mode);
 
   return {
     /** GET /link/intake?mode=[&date=]: the dates (counts), or one date's rows with their latest outbox actions. */
@@ -139,17 +144,18 @@ export function makeIntakeService(d: IntakeServiceDeps) {
         inputs: x.inputsFrom ? { from: x.inputsFrom, at: x.inputsAt } : null, refreshAskedAt: x.refreshAskedAt });
       if (!f.date) {
         return { ...head, dates: dates.map((x) => {
-          const mine = rows.filter((r) => r.date === x.date);
+          const declined = rows.filter((r) => r.date === x.date && r.declined).length; // rev 24: counted apart, never in needs-you / ready / done
+          const mine = rows.filter((r) => r.date === x.date && !r.declined);
           const n = (s: string) => mine.filter((r) => r.status === s).length;
           // 13 Nov 2026: a row held only for parent replies (the early consent week) is Waiting: nothing to do yet, so not a family that needs you.
           const waiting = mine.filter((r) => isWaiting(r)).length;
-          return { ...dateView(x), counts: { needsYou: n('needs-you') - waiting, waiting, ready: n('ready'), done: n('done') } };
+          return { ...dateView(x), counts: { needsYou: n('needs-you') - waiting, waiting, ready: n('ready'), done: n('done'), declined } };
         }) };
       }
       const x = dates.find((y) => y.date === f.date);
       const acts = await actionsOf(f.mode, f.date);
       return { ...head, ...(x ? dateView(x) : { date: f.date, takenAt: null, stale: true, cut: false, inputs: null, refreshAskedAt: null }),
-        rows: rows.map((r) => ({ key: r.key, status: r.status, title: r.title, reason: r.reason, outcome: r.outcome, fromApp: r.fromApp, hasText: r.hasText,
+        rows: rows.map((r) => ({ key: r.key, status: r.status, title: r.title, reason: r.reason, outcome: r.outcome, fromApp: r.fromApp, hasText: r.hasText, declined: r.declined,
           personId: r.personId, family: r.family,
           actions: acts.filter((a) => rowKeyOf(a) === r.key).slice(0, 3).map(actionView) })) };
     },
@@ -165,7 +171,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       }
       const acts = (await actionsOf(f.mode, f.date)).filter((a) => rowKeyOf(a) === f.key).slice(0, 5).map(actionView);
       return { row: { key: x.row.key, status: x.row.status, title: x.row.title, reason: x.row.reason, fromApp: x.row.fromApp,
-        hasText: x.row.hasText, takenAt: x.row.takenAt }, detail: x.detail, unreadable: x.unreadable, actions: acts };
+        hasText: x.row.hasText, declined: x.row.declined, takenAt: x.row.takenAt }, detail: x.detail, unreadable: x.unreadable, actions: acts };
     },
 
     /** POST /link/intake/refresh {mode, date}: asks the console to push that date now (once per 60 s). */
@@ -223,6 +229,7 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       const mode: IntakeMode = kind === 'intakePlan' ? 'intake' : 'consent';
       const rows: IntakeRowWrite[] = req.rows.map((r) => ({ key: r.key, status: r.status, title: r.title, reason: r.holds[0]?.text ?? '', outcome: 'outcome' in r ? r.outcome : '',
         fromApp: 'fromApp' in r ? r.fromApp : false,
+        declined: r.declined === true,
         hasText: mode === 'intake' && r.steps.some((s) => s.state === 'todo' && s.key.startsWith('complete:parent:')),
         personId: mode === 'consent' ? r.key : ('profiles' in r && r.profiles.student ? r.profiles.student.id : null),
         family: mode === 'intake' && 'match' in r ? r.match.parentSub : null,

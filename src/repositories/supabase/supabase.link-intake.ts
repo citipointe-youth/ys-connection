@@ -16,7 +16,7 @@ export const detailAad = (mode: string, date: string, key: string) => `link_inta
 function toLite(r: Row): IntakeRowLite {
   return { mode: r.mode as IntakeMode, date: ymd(r.date), key: r.key, status: r.status as PlanStatus, title: r.title,
     reason: r.reason ?? '', outcome: r.outcome ?? '', personId: r.person_id ?? null, family: r.family ?? null,
-    fromApp: r.from_app, hasText: r.has_text, takenAt: toIso(r.taken_at), doneAt: iso(r.done_at) };
+    fromApp: r.from_app, hasText: r.has_text, declined: r.declined === true, takenAt: toIso(r.taken_at), doneAt: iso(r.done_at) };
 }
 function toDate(r: Row): IntakeDateRow {
   return { mode: r.mode as IntakeMode, date: ymd(r.date), takenAt: iso(r.taken_at), consoleId: r.console_id ?? null,
@@ -38,7 +38,7 @@ export class SupabaseLinkIntakeRepository implements ILinkIntakeRepository {
         await tx`insert into link_intake_rows ${tx(b.map((x) => {
           const done = x.status === 'done';
           return { mode, date: m.date, key: x.key, status: x.status, title: x.title, reason: x.reason, outcome: x.outcome, person_id: x.personId, family: x.family, from_app: x.fromApp,
-            has_text: x.hasText, taken_at: m.takenAt, done_at: done ? new Date().toISOString() : null,
+            has_text: x.hasText, declined: x.declined === true, taken_at: m.takenAt, done_at: done ? new Date().toISOString() : null,
             detail: done ? null : maybeEncrypt(JSON.stringify(x.detail), detailAad(mode, m.date, x.key)) };
         }))}`;
       }
@@ -61,7 +61,7 @@ export class SupabaseLinkIntakeRepository implements ILinkIntakeRepository {
   async rows(mode: IntakeMode, date?: string) {
     const s = this.sql;
     return (await s`
-      select mode, date, key, status, title, reason, outcome, person_id, family, from_app, has_text, taken_at, done_at from link_intake_rows
+      select mode, date, key, status, title, reason, outcome, person_id, family, from_app, has_text, declined, taken_at, done_at from link_intake_rows
       where mode = ${mode} ${date ? s`and date = ${date}` : s``} order by date, title, key`).map(toLite);
   }
 

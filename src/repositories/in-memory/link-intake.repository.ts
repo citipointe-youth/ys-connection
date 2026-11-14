@@ -20,7 +20,7 @@ export class InMemoryLinkIntakeRepository implements ILinkIntakeRepository {
     for (const x of rows) {
       const { detail, ...rest } = x;
       const done = x.status === 'done';
-      this.r.set(`${k2(mode, m.date)}|${x.key}`, { lite: { ...clone(rest), mode, date: m.date, takenAt: m.takenAt, doneAt: done ? now : null },
+      this.r.set(`${k2(mode, m.date)}|${x.key}`, { lite: { ...clone(rest), declined: x.declined === true, mode, date: m.date, takenAt: m.takenAt, doneAt: done ? now : null },
         detail: done ? null : clone(detail) });
     }
     this.d.set(k2(mode, m.date), { mode, date: m.date, takenAt: m.takenAt, consoleId: m.consoleId, rowCount: rows.length, cut: m.cut,

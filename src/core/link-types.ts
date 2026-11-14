@@ -35,6 +35,8 @@ export interface OutboxRow {
   createdAt: string; updatedAt: string;
   /** X19: an intake chain's per-step outcomes and why it stopped (null for every other type). */
   steps?: ResultStep[] | null; stop?: ResultStop | null;
+  /** Rev 24: the family's name an `unclear` intake result carried (the unclear card); cleared when resolved. */
+  resultName?: string | null;
 }
 export type NewOutboxRow = Pick<OutboxRow, 'id' | 'type' | 'payload' | 'note' | 'dedupeKey' | 'serviceDate' |
   'studentId' | 'personId' | 'createdBy' | 'leaderId' | 'leaderName'> & {
