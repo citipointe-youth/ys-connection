@@ -4,6 +4,11 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+NEEDS-ACTION ROUND 2 2026-11-14  (ysc-v176, LINK_REV 24)
+-------------------------------------------------------------------------------
+- New youth & consent: Decline / Undo on each Needs-you or Ready row (intakeMark), a Declined (n) chip, Waiting rows grey and uncounted, Refresh for the week on screen only with "Refreshing... (week x of y)", unclear card shows the family name. Migration 0057.
+
+-------------------------------------------------------------------------------
 NEEDS-ACTION ROUND 2026-11-14  (ysc-v175)
 -------------------------------------------------------------------------------
 - About page removed (More, login screen, the login scope sheet).

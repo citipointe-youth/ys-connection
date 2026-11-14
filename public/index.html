@@ -791,7 +791,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-nm{font-weight:600;font-size:15px;flex:1;min-width:0}
 .lk-st{font-size:12px;margin-top:2px;font-weight:500}
 .lk-st .ic-s{width:12px;height:12px;vertical-align:-2px}
-.lk-st.wait{color:#92400e}.lk-st.ok{color:#047857}.lk-st.bad{color:#b91c1c}.lk-st.prac{color:var(--ink-mid)}
+.lk-st.grey{color:var(--ink-faint)}.lk-st.wait{color:#92400e}.lk-st.ok{color:#047857}.lk-st.bad{color:#b91c1c}.lk-st.prac{color:var(--ink-mid)}
 .lk-done{margin-top:6px}
 .lk-done summary{list-style:none;cursor:pointer;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;min-height:40px;box-sizing:border-box}
 .lk-done summary::-webkit-details-marker{display:none}
@@ -13435,7 +13435,7 @@ function _lkEvents() {
     checkIn: 'Check-in', checkOut: 'Check-out', addGroupMember: 'Add to lifegroup', removeGroupMember: 'Remove from lifegroup',
     removeFromFlowStep: 'Remove from flow step' };
   ['firstTimerCheckIn', 'submitReport', 'editReport', 'completeStep', 'intakeAnswer', 'intakeSave', 'intakeText',
-    'consentSave', 'consentLookup', 'consentFix', 'consentLink'].forEach((k) => { ev[k] = _lkVerb(k); });
+    'consentSave', 'intakeMark', 'consentLookup', 'consentFix', 'consentLink'].forEach((k) => { ev[k] = _lkVerb(k); });
   return ev;
 }
 // "Cody -> Sam (iPhone · Safari)": the arrow is the SVG icon; every value escaped.
@@ -13474,7 +13474,7 @@ async function _lkLogExport() {
 function _lkVerb(t) {
   return { checkIn: 'Check in', checkOut: 'Check out', firstTimerCheckIn: 'First-timer check-in', submitReport: 'Lifegroup report',
     editReport: 'Report edit', completeStep: 'Flow step', intakeAnswer: 'Intake answer', intakeSave: 'Intake save', intakeText: 'Intake text',
-    consentSave: 'Consent save', consentLookup: 'Consent lookup', consentFix: 'Consent fix', consentLink: 'Consent link' }[t] || t;
+    consentSave: 'Consent save', intakeMark: 'Intake decline', consentLookup: 'Consent lookup', consentFix: 'Consent fix', consentLink: 'Consent link' }[t] || t;
 }
 // APP-63: words for the admin page, never raw codes (an unknown code still shows as itself).
 function _lkWord(kind, v) {
@@ -13799,7 +13799,7 @@ function _ikReasons() {
 }
 // The newest action that says something (an answer the console already planned says nothing; cancelled never shows).
 function _ikAct(actions) {
-  return (actions || []).find((a) => a && a.status !== 'cancelled' && !(a.type === 'intakeAnswer' && a.status === 'sent')) || null;
+  return (actions || []).find((a) => a && a.status !== 'cancelled' && a.type !== 'intakeMark' && !(a.type === 'intakeAnswer' && a.status === 'sent')) || null; // rev 24: a Decline / Undo is not a save, it never owns the chip
 }
 // The overlay chip for a list row (§7.5): { label, tone, line } or null. rows = the list it sits in (counts the queue ahead).
 function _ikChip(row, st, rows) {
@@ -14123,7 +14123,7 @@ function _ikQRow(it) { const p = (it && it.payload) || {}; return p.date + '|' +
 // RV-I-m3: one kept item per slot: a newer one (new id) replaces the kept older one, which must never land after it.
 // Answers per family; sheet saves per type + row (a text also per text key). Fixes/links/lookups have no slot.
 function _ikQSlot(it) {
-  if (!it || !['intakeAnswer', 'intakeSave', 'consentSave', 'intakeText'].includes(it.type)) return null;
+  if (!it || !['intakeAnswer', 'intakeSave', 'consentSave', 'intakeText', 'intakeMark'].includes(it.type)) return null;
   return it.type + '|' + _ikQRow(it) + (it.type === 'intakeText' ? '|' + (it.payload || {}).key : '');
 }
 // Same payload whatever the key order.
@@ -14660,7 +14660,7 @@ function _hubStage(c, now, cut, flowsKnown) {
 // [code, text]: the real reason, never a code. R2 (operator 2026-10-30): a missing parent form is said plainly, never hidden.
 function _hubReasons(c, st, fixes) {
   const out = [], ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
-  if (ir && ir.status === 'needs-you') out.push(['hold', ir.reason === 'Waiting for parent form' ? 'No parent form yet' : ir.reason || 'Needs a look']);
+  if (ir && ir.status === 'needs-you') out.push([String(ir.reason || '').startsWith('Waiting for replies until') ? 'waiting' : 'hold', ir.reason ==='Waiting for parent form' ? 'No parent form yet' : ir.reason || 'Needs a look']);
   if (cr && cr.status === 'needs-you') out.push([String(cr.reason || '').startsWith('Waiting for replies until') ? 'waiting' : 'hold', cr.reason || 'Needs a look']); // 13 Nov: Waiting = nothing to do yet, not counted
   if (c.mis) out.push(['differs', 'Profile differs from the consent form']);
   for (const r of [ir, cr]) {
@@ -14693,16 +14693,20 @@ function _hubNext(c) {
   return null;
 }
 function _hubFamilies(src) {
-  const fams = new Map(), byPerson = new Map(), loose = [], lists = Object.entries((src && src.lists) || {});
+  const fams = new Map(), byPerson = new Map(), loose = [], declined = [], lists = Object.entries((src && src.lists) || {});
+  // Rev 24: a declined row leaves every list, count and Save all; it shows only under the Declined chip. I.decl = my taps the console has not pushed back yet.
+  const dl = (typeof _ik === 'function' && _ik().decl) || {}, isDecl = (m, d, r) => { const v = dl[m + '|' + d + '|' + r.key]; return v !== undefined ? v : !!r.declined; };
   const fam = (k) => { if (!fams.has(k)) fams.set(k, { key: k, kids: [] }); return fams.get(k); };
   const add = (k, c) => { fam(k).kids.push(c); if (c.personId) byPerson.set(c.personId, c); };
   const of = (m) => lists.filter(([k, l]) => k.startsWith(m + '|') && l).sort(([a], [b]) => a.localeCompare(b)).map(([, l]) => l);
   for (const l of of('intake')) for (const r of l.rows || []) {
+    if (isDecl('intake', l.date, r)) { declined.push({ mode: 'intake', date: l.date, row: r }); continue; }
     const was = r.personId && byPerson.get(r.personId);
     if (was) { was.intake = { date: l.date, row: r }; continue; } // a newer date wins
     add('f:' + (r.family || r.key), { name: r.title, personId: r.personId || null, intake: { date: l.date, row: r }, consent: null, flow: null, mis: null });
   }
   for (const l of of('consent')) for (const r of l.rows || []) {
+    if (isDecl('consent', l.date, r)) { declined.push({ mode: 'consent', date: l.date, row: r }); continue; }
     const c = byPerson.get(r.key);
     if (c) c.consent = { date: l.date, row: r };
     else add('p:' + r.key, { name: r.title, personId: r.key, intake: null, consent: { date: l.date, row: r }, flow: null, mis: null });
@@ -14714,10 +14718,10 @@ function _hubFamilies(src) {
     else add('p:' + r.personId, { name: _ikFormName(r.name), personId: r.personId, intake: null, consent: null, flow: r, mis: null });
   }
   ((src && src.mis) || []).forEach((m, i) => { const c = m && byPerson.get(m.personId); if (c) c.mis = { row: m, i }; else loose.push(i); });
-  return { fams: [...fams.values()], loose };
+  return { fams: [...fams.values()], loose, declined };
 }
 function _hubModel(src, now, cut, st, fixes) {
-  const { fams, loose } = _hubFamilies(src), known = Array.isArray(src && src.flows), order = HUB_STAGES.map((s) => s[0]);
+  const { fams, loose, declined } = _hubFamilies(src), known = Array.isArray(src && src.flows), order = HUB_STAGES.map((s) => s[0]);
   for (const f of fams) {
     for (const c of f.kids) { c.stage = _hubStage(c, now, cut, known); c.reasons = _hubReasons(c, st, fixes); c.next = _hubNext(c); }
     f.title = _ikAnd(f.kids.map((c) => c.name));
@@ -14725,7 +14729,8 @@ function _hubModel(src, now, cut, st, fixes) {
     f.needs = f.kids.some((c) => c.reasons.some((r) => r[0] !== 'waiting'));
     f.date = f.kids.flatMap((c) => [c.intake && c.intake.date, c.consent && c.consent.date, c.flow && c.flow.due]).filter(Boolean).sort().pop() || '';
   }
-  return { fams: fams.sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' })), loose };
+  return { fams: fams.sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' })), loose,
+    declined: declined.sort((a, b) => String(a.row.title).localeCompare(String(b.row.title), undefined, { sensitivity: 'base' })) };
 }
 // Every query word in the name, any order. A consent form is one hit per child (_ikClSplit: "Jo & Bo Sample", "Jo Sample, Bo Sample").
 function _hubSearch(M, forms, q) {
@@ -14771,6 +14776,7 @@ async function _hubLoad(quiet) {
     const got = _intakeOn(I.head) ? await Promise.all(want.map(([m, d]) => get('/link/intake?mode=' + m + '&date=' + encodeURIComponent(d)).catch(() => null))) : [];
     if (_ik() !== I || I.gen !== gen) return;
     I.hub = { lists: Object.fromEntries(want.map(([m, d], i) => [m + '|' + d, got[i]]).filter(([, l]) => l)), flows: fl ? fl.rows || [] : null, snap, at: Date.now() };
+    for (const k of Object.keys(I.decl || {})) { const [m, d, key] = k.split('|'), rs = (I.hub.lists[m + '|' + d] || {}).rows, x = rs && rs.find((y) => y.key === key); if (!x || !!x.declined === I.decl[k]) delete I.decl[k]; } // the console's push now says it
     if (fl) { LINK.flows = fl.rows || []; LINK.fSteps = fl.steps || []; } // the step sheet (Remove, Mark consent) reads LINK.flows
     // Only the lists Refresh asked for count; an unreadable one (null) never holds it open, but one of them must be newer.
     const asked = IK_LK_KINDS.map((k) => snap && snap.kinds && snap.kinds[k]);
@@ -14797,10 +14803,20 @@ async function _hubRefresh() {
   const I = _ik();
   if (I.hubAsk) return;
   I.hubAsk = Date.now(); _ikDraw();
-  const h = I.hub || {};
-  const asks = [API.post('/link/consents/refresh', {}).catch(() => null)];
-  for (const k of Object.keys(h.lists || {})) { const [m, d] = k.split('|'); if (m === 'intake' || m === 'consent') asks.push(API.post('/link/intake/refresh', { mode: m, date: d }).catch(() => null)); }
-  await Promise.all(asks);
+  // Only the week on screen (Current / Last; All = every week), one week at a time, newest first.
+  const h = I.hub || {}, wk = _hubWk(), today = _siteDay(Date.now()), byWeek = new Map();
+  for (const k of Object.keys(h.lists || {}).sort((a, b) => b.split('|')[1].localeCompare(a.split('|')[1]))) {
+    const [m, d] = k.split('|');
+    if ((m === 'intake' || m === 'consent') && _hubInWeek(d, wk, today)) { const w = _lkWeekStart(d); if (!byWeek.has(w)) byWeek.set(w, []); byWeek.get(w).push([m, d]); }
+  }
+  const weeks = [...byWeek.values()], forms = API.post('/link/consents/refresh', {}).catch(() => null);
+  for (let i = 0; i < weeks.length; i++) {
+    I.hubWeek = { x: i + 1, y: weeks.length }; _ikDraw();
+    await Promise.all(weeks[i].map(([m, d]) => API.post('/link/intake/refresh', { mode: m, date: d }).catch(() => null)));
+    if (_ik() !== I) return;
+  }
+  await forms;
+  I.hubWeek = null;
   if (_ik() !== I) return;
   if (!(h.snap && h.snap.live)) { for (const k of ['unlinked', 'mismatches', 'forms']) _ikLkGo(k, 1, ''); I.hubAsk = 0; }
   _hubLoad(true);
@@ -14823,8 +14839,42 @@ function _hubFamRow(f, fi) {
   const many = f.kids.length > 1;
   return `<div class="li lk-row rc" role="button" tabindex="0" onclick="_hubOpen(${Number(fi)}, 0)"><div class="rc-top"><div class="lk-nm">${esc(f.title)}</div>`
     + `<span class="rc-pills">${f.kids.map((c) => _hubChip(c, many) + _hubSaveTag(c)).join('')}</span>${icS('chevr')}</div>`
-    + f.kids.flatMap((c) => c.reasons.map((r) => `<div class="lk-st ${r[0] === 'hold' || r[0] === 'waiting' ? 'wait' : 'bad'}">${esc((many ? c.name + ': ' : '') + r[1])}</div>`)).join('') + '</div>';
+    + f.kids.flatMap((c) => c.reasons.map((r) => `<div class="lk-st ${r[0] === 'waiting' ? 'grey' : r[0] === 'hold' ? 'wait' : 'bad'}">${esc((many ? c.name + ': ' : '') + r[1])}</div>`)).join('')
+    + f.kids.map((c) => _hubDeclBtn(c, many)).join('') + '</div>';
 }
+// Rev 24 Decline: a needs-you or ready row (the one the family opens) can be declined; the console is told with an intakeMark.
+function _hubDeclBtn(c, many) {
+  const early = c.stage === 'form' || c.stage === 'elvanto', t = early ? c.intake || c.consent : c.consent || c.intake;
+  if (!t || !t.row || (t.row.status !== 'needs-you' && t.row.status !== 'ready')) return '';
+  const mode = t === c.intake ? 'intake' : 'consent';
+  return `<div class="lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_hubMarkRow(${_icJs(mode)},${_icJs(t.date)},${_icJs(t.row.key)},'decline')">${esc(many ? 'Decline ' + String(c.name || '').split(' ')[0] : 'Decline')}</button></div>`;
+}
+// Declined chip body: only the declined rows, each with Undo (no Save, no Text).
+function _hubDeclHtml(M) {
+  return M.declined.map((x) => `<div class="li lk-row rc"><div class="rc-top"><div class="lk-nm">${esc(x.row.title)}</div><span class="lk-tag">${esc('Declined')}</span>`
+    + `<button type="button" class="btn btn-secondary btn-sm" onclick="_hubMarkRow(${_icJs(x.mode)},${_icJs(x.date)},${_icJs(x.row.key)},'undo')">Undo</button></div>`
+    + `<div class="lk-d">${esc((x.mode === 'consent' ? 'Consent ' : 'Intake ') + _lkDay(x.date))}</div></div>`).join('') || '<div class="lk-hint">Nothing declined.</div>';
+}
+async function _hubMarkRow(mode, date, key, mark) {
+  const I = _ik(), k = mode + '|' + date + '|' + key;
+  I.decl = I.decl || {}; I.mk = I.mk || {};
+  if (I.mk[k]) return;
+  I.mk[k] = true;
+  const item = { kind: 'action', id: _lkUuid(), type: 'intakeMark', payload: { mode, date, row: key, mark }, note: null, leaderId: null }, back = I.decl[k];
+  I.decl[k] = mark === 'decline'; _ikDraw(); // shown at once
+  const undo = () => { if (back === undefined) delete I.decl[k]; else I.decl[k] = back; };
+  let say = mark === 'decline' ? 'Declined. Undo is under the Declined chip.' : 'Back on the list.';
+  try {
+    const r = _ikOutcome(await _ikPost([item]), item.id);
+    if (!(r && ['saved', 'replay', 'duplicate'].includes(r.outcome))) { undo(); say = (r && r.message) || 'Not saved. Try again.'; }
+  } catch (e) {
+    if (_ikQFind('intakeMark', key, date)) say = 'Not sent yet. It goes again by itself.'; else { undo(); say = (e && e.message) || 'Not saved. Try again.'; }
+  }
+  delete I.mk[k];
+  if (_ik() !== I) return;
+  toast(say); _ikDraw(); _hubLoad(true);
+}
+function _hubDeclToggle() { const I = _ik(); I.hubDeclView = !I.hubDeclView; _ikDraw(); }
 // Fix round 24 Oct (Task 5): after Save all / Text all, how many of the batch the console has finished (sent, refused, cancelled, unclear).
 async function _hubSendPoll(I) {
   const s = I.hubSend;
@@ -14862,6 +14912,12 @@ function _hubSetWk(v) { _ik().hubWk = v; try { localStorage.setItem('yap_hub_wk'
 function _hubBodyHtml() {
   const I = _ik(), st = _ikSt(), M = _hubM(), q = String(I.hubQ || '').trim(), row = (f) => _hubFamRow(f, M.fams.indexOf(f));
   I.hubShown = M.fams;
+  I.hubDeclChip = '';
+  if (!q && (I.hubDeclView || M.declined.length)) {
+    const on = !!I.hubDeclView, chip = `<div class="filter-row"><button type="button" class="fc ${on ? 'on' : ''}" aria-pressed="${on}" onclick="_hubDeclToggle()">${esc('Declined (' + M.declined.length + ')')}</button></div>`;
+    if (on) return chip + _hubDeclHtml(M);
+    I.hubDeclChip = chip;
+  }
   if (q) {
     const s = _hubSearch(M, _hubRows('forms'), q), forms = _hubRows('forms') || [];
     const h = (s.fams.length ? `<div class="lk-sec">Families (${s.fams.length})</div>` + s.fams.map(row).join('') : '')
@@ -14876,7 +14932,7 @@ function _hubBodyHtml() {
   const unl = (_hubRows('unlinked') || []).map((f, i) => [f, i]).filter(([f]) => inWk(f && f.submitted)); // keep each form's own index
   const n = need.length + unl.length + loose.length + ((typeof _usRows !== 'undefined' && _usRows) || []).length;
   const old = _hubAddDays(today, -28), open = I.hubOpen || {}, tx = _hubBulkBtn({ ...M, fams }, 'text', _hubTextAll, wk);
-  return _hubSendHtml() + (tx ? `<div class="strip">${tx}</div>` : '') + `<details class="lk-done"${open.need ? ' open' : ''} ontoggle="_hubToggle('need', this.open)"><summary>${esc('Needs action (' + n + ')')} ${icS('chevd')}</summary>` + need.map(row).join('') + unl.map(([f, i]) => _ikClRow(f, i, '', st)).join('')
+  return (I.hubDeclChip || '') + _hubSendHtml() + (tx ? `<div class="strip">${tx}</div>` : '') + `<details class="lk-done"${open.need ? ' open' : ''} ontoggle="_hubToggle('need', this.open)"><summary>${esc('Needs action (' + n + ')')} ${icS('chevd')}</summary>` + need.map(row).join('') + unl.map(([f, i]) => _ikClRow(f, i, '', st)).join('')
     + loose.map((i) => _ikMisRow(mis[i], i, '', st)).join('') + '<div id="unsent-list"></div>' + (n ? '' : '<div class="lk-hint">Nothing needs you.</div>') + '</details>'
     + HUB_STAGES.map(([k, label]) => {
       const fs = fams.filter((f) => f.stage === k && !(k === 'done' && f.date < old));
@@ -14946,7 +15002,7 @@ function _hubPage() {
   const I = _ik(), st = _ikSt(), at = _hubCheckedAt();
   if (!I.hub) return I.err ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div><button type="button" class="btn btn-secondary btn-sm" onclick="_hubLoad(false)">Try again</button>` : progBar('Loading');
   return `<div class="sbar"><input id="hub-q" type="search" maxlength="60" placeholder="Search a name or consent form" aria-label="Search a name or consent form" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(I.hubQ || '')}" oninput="_hubQ(this.value)"></div>`
-    + `<div class="ik-stl">${at ? `<span class="lk-d">Checked ${esc(_lkSeen(at))} ·</span>` : ''}<button type="button" class="ik-lnk"${I.hubAsk ? ' disabled' : ''} onclick="_hubRefresh()">${I.hubAsk ? 'Checking…' : 'Refresh'}</button></div>`
+    + `<div class="ik-stl">${at ? `<span class="lk-d">Checked ${esc(_lkSeen(at))} ·</span>` : ''}<button type="button" class="ik-lnk"${I.hubAsk ? ' disabled' : ''} onclick="_hubRefresh()">${I.hubAsk ? 'Refreshing...' + (I.hubWeek && I.hubWeek.y > 1 ? ' (week ' + I.hubWeek.x + ' of ' + I.hubWeek.y + ')' : '') : 'Refresh'}</button></div>`
     + `<div class="tbbar" role="group" aria-label="Show">${[['cur', 'Current week'], ['last', 'Last week'], ['all', 'All']].map(([k, l]) => `<button type="button" class="tbbtn ${_hubWk() === k ? 'on' : ''}" aria-pressed="${_hubWk() === k}" onclick="_hubSetWk('${k}')">${esc(l)}</button>`).join('')}</div>`
     + _ikBanner(st, null) + (I.err ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div>` : '')
     + `<div id="hub-res">${_hubBodyHtml()}</div>` + (_ikModuleOn() ? _ikConsentHelp() : ''); // the help is the intake consent rules

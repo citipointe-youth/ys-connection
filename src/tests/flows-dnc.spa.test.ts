@@ -420,7 +420,7 @@ describe('Y6c _lkVerb', () => {
   it('names every intake and consent type in words', () => {
     const v = loadFns(['_lkVerb']);
     const types = ACTION_TYPES.filter((t) => /^(intake|consent)/.test(t));
-    expect(types.length).toBe(7);
+    expect(types.length).toBe(8);
     for (const t of types) expect(v._lkVerb(t)).toMatch(/^[A-Z][a-z]+ [a-z]+$/);
     expect(v._lkVerb('checkIn')).toBe('Check in'); // the old ones unchanged
   });

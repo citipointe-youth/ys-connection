@@ -98,7 +98,7 @@ describe('search per child', () => {
 // Task 10 adds its bulk helpers to LANDING_NAMES (ruling R5).
 const LANDING_NAMES = ['_hubSendHtml', 'esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubTextNext', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText',
-  '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_hubSaveTag', '_hubBodyHtml', '_hubBulkRows', '_hubBulkHtml', '_hubBulkBtn', '_hubTextAll', '_ikReadyRows', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays'];
+  '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_icJs', '_hubDeclBtn', '_hubDeclHtml', '_hubSaveTag', '_hubBodyHtml', '_hubBulkRows', '_hubBulkHtml', '_hubBulkBtn', '_hubTextAll', '_ikReadyRows', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays'];
 describe('landing', () => {
   const env = (I: any) => loadFns(LANDING_NAMES,
     `${STAGES}\nconst IK_FIX_REASON = {}; const __I = ${JSON.stringify(I)}; const _ik = () => __I; const _ikSt = () => ({});
@@ -290,7 +290,7 @@ describe('Sending X of N (fix round 24 Oct, Task 5)', () => {
   };
   const body = (hubSend: any) => loadFns(['esc', '_hubBodyHtml', '_hubSendHtml', '_hubAddDays', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays'], `${STG}
     const __I = { hubSend: ${JSON.stringify(hubSend)}, hubQ: '' }; const _ik = () => __I; const _ikSt = () => ({});
-    const _hubM = () => ({ fams: [], loose: [] }); const _hubRows = () => []; const _hubBulkHtml = () => ''; const _hubBulkBtn = () => ''; const _hubTextAll = () => '';
+    const _hubM = () => ({ fams: [], loose: [], declined: [] }); const _hubRows = () => []; const _hubBulkHtml = () => ''; const _hubBulkBtn = () => ''; const _hubTextAll = () => '';
     const _hubSearch = () => ({ fams: [], forms: [] }); const _hubFamRow = () => ''; const icS = () => '';`, ['_hubBodyHtml', '_ik']);
   it('Save all from the hub records the saved ids; the strip reads "Saving 1 of 3…"; Text all says Sending', async () => {
     const F2 = mkGo('consentSave', ['saved', 'replay', 'saved', 'duplicate']);
