@@ -46,6 +46,16 @@ export function loadFns(names: string[], prelude = '', returns: string[] = names
   if (/\b_lkRcType\(/.test(body) && !names.includes('_lkRcType')) body += '\n' + extractFn(src, '_lkRcType');
   if (/\b_lkRcDone\(/.test(body) &&!names.includes('_lkRcDone')) body += '\n' + extractFn(src, '_lkRcDone');
   if (/\b_LK_RC\b/.test(body) && !/\b_LK_RC\s*=/.test(prelude)) prelude = 'const _LK_RC = {};\n' + prelude;
+  // 16 Nov 2026 (flows filters): the "You" label, the not-in-Elvanto list and Only mine's I-am read come along.
+  if (/\b_lkWho\(/.test(body) && !names.includes('_lkWho')) body += '\n' + extractFn(src, '_lkWho');
+  if (/\b_lkNotInElvHtml\(/.test(body) && !names.includes('_lkNotInElvHtml')) body += '\n' + ['_lkNotInElvHtml', '_lkNotInElv', '_lkAdmins'].filter((n) => !names.includes(n)).map((n) => extractFn(src, n)).join('\n');
+  if (/\bgetMyLeaderId\(/.test(body) && !names.includes('getMyLeaderId') && !/getMyLeaderId = |function getMyLeaderId/.test(body + prelude)) {
+    body += '\n' + extractFn(src, 'getMyLeaderId');
+    if (!/\b(?:var|let|const) S\b/.test(prelude)) prelude = 'var S = {};\n' + prelude;
+  }
+  if (/\b_lkCatStep\(/.test(body) && !names.includes('_lkCatStep')) body += '\n' + extractFn(src, '_lkCatStep');
+  if (/\b_lkCatHtml\(/.test(body) && !names.includes('_lkCatHtml')) body += '\n' + extractFn(src, '_lkCatHtml');
+  if (/\bLK_PCATS\b/.test(body) && !/\bLK_PCATS\s*=/.test(prelude)) prelude = src.match(/^const LK_PCATS = \[[\s\S]*?\]\];/m)![0] + '\n' + prelude;
   // A door tap or row asks _lkSending (a stub prelude with no queue answers false).
   if (/\b_lkSending\(/.test(body) && !names.includes('_lkSending')) body += '\n' + extractFn(src, '_lkSending');
   // Plain-language pass (2026-10-25): a function that reads _lkSay / _lkSys / _lkPlainStatus brings them (and _lkBoss) along.

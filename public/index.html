@@ -851,7 +851,7 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .fc.lk-ff-boy{color:var(--boy-dark)}.fc.lk-ff-girl{color:var(--girl-dark)}.fc.lk-ff-mix{color:var(--mix-dark)}
 .fc.lk-ff-mix.on{background:var(--mix-dark);border-color:var(--mix-dark);color:#fff}
 .fc.lk-ff-boy.on{background:var(--boy-dark);border-color:var(--boy-dark);color:#fff}.fc.lk-ff-girl.on{background:var(--girl-dark);border-color:var(--girl-dark);color:#fff}
-.lk-ff2{display:flex;gap:8px;margin-bottom:10px}.lk-ff2 .fs{flex:1 1 0;min-width:0;min-height:44px}.lk-ff2 .fi{flex:2 1 0;min-width:0;min-height:44px}
+.lk-ff2{display:flex;gap:8px;margin-bottom:10px;align-items:center}.lk-ff2 .fs{flex:2 1 0;min-width:0;min-height:44px}.lk-ff2 .fi{flex:4.5 1 0;min-width:0;min-height:44px}.lk-ff2 .lk-mine{flex:0 0 auto;display:flex;align-items:center;gap:4px;min-height:44px;font-size:13px;cursor:pointer}.lk-ff2 .lk-mine input{width:20px;height:20px}
 .lk-ff{flex-wrap:nowrap}.lk-ff .fc{min-height:36px;flex:1 1 0;padding:6px 2px;font-size:13px;white-space:nowrap;text-align:center}
 .lk-cf{gap:4px}.lk-cf .fc{font-size:12px;padding:6px 0;min-width:0} /* six chips fit a 375px phone */
 @media(pointer:coarse){.lk-ff .fc{min-height:44px}} /* impeccable 2026-10-24 #7: back to the I1 44px chip ruling (36px above won on order) */
@@ -12785,6 +12785,8 @@ function _lkYpAdd(pid) {
 // ── Flow steps (F3; spec §11.3) ──
 // The location's today: the check-in read's date when known, else the phone clock.
 function _lkToday() { return LINK.today || _siteDay(Date.now()); }
+// Elvanto prints "You" for a row held by the account the console runs as; it is nobody's own name in the app.
+function _lkWho(r) { const n = String((r && (r.assignedLeaderName || r.assignedTo)) || '').trim(); return /^you$/i.test(n) ? 'Console account' : n; }
 function _lkFlowRow(id) { return (LINK.flows || []).find((r) => r.rowId === id) || null; }
 // The step's action: still on this phone, else this phone's last answer, else the server's open row, else the server's
 // last refusal (S-1/D7; absent on an older server).
@@ -12866,6 +12868,18 @@ function _lkFfGet() {
   try { const v = JSON.parse(localStorage.getItem('yap_lk_flowf') || 'null'); if (Array.isArray(v)) { const k = v.filter((x) => all.includes(x)); return (LINK.ff = k.length === 1 ? k : all); } } catch (e) {}
   return (LINK.ff = all);
 }
+// Assigned here to a leader Elvanto can't give the person to: Elvanto still shows the Console account, so that leader sees nothing in Elvanto.
+function _lkNotInElv(r) {
+  if (!r.assignedLeaderId || !r.personId) return false;
+  const l = (LINK.fLeaders || []).find((x) => x.id === r.assignedLeaderId);
+  return !l || !l.personId || !_lkAdmins(r, l.personId);
+}
+function _lkNotInElvHtml(rows) {
+  const xs = (rows || []).filter(_lkNotInElv);
+  if (!xs.length) return '';
+  return `<details class="lk-alert warn" style="display:block;margin-bottom:10px"><summary>${xs.length} assigned in YS but not visible on that leader's Elvanto</summary>`
+    + xs.map((r) => `<div class="lk-d">${esc(r.name)} · ${esc(r.stepName)} → ${esc(r.assignedLeaderName || 'a leader')}</div>`).join('') + '</details>';
+}
 function _lkFfPick(k) { // '' = All quads
   LINK.ff = LK_FF.some((x) => x[0] === k) ? [k] : LK_FF.map((x) => x[0]);
   try { localStorage.setItem('yap_lk_flowf', JSON.stringify(LINK.ff)); } catch (e) {}
@@ -12879,7 +12893,7 @@ function _lkFqGet() {
 }
 // Every space-split term must be in the student + leader text (case-blind substring).
 function _lkFqHit(r, q) {
-  const t = [r.name, r.assignedLeaderName, r.assignedTo].filter(Boolean).join(' ').toLowerCase();
+  const t = [r.name, _lkWho(r)].filter(Boolean).join(' ').toLowerCase();
   return String(q || '').toLowerCase().split(/\s+/).filter(Boolean).every((w) => t.includes(w));
 }
 // Typing redraws only #lk-fbody (the list under the filter row), so the search box keeps focus and the phone keyboard.
@@ -12893,18 +12907,27 @@ function _lkFqSet(v) {
   const nb = t.querySelector('#lk-fbody');
   b.innerHTML = nb ? nb.innerHTML : '';
 }
+// "Only mine": rows whose current leader is this phone's "I am". Kept for this browser session.
+function _lkMinePick(on) {
+  if (on && !getMyLeaderId()) { LINK.fm = false; _lkIamPick(() => { LINK.fm = true; _lkFlowsDraw(); }); _lkFlowsDraw(); return; }
+  LINK.fm = !!on;
+  try { sessionStorage.setItem('yap_lk_flowm', on ? '1' : ''); } catch (e) {}
+  _lkFlowsDraw();
+}
 function _lkFfHtml(on) {
   const one = on.length === 1 ? on[0] : '';
   return `<div class="lk-ff2"><select class="fs" aria-label="Quad" onchange="_lkFfPick(this.value)">${[['', 'All quads']].concat(LK_FF.map(([k, l]) => [k, l.replace(/^(J|S)\w+/, '$1r')]))
     .map(([k, l]) => `<option value="${k}"${k === one ? ' selected' : ''}>${l}</option>`).join('')}</select>
+    <label class="lk-mine"><input type="checkbox"${LINK.fm ? ' checked' : ''} onchange="_lkMinePick(this.checked)"> Only mine</label>
     <input type="search" class="fi" aria-label="Search student or leader name" placeholder="Search name" autocomplete="off" value="${esc(_lkFqGet())}" oninput="_lkFqSet(this.value)"></div>`;
 }
 // The rows this login sees on the screen (quad + search only for admin/oversight).
 function _lkFlowVisible() {
   const rows = LINK.flows || [];
   if (!_lkBoss()) return rows;
-  const q = _lkFqGet();
-  return _lkFlowShown(rows, _lkFfGet(), gradeBands()).filter((r) => !q.trim() || _lkFqHit(r, q));
+  const q = _lkFqGet(), me = getMyLeaderId();
+  if (LINK.fm === undefined) { try { LINK.fm = sessionStorage.getItem('yap_lk_flowm') === '1'; } catch (e) { LINK.fm = false; } }
+  return _lkFlowShown(rows, _lkFfGet(), gradeBands()).filter((r) => (!LINK.fm || (me && r.currentLeaderId === me)) && (!q.trim() || _lkFqHit(r, q)));
 }
 // Flow kinds 'people' / 'parent' (_lkHubOwned finds the Parent Consent flow's first step by kind).
 // Y2b: the two flow names come from this location's settings (Youth Setup, ministryConfig.elvanto); a blank one matches nothing.
@@ -13020,7 +13043,7 @@ function _lkFlowDue(r, today) {
 }
 function _lkFlowRowHtml(r, today, boss) {
   const a = _lkFlowAct(r), rid = esc(r.rowId);
-  const who = r.assignedLeaderName || r.assignedTo || '';
+  const who = _lkWho(r);
   const meta = [_lkFlowDue(r, today), who ? esc(who) : ''].filter(Boolean).join(' · ');
   let btn = '';
   if (a && a.status === 'queued') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkStepUndo('${rid}')">Undo</button>`;
@@ -13048,7 +13071,7 @@ function _lkFlowsHtml() {
   if (boss) {
     // 6 Nov: ticks survive a filter change, but bulk acts only on ticked rows that are shown; the bar says how many are hidden.
     const n = _lkSelIds(shown, LINK.fsel).length, hid = _lkSelIds(rs, LINK.fsel).length - n;
-    top += _lkFfHtml(_lkFfGet());
+    top += _lkFfHtml(_lkFfGet()) + _lkNotInElvHtml(rs);
     body = n || hid ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
       ${n ? `<button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} Complete ${n}</button>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_lkBulkReassignOpen()"${LINK.frBusy ? ' disabled' : ''}>Reassign ${n}</button>` : ''}
@@ -13123,6 +13146,25 @@ function _lkStepConsents() {
   go('link-intake');
   const I = _ik(); I.hubQ = q; _ikDraw();
 }
+// Assign-a-category step (Elvanto step 3): a guided choice instead of Elvanto's tick boxes. The console ticks Change People Category
+// (and, for Inactive, Date Inactivated + Reason Other + Reason Comments). 16 Nov 2026.
+const LK_PCATS = [['member', 'Church member', 'Repeatedly attending any Citipointe service and/or lifegroup, and joined a team. Or their family attend the church.'],
+  ['visitor', 'Visitor', 'Comes occasionally, e.g. for major events or to services once a term.'],
+  ['inactive', 'Inactive', 'Said they are no longer interested in attending, or no replies to any form of communication.']];
+function _lkCatStep(r) { return !!r && /categor/i.test(r.stepName || '') && !_lkHubOwned(r); }
+function _lkCatPick(k) {
+  const f = LINK.fs; if (!f) return;
+  f.cat = k;
+  if (k === 'inactive' && !f.inDate) f.inDate = _lkToday();
+  _lkStepDraw();
+}
+function _lkCatHtml(f) {
+  return `<div class="fg"><div class="fl">Category</div>${LK_PCATS.map(([k, l, d]) => `<label class="lk-chk" style="align-items:flex-start;gap:10px;min-height:44px"><input type="radio" name="lk-cat" style="margin-top:4px"${f.cat === k ? ' checked' : ''} onchange="_lkCatPick('${k}')"> <span><b>${l}</b><br><span class="lk-d">${esc(d)}</span></span></label>`).join('')}</div>`
+    + (f.cat === 'inactive' ? `<div class="fg"><label class="fl" for="lk-in-date">Date inactivated</label><input type="date" id="lk-in-date" class="fi" value="${esc(f.inDate || '')}" onchange="if(LINK.fs)LINK.fs.inDate=this.value">
+      <p class="lk-hint">Reason is set to Other.</p>
+      <label class="fl" for="lk-in-cmt">Reason comments (required)</label><textarea id="lk-in-cmt" class="fi" rows="2" maxlength="200" oninput="if(LINK.fs)LINK.fs.inCmt=this.value">${esc(f.inCmt || '')}</textarea>
+      <p class="lk-hint">If they have never replied to a message, also send them to step 5 in Elvanto.</p></div>` : '');
+}
 function _lkStepHtml() {
   const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
   if (!r) return '';
@@ -13143,11 +13185,11 @@ function _lkStepHtml() {
         : l && !_lkOffers(r, l.personId) ? q4("Elvanto doesn't offer them for the next step. Complete will leave it to Elvanto to pick.") : ''}`;
   } else if (r.personId) {
     // other logins see who has the person; Complete keeps them (the server sets it). No app leader known = Elvanto picks.
-    assign = `<p class="lk-sub">Assigned to: ${esc(r.assignedLeaderName || r.assignedTo || 'Nobody')}</p>
+    assign = `<p class="lk-sub">Assigned to: ${esc(_lkWho(r) || 'Nobody')}</p>
       <p class="lk-hint">${r.currentLeaderId && r.currentLeaderLinked ? 'Complete gives the next step to them if Elvanto offers them.' : _lkSys('Elvanto will pick who gets the next step.')} Ask the admin to change it.</p>`;
   }
   const done = _lkCanComplete(r) ? (_lkFlowKind(r) === 'parent' ? `<p class="lk-sub">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` : '')
-    + (_lkNotReceived(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(_lkNotReceivedText(r))}</div></div>` : '') + `<div class="fg"><label class="fl" for="fl-note-2">Note</label><textarea id="fl-note-2" class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
+    + (_lkNotReceived(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(_lkNotReceivedText(r))}</div></div>` : '') + (_lkCatStep(r) ? _lkCatHtml(f) : '') + `<div class="fg"><label class="fl" for="fl-note-2">Note</label><textarea id="fl-note-2" class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
       <div class="lk-d lk-right" id="lk-fs-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
     <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>` : '';
   const rm = _lkCanRemove(r) ? `<button type="button" class="btn btn-ghost btn-full bus-danger" onclick="_lkRemoveAsk()">Remove from this step</button>` : '';
@@ -13192,7 +13234,7 @@ function _lkPickList(r) {
   // offered is the NEXT step's list: it gates only Complete's assignTo (_lkOffers), never this list.
   const ls = (LINK.fLeaders || []).filter((l) => (_lkFits(l, r.grade, r.gender) && _lkAdmins(r, l.personId)) || l.id === r.currentLeaderId);
   // a current leader missing from a stale LINK.fLeaders: keep them listed so the sheet never unassigns by itself
-  if (r.currentLeaderId && !ls.some((l) => l.id === r.currentLeaderId)) ls.push({ id: r.currentLeaderId, name: r.assignedLeaderName || r.assignedTo || 'A leader', personId: null });
+  if (r.currentLeaderId && !ls.some((l) => l.id === r.currentLeaderId)) ls.push({ id: r.currentLeaderId, name: _lkWho(r) || 'A leader', personId: null });
   return ls;
 }
 // The sheet's pick (LINK.fs.pick = leader id), null = Nobody or no longer in the list.
@@ -13317,7 +13359,18 @@ function _lkStepSend() {
   if (!r) return;
   const lid = getMyLeaderId();
   if (!lid) { _lkIamPick(() => _lkOpenStep(r.rowId)); return; }
-  const note = String(f.note || '').trim() ? f.note : null;
+  let note = String(f.note || '').trim() ? f.note : null, cat = {};
+  if (_lkCatStep(r)) {
+    const cm = String(f.inCmt || '').trim();
+    if (!f.cat) { toast('Pick a category first.'); return; }
+    if (f.cat === 'inactive') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(f.inDate || '')) { toast('Set the date inactivated.'); return; }
+      if (!cm) { toast('Add the reason comments.'); return; }
+      cat = { category: 'inactive', inactiveOn: f.inDate, reasonComment: cm.slice(0, 200) };
+    } else cat = { category: f.cat };
+    const line = 'Category: ' + LK_PCATS.find((x) => x[0] === f.cat)[1] + (cat.reasonComment ? ' (' + cat.reasonComment + ')' : ''); // the note keeps it even if an older console ignores the fields
+    note = note ? note + '\n' + line : line;
+  }
   // admin/oversight: the pick gets the next step (no Elvanto person = Elvanto's usual pick); a changed pick is also saved here.
   // Other logins send no assignTo: the server gives the next step to the current assignee.
   const l = _lkBoss() && r.personId ? _lkPicked(r) : null;
@@ -13326,7 +13379,7 @@ function _lkStepSend() {
   LINK.fs = null;
   closeModal();
   _lkPush({ kind: 'action', id: _lkUuid(), type: 'completeStep',
-    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv, ...(l && l.personId && _lkOffers(r, l.personId) ? { assignTo: l.personId } : {}) },
+    payload: { rowId: r.rowId, flowId: r.flowId, stepId: r.stepId, personId: r.personId || null, notePrivate: !!f.priv, ...cat, ...(l && l.personId && _lkOffers(r, l.personId) ? { assignTo: l.personId } : {}) },
     note, leaderId: lid, _f: r.rowId }, true);
 }
 // Still on this phone: removed here (nothing sent).
