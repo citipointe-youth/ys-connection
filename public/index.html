@@ -12878,7 +12878,7 @@ function _lkNotInElvHtml(rows) {
   const xs = (rows || []).filter(_lkNotInElv);
   if (!xs.length) return '';
   return `<details class="lk-alert warn" style="display:block;margin-bottom:10px"><summary>${xs.length} assigned in YS but not visible on that leader's Elvanto</summary>`
-    + xs.map((r) => `<div class="lk-d">${esc(r.name)} · ${esc(r.stepName)} → ${esc(r.assignedLeaderName || 'a leader')}</div>`).join('') + '</details>';
+    + xs.map((r) => `<div class="lk-d">${esc(r.name)} · ${esc(r.stepName)} for ${esc(r.assignedLeaderName || 'a leader')}</div>`).join('') + '</details>';
 }
 function _lkFfPick(k) { // '' = All quads
   LINK.ff = LK_FF.some((x) => x[0] === k) ? [k] : LK_FF.map((x) => x[0]);

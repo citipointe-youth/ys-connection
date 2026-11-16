@@ -834,6 +834,9 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         // row's own is unreadable), so a Complete queued on a phone before the flag arrived is still refused.
         const consent = shownConsent(row, new Map(roster.map((x) => [x.personId, x])));
         if (isDnc(consent)) throw new LinkDnc();
+        // 16 Nov 2026: category fields belong to the Assign-a-category step only (security review): any other step refuses them.
+        const cp = p as { category?: string; inactiveOn?: string; reasonComment?: string };
+        if ((cp.category || cp.inactiveOn || cp.reasonComment) && !/categor/i.test(row.stepName)) throw new BadRequestError('That step has no category to set.');
         // Review C1: the consent wait moves on through the consent check only (consentSave never comes through here).
         // R4 (consents run 2026-10-17, rev 9): or, past the student's consent Friday with no reply, with consent not received
         // recorded by the console first. The server decides: notReceived is set here, never taken from the phone.
