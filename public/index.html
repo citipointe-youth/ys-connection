@@ -13162,8 +13162,7 @@ function _lkCatHtml(f) {
   return `<div class="fg"><div class="fl">Category</div>${LK_PCATS.map(([k, l, d]) => `<label class="lk-chk" style="align-items:flex-start;gap:10px;min-height:44px"><input type="radio" name="lk-cat" style="margin-top:4px"${f.cat === k ? ' checked' : ''} onchange="_lkCatPick('${k}')"> <span><b>${l}</b><br><span class="lk-d">${esc(d)}</span></span></label>`).join('')}</div>`
     + (f.cat === 'inactive' ? `<div class="fg"><label class="fl" for="lk-in-date">Date inactivated</label><input type="date" id="lk-in-date" class="fi" value="${esc(f.inDate || '')}" onchange="if(LINK.fs)LINK.fs.inDate=this.value">
       <p class="lk-hint">Reason is set to Other.</p>
-      <label class="fl" for="lk-in-cmt">Reason comments (required)</label><textarea id="lk-in-cmt" class="fi" rows="2" maxlength="200" oninput="if(LINK.fs)LINK.fs.inCmt=this.value">${esc(f.inCmt || '')}</textarea>
-      <p class="lk-hint">If they have never replied to a message, also send them to step 5 in Elvanto.</p></div>` : '');
+      <label class="fl" for="lk-in-cmt">Reason comments (required)</label><textarea id="lk-in-cmt" class="fi" rows="2" maxlength="200" oninput="if(LINK.fs)LINK.fs.inCmt=this.value">${esc(f.inCmt || '')}</textarea></div>` : '');
 }
 function _lkStepHtml() {
   const f = LINK.fs, r = f && _lkFlowRow(f.rowId);
