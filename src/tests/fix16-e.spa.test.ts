@@ -12,13 +12,13 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays',
   '_lkLastReportLabel', '_lkAddReport', '_lkCatFilter', '_lkCat', '_lkTint', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
-  '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
-  '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
+  '_lkFormHtml', '_lkFirstLast', '_lkRfRows', '_lkRfListHtml', '_lkRfBarText', '_lkRfDraw', '_lkRfGuestStep', '_lkRfWeek', '_lkSwS', '_lkSwE', '_lkRfMore', '_lkRfRemove', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
+  '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel',
   '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkAdmins', '_lkReassignElv', '_lkPicked', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
-  'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
+  'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkLoadGroups', '_lkHomeFlows', '_lkHomeDraw', '_lkHomeLgHtml', '_lkHomeLgLoad', '_lkMeetsMin', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml',
-  '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
+  '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
   // run 2026-10-15 lane B: DNC, flow filters, bulk Complete, Remove from step, console offline
   '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFfGet',
   '_lkFfHtml', '_lkFfPick', '_lkFqGet', '_lkFqSet', '_lkFqHit', '_lkFlowShown', '_lkFlowBucket', '_lkTickable', '_lkSelIds', '_lkSel', '_lkSelAll', '_lkSelClear', '_lkFlowsDraw',
@@ -236,7 +236,7 @@ describe('F-25 report form: default service, a draft per group and date, Discard
   it('a back gesture keeps the draft: reopening the same group and date restores the ticks and note', () => {
     const h = setup();
     h.fns._lkNewReport('2026-10-16');
-    h.fns._lkRfTick(P(61)); h.fns._lkRfGuests('3');
+    h.fns._lkRfTick(P(61)); h.fns._lkRfGuestStep(3);
     h.get().LINK.rf = null; // the header arrow / Android back (navBack) drops the form silently
     h.fns._lkNewReport('2026-10-16');
     expect(h.get().LINK.rf.ticks).toEqual({ [P(61)]: true });
@@ -270,29 +270,15 @@ describe('F-25 report form: default service, a draft per group and date, Discard
   });
 });
 
-describe('F-38 member remove: Cancel remove while it can be cancelled, Add back once sent', () => {
-  const view = (status: string) => ({ groupId: G(1), canEdit: true, members: [{ personId: P(70), name: 'Tom LDummyton', leader: false, grade: 11, studentId: null }],
-    changes: [{ id: 'x1', type: 'removeGroupMember', personId: P(70), name: 'Tom LDummyton', status, reason: null }] });
-  const label = (status: string) => {
+describe('F-38 member remove: the report form hides a removal in flight; picking the person again cancels it', () => {
+  it('a removal on the phone or pending leaves the form list; the picker still offers that person', () => {
     const h = setup();
     const L = h.get().LINK;
-    L.gm[G(1)] = view(status); L.gmOpen[G(1)] = true;
-    const out = h.fns._lkMembersHtml(L.groups[0]);
-    const m = out.match(/_lkMemKeep\([^)]*\)">([^<]*)<\/button>/);
-    return m ? m[1] : null;
-  };
-  it('labels per state', () => {
-    expect(label('pending')).toBe('Cancel remove');
-    expect(label('claimed')).toBeNull();
-    expect(label('sent')).toBe('Add back');
-    expect(label('unclear')).toBe('Add back');
-  });
-  it('a remove still on this phone says Cancel remove', () => {
-    const h = setup();
-    const L = h.get().LINK;
-    L.gm[G(1)] = { ...view('sent'), changes: [] }; L.gmOpen[G(1)] = true;
-    h.fns._lkQSet([{ kind: 'action', id: 'q1', type: 'removeGroupMember', payload: { groupId: G(1), personId: P(70) }, _n: 'Tom LDummyton' }]);
-    expect(h.fns._lkMembersHtml(L.groups[0])).toMatch(/_lkMemKeep\([^)]*\)">Cancel remove</);
+    L.gm[G(1)] = { groupId: G(1), canEdit: true, members: [{ personId: P(70), name: 'Tom LDummyton', leader: false, grade: 11, studentId: null }],
+      changes: [{ id: 'x1', type: 'removeGroupMember', personId: P(70), name: 'Tom LDummyton', status: 'pending', reason: null }] };
+    h.fns._lkNewReport();
+    expect(h.fns._lkRfListHtml(L.groups[0])).not.toContain('Tom LDummyton');
+    expect(extractFn(html, '_lkYpDraw')).toContain("r.state === 'member' || r.state === 'adding'"); // 'removing' is not excluded
   });
 });
 

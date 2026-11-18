@@ -385,7 +385,7 @@ describe('Y6c DNC line on Home (Needs attention)', () => {
   it('fix round: Home makes one /link/status read a minute (Needs attention and the offline line share it)', async () => {
     const calls: string[] = [];
     (globalThis as any).__y6 = calls;
-    const h = loadFns(['_attnLoad', '_modOn', '_attnCounts', '_attnMine', '_lkHomeFlows', '_lkBoss', '_lkOfflineHtml', '_lkOfflineSince', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], `
+    const h = loadFns(['_attnLoad', '_modOn', '_attnCounts', '_attnMine', '_lkHomeFlows', '_lkHomeDraw', '_lkHomeLgHtml', '_lkHomeLgLoad', '_lkMeetsMin', '_lkBoss', '_lkOfflineHtml', '_lkOfflineSince', '_lkSeen', '_lkTime', '_lkAt', 'fmtDay'], `
       var S = { user: { id: 'u', role: 'admin' }, page: 'home', settings: { ministryConfig: { structure: { timeZone: 'Australia/Brisbane' }, modules: {} } } };
       var LINK = { status: null, statusAt: 0, flowsAt: 0 };
       let _attn = null, _attnBusy = null;
@@ -404,11 +404,11 @@ describe('Y6c DNC line on Home (Needs attention)', () => {
 });
 
 describe('Y6c Flow step wording', () => {
-  it('the admin "Assigned to" select has the Reassign / Complete hint under it', () => {
+  it('the admin "Assigned to" select has no hint under it', () => {
     const src = extractFn(Y6_HTML, '_lkStepHtml');
     const i = src.indexOf('id="lk-assign"');
     expect(i).toBeGreaterThan(0);
-    expect(src.slice(i)).toMatch(/<\/select>[^]*?'Reassign changes the leader in Elvanto too\.' : 'Reassign changes who has this person\.'\} Complete gives them the next step\./); // rev 22
+    expect(src.slice(i)).not.toContain('Reassign changes'); // 18 Nov 2026: the hint under the select is gone
     expect(src).not.toContain('Next step goes to');
   });
   it('assignee-needed says what to do', () => {

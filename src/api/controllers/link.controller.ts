@@ -20,7 +20,7 @@ export function makeLinkController(deps: { link: LinkService; intake?: IntakeSer
     checkin: (r: HttpRequest) => L.checkin(actor(r), r.query['serviceTime']),
     listActions: (r: HttpRequest) => L.listActions(actor(r), r.query),
     batch: (r: HttpRequest) => L.batch(actor(r), r.body),
-    lifegroups: (r: HttpRequest) => L.lifegroups(actor(r)),
+    lifegroups: (r: HttpRequest) => L.lifegroups(actor(r), r.query),
     flows: (r: HttpRequest) => L.flows(actor(r)),
     consentLookup: (r: HttpRequest) => L.consentLookup(actor(r), r.query), // rev 6 (R2 b/c)
     consentSnapshot: (r: HttpRequest) => L.consentSnapshot(actor(r)), // rev 19

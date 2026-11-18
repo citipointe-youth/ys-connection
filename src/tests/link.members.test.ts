@@ -122,6 +122,15 @@ describe('T6 rules', () => {
   });
 });
 
+describe('GET /link/lifegroups ?leaderId (Home report-due card)', () => {
+  it('mine = the "I am" leads the group; absent without an "I am"', async () => {
+    const h = await setup();
+    expect((await h.svc.lifegroups(GRADE, { leaderId: L_DANA })).groups[0]!.mine).toBe(true);
+    expect((await h.svc.lifegroups(GRADE, { leaderId: L_EVE })).groups[0]!.mine).toBe(false);
+    expect((await h.svc.lifegroups(GRADE)).groups[0]).not.toHaveProperty('mine');
+  });
+});
+
 describe('T5 GET /link/lifegroups/:groupId/members', () => {
   it('studentId only for a student this login may see; others are name + roster grade; never a phone', async () => {
     const h = await setup();

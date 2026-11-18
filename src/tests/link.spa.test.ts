@@ -12,13 +12,13 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays',
   '_lkLastReportLabel', '_lkAddReport', '_lkCatFilter', '_lkCat', '_lkTint', '_lkWeekStart', '_lkWeeks', '_lkReports', '_lkReportOn', '_lkWeekReports', '_lkWeekReport', '_lkReportDateFor', '_lkReportHtml', '_lkWeekBodyHtml', '_lkWeekGo', '_lkGroup', '_lkGroupAct', '_lkGroupsHtml', '_lkGroupHtml', '_lkNoteCount',
-  '_lkFormHtml', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
-  '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfGuests', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel', '_lkDraftKey', '_lkDraftGet', '_lkDraftDrop',
+  '_lkFormHtml', '_lkFirstLast', '_lkRfRows', '_lkRfListHtml', '_lkRfBarText', '_lkRfDraw', '_lkRfGuestStep', '_lkRfWeek', '_lkSwS', '_lkSwE', '_lkRfMore', '_lkRfRemove', '_lkPaintGroups', '_lkOpenGroup', '_lkGroupsBack', '_lkNewReport', '_lkEditReport', '_lkFormOpen',
+  '_lkRfDate', '_lkRfDnm', '_lkRfTick', '_lkRfSvc', '_lkRfNote', '_lkReportSend', '_lkReportUndo', '_lkReportCancel', '_lkDraftKey', '_lkDraftGet', '_lkDraftDrop',
   '_lkWho', '_lkCatStep', '_lkCatHtml', '_lkNotInElv', '_lkNotInElvHtml', '_lkAdmins', '_lkTapToast', '_lkToastDraw', '_lkToastUndo', '_lkSvcDay', '_lkNotToday', '_lkDayCheck', '_lkNoTonight', '_lkTakeServices', '_lkLoadPeople', '_lkPickService', '_lkPickHtml', '_lkPickFoot',   '_lkToday', '_lkFlowRow', '_lkFlowAct', '_lkFlowGroups', '_lkFirstName', '_lkSmsHref', '_lkTextHref', '_lkMyFlowRows', '_lkFlowDue', '_lkFlowRowHtml', '_lkFlowDrop', '_lkFlowsHtml', '_lkHomeFlowsHtml', '_lkCanComplete', '_lkHubOwned', '_lkReassign', '_lkFits', '_lkPickList', '_lkAdmins', '_lkReassignElv', '_lkPicked', '_lkOffers', '_lkAssignSave', '_lkRevLine', '_busGradeChip', 'fmtPhone', '_drop', 'helpTip', '_lkStepHtml', '_lkOpenStep', '_lkStepDraw', '_lkStepNote', '_lkStepSend',
   '_lkStepUndo', '_lkStepCancel', '_lkPaintFlows', '_lkStepActions', 'lgDisplayName', '_lkWord',
-  'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkHomeFlows', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
+  'renderLink', '_lkTickStart', '_lkStatusLoad', '_lkLoadGroups', '_lkHomeFlows', '_lkHomeDraw', '_lkHomeLgHtml', '_lkHomeLgLoad', '_lkMeetsMin', '_lkLoadFlows', '_lkAdmFresh', '_lkLastFriday', '_lkAt', '_lkLogWho', '_lkLogRowHtml', '_lkLogFile', '_lkLogAoa',
   '_lkLogExport', '_lkEvents', '_lkVerb', '_lkRcHtml', '_lkRcDone', '_lkRcType', '_lkAdmStatusHtml', '_lkAdmMatchHtml', '_lkAdmCreate', '_lkAdmLoadRoster', '_lkAdmDraw', '_lkAdmLogListHtml', '_lkAdmLogHtml', '_lkAdminHtml', 'renderLinkAdmin', '_lkAdmLoadLog', '_lkAdmLoadActs',
-  '_lkMembersHtml', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
+  '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkYpDraw', '_lkYpAdd', '_lkMemQueue', '_lkMemRemove', '_lkMemKeep',
   // run 2026-10-15 lane B: DNC, flow filters, bulk Complete, Remove from step, console offline
   '_lkBoss', '_lkOfflineSince', '_lkOfflineHtml', '_lkFlowTypes', '_lkStepBlock', '_lkPeopleFlowFound', '_lkConsentWait', '_lkNotReceived', '_lkNotReceivedText', '_lkFlowFree', '_lkCanRemove', '_lkFlowVisible', '_lkFlowKind', '_lkFirstStep', '_lkFfGet',
   '_lkFfHtml', '_lkFfPick', '_lkFqGet', '_lkFqSet', '_lkFqHit', '_lkFlowShown', '_lkFlowBucket', '_lkTickable', '_lkSelIds', '_lkSel', '_lkSelAll', '_lkSelClear', '_lkFlowsDraw',
@@ -1327,12 +1327,13 @@ describe('F2 lifegroup report', () => {
     const h = setup();
     h.fns._lkNewReport();
     h.fns._lkRfTick(P(61)); h.fns._lkRfSvc(P(50));
-    expect(h.fns._lkFormHtml()).toContain('Who was there');
+    expect(h.fns._lkFormHtml()).toContain('lk-rl');
     h.fns._lkRfDnm(true);
     const rf = h.get().LINK.rf;
-    expect(rf.ticks).toEqual({}); expect(rf.svc).toBe('');
+    expect(rf.ticks).toEqual({ [P(61)]: true }); expect(rf.svc).toBe(''); // the ticks are kept (a mis-tap loses nothing) but never sent
     const form = h.fns._lkFormHtml();
-    expect(form).not.toContain('Who was there'); expect(form).not.toContain('_lkRfSvc'); expect(form).not.toContain('_lkRfTick');
+    expect(form).not.toContain('lk-rl'); expect(form).not.toContain('_lkRfSvc'); expect(form).not.toContain('_lkRfTick');
+    expect(form).toContain('Reason (optional)'); expect(form).toContain('aria-checked="true"'); // the toggle; the reason is the one note field
     h.fns._lkReportSend();
     expect(h.fns._lkQGet()[0].payload).toMatchObject({ didNotMeet: true, attendees: [], serviceTimeId: null });
   });
@@ -1434,7 +1435,7 @@ describe('F2 lifegroup report', () => {
     h.fns._lkReportSend();
     expect(h.fns._lkQGet()).toEqual([]);
     expect(strip(h.fns._lkFormHtml())).toContain('Pick a service, or pick No service.');
-    h.fns._lkRfSvc(P(50)); h.fns._lkRfTick(P(61)); h.fns._lkRfGuests('150');
+    h.fns._lkRfSvc(P(50)); h.fns._lkRfTick(P(61)); h.fns._lkRfGuestStep(150);
     h.fns._lkRfNote({ value: 'Great night' });
     h.fns._lkReportSend();
     const q = h.fns._lkQGet();
@@ -1462,7 +1463,7 @@ describe('F2 lifegroup report', () => {
     h.fns._lkReportSend();
     const it = h.fns._lkQGet()[0];
     expect(it).toMatchObject({ type: 'editReport', note: 'Edited', leaderId: 'L1' });
-    expect(it.payload).toEqual({ groupId: G(1), date: '2026-10-06', didNotMeet: false, attendees: [P(61), P(62), P(63)], guests: 2, notesPrivate: false,
+    expect(it.payload).toEqual({ groupId: G(1), date: '2026-10-06', didNotMeet: false, attendees: [P(62), P(61), P(63)], guests: 2, notesPrivate: false, // A-Z by first name, not the roster order
       serviceTimeId: null, reportId: G(9), base: { date: '2026-10-06', didNotMeet: false, attendees: [P(61), P(62)], guests: 2, serviceTimeId: null } });
   });
   it('the form no longer says what Elvanto will show; member names are escaped', () => {
@@ -1508,8 +1509,10 @@ describe('F2 lifegroup report', () => {
     h.fns._lkMemQueue(G(1), P(61), 'removeGroupMember', 'Ava Example');
     expect(h.fns._lkQGet()).toHaveLength(1);
     expect(h.fns._lkQGet()[0]).toMatchObject({ kind: 'action', type: 'removeGroupMember', payload: { groupId: G(1), personId: P(61) }, leaderId: 'L1', note: null });
-    expect(h.fns._lkMembersHtml(L.groups[0])).toContain('<s>Ava Example</s>');
+    h.fns._lkNewReport(); // the report form is where members are managed now
+    expect(h.fns._lkRfListHtml(L.groups[0])).not.toContain('Ava Example'); // a remove on its way leaves the list
     h.fns._lkMemQueue(G(1), P(61), 'addGroupMember', 'Ava Example');
+    expect(h.fns._lkRfListHtml(L.groups[0])).toContain('Ava Example');
     expect(h.fns._lkQGet()).toHaveLength(0);
     // an add of someone new: sent, refused by the server, shown on a greyed row with the reason; the name never leaves the phone
     h.fns._lkMemQueue(G(1), P(64), 'addGroupMember', 'Cal <b>New</b>');
@@ -1518,10 +1521,66 @@ describe('F2 lifegroup report', () => {
     expect(sent).not.toHaveProperty('_n');
     expect(h.fns._lkQGet()).toHaveLength(0);
     expect(L.mres[sent.id]).toMatchObject({ status: 'refused', personId: P(64), groupId: G(1), name: 'Cal <b>New</b>' });
-    const out = h.fns._lkMembersHtml(L.groups[0]);
-    expect(out).toContain('Cal &lt;b&gt;New&lt;/b&gt;');
-    expect(strip(out)).toContain('Already in this group.');
+    expect(h.fns._lkRfListHtml(L.groups[0])).not.toContain('Cal'); // a refused add is not a row; the toast says why
     expect(h.calls.toasts).toContain('Already in this group.');
+  });
+  it('18 Nov: removing and adding a student in the report form go to the link as removeGroupMember / addGroupMember; the new student is ticked', async () => {
+    vi.useFakeTimers();
+    const h = setup();
+    const L = h.get().LINK;
+    L.gm[G(1)] = { groupId: G(1), canEdit: true, changes: [], members: [{ personId: P(61), name: 'Ava Example', leader: false, grade: 9, studentId: null }, { personId: P(62), name: 'Ben Example', leader: true, grade: null, studentId: null }] };
+    L.youth = [{ personId: P(64), name: 'Cal New', grade: 9 }];
+    h.fns._lkNewReport();
+    h.fns._lkRfTick(P(61));
+    const list = h.fns._lkRfListHtml(L.groups[0]);
+    expect(list.match(/Remove from group/g)).toHaveLength(1); // the leader has no remove
+    expect(list.indexOf('Ben Example')).toBeLessThan(list.indexOf('Ava Example')); // leaders first
+    h.answers.push(true);
+    await h.fns._lkRfRemove(P(61));
+    expect(h.calls.asks[0]).toMatch(/^Remove Ava Example from /);
+    expect(h.fns._lkQGet()[0]).toMatchObject({ kind: 'action', type: 'removeGroupMember', payload: { groupId: G(1), personId: P(61) } });
+    expect(L.rf.ticks[P(61)]).toBeUndefined(); // a removed student is un-ticked
+    L.yp = { gid: G(1), q: '', grade: '' };
+    h.fns._lkYpAdd(P(64));
+    expect(h.fns._lkQGet().at(-1)).toMatchObject({ type: 'addGroupMember', payload: { groupId: G(1), personId: P(64) } });
+    expect(L.rf.ticks[P(64)]).toBe(true);
+    expect(h.fns._lkRfListHtml(L.groups[0])).toContain('Added · syncing to Elvanto');
+    expect(h.fns._lkRfBarText()).toContain('1 here');
+  });
+  it('the report form: First Last A-Z with leaders first, no pre-ticks, Private? unticked, Update on an edit', () => {
+    const h = setup();
+    const L = h.get().LINK;
+    L.gm[G(1)] = { groupId: G(1), canEdit: false, changes: [], members: [{ personId: P(61), name: 'Zed, Zoe', leader: false }, { personId: P(62), name: 'Amy Adams', leader: false }, { personId: P(63), name: 'Lee Lead', leader: true }] };
+    h.fns._lkNewReport();
+    const form = h.fns._lkFormHtml();
+    expect(form.indexOf('Lee Lead')).toBeLessThan(form.indexOf('Amy Adams'));
+    expect(form.indexOf('Amy Adams')).toBeLessThan(form.indexOf('Zoe Zed'));
+    expect(form).not.toContain('aria-checked="true"');
+    expect(form).toContain('onchange="LINK.rf.priv=this.checked"> Private?'); expect(form).not.toMatch(/checked onchange/);
+    expect(form).not.toContain('Remove from group'); // canEdit false: no remove / add
+    expect(form).toContain('>Send</button>');
+    h.fns._lkEditReport(G(9));
+    expect(h.fns._lkFormHtml()).toContain('>Update</button>');
+  });
+  it('18 Nov: Home card for a leaders group on its meeting day: report due from the start time, then Sent by', () => {
+    vi.useFakeTimers();
+    const h = setup();
+    const L = h.get().LINK, g = L.groups[0];
+    g.mine = true; g.meets = 'Tue 6:30 PM'; g.lastReport = null; g.history = [];
+    vi.setSystemTime(new Date('2026-10-13T08:00:00Z')); // Tue 18:00 Brisbane: before the start
+    expect(h.fns._lkHomeLgHtml()).toBe('');
+    vi.setSystemTime(new Date('2026-10-13T09:00:00Z')); // Tue 19:00
+    const due = h.fns._lkHomeLgHtml();
+    expect(due).toContain('report due'); expect(due).toContain(`_lgremOpen('${G(1)}')`);
+    vi.setSystemTime(new Date('2026-10-14T00:00:00Z')); // Wed
+    expect(h.fns._lkHomeLgHtml()).toBe('');
+    vi.setSystemTime(new Date('2026-10-13T09:00:00Z'));
+    g.lastReport = { reportId: G(9), date: '2026-10-13', time: '6:30 PM', by: 'Cody Codeman', at: '2026-10-13T09:40:00Z', didNotMeet: false, attendees: [], guests: 0, editable: true, blocked: null }; g.history = [g.lastReport];
+    const sent = h.fns._lkHomeLgHtml();
+    expect(strip(sent)).toContain('Sent by Cody Codeman 7:40 pm'); expect(sent).not.toContain('report due');
+    g.mine = false;
+    expect(h.fns._lkHomeLgHtml()).toBe(''); // only the leader's own groups
+    expect(h.fns._lkMeetsMin('Tue 6:30 PM')).toBe(18 * 60 + 30);
   });
   it('the page is routed; Submit and Edit hide when the console has the type off', () => {
     expect(extractFn(html, 'renderLink')).toContain("if (p === 'link-groups') { await renderLinkGroups(); return; }");
@@ -1642,18 +1701,18 @@ describe('F3 flow steps', () => {
     expect(sheet).not.toContain('_lkReassign');
     expect(sheet).not.toContain('_lkAssign');
     expect(sheet).toContain('Assigned to: Cody &lt;b&gt;Codeman&lt;/b&gt;');
-    expect(strip(sheet)).toContain('Complete gives the next step to them if Elvanto offers them. Ask the admin to change it.');
+    expect(strip(sheet)).not.toContain('Ask the admin to change it'); // 18 Nov 2026: the Assigned to hint is gone
     expect(sheet).toContain('_lkStepSend()');
     expect(sheet).not.toContain('Elvanto will show');
     // Elvanto's own assignee name when no app leader is known; then Elvanto picks the next leader
     const el = setup('L1', [row(1, { assignedTo: 'Sam <i>Example</i>', currentLeaderId: null })]);
     el.fns._lkOpenStep(F(1));
     expect(el.calls.modals[0]).toContain('Assigned to: Sam &lt;i&gt;Example&lt;/i&gt;');
-    expect(strip(el.calls.modals[0]!)).toContain('The system will pick who gets the next step. Ask the admin to change it.');
+    expect(strip(el.calls.modals[0]!)).not.toContain('Ask the admin to change it'); // 18 Nov 2026: the hint is gone
     // a known app leader with no Elvanto person: Elvanto still picks (Q9)
     const un = setup('L1', [row(1, { assignedLeaderId: 'L4', assignedLeaderName: 'Una Unlinked', currentLeaderId: 'L4', currentLeaderLinked: false })]);
     un.fns._lkOpenStep(F(1));
-    expect(strip(un.calls.modals[0]!)).toContain('The system will pick who gets the next step. Ask the admin to change it.');
+    expect(strip(un.calls.modals[0]!)).not.toContain('Ask the admin to change it'); // 18 Nov 2026: the hint is gone
     const nob = setup('L1', [row(1, { assignedTo: null })]);
     nob.fns._lkOpenStep(F(1));
     expect(strip(nob.calls.modals[0]!)).toContain('Assigned to: Nobody');
@@ -1708,7 +1767,8 @@ describe('F3 flow steps', () => {
       expect(strip(sheet)).toContain('Una Unlinked');
       expect(strip(sheet)).not.toContain('Gina Girl');
       expect(strip(sheet)).not.toContain('Ted Tenner');
-      expect(strip(sheet)).toContain('Reassign changes who has this person. Complete gives them the next step.');
+      expect(strip(sheet)).not.toContain('Complete gives them the next step'); // 18 Nov 2026: the hint under the select is gone
+      expect(strip(sheet)).not.toContain('Reassign changes');
       const btns = h.fns._lkStepBtns();
       expect(btns.indexOf('closeModal()')).toBeLessThan(btns.indexOf('_lkReassign()'));
       expect(btns.indexOf('_lkReassign()')).toBeLessThan(btns.indexOf('_lkStepSend()'));
@@ -1817,7 +1877,7 @@ describe('F3 flow steps', () => {
   });
   it('RFIX: a failed Home flows load is not retried on every render', async () => {
     let n = 0;
-    const h = makeEnv({ leaderId: 'L1', fresh: () => { n++; return Promise.reject(new Error('down')); } });
+    const h = makeEnv({ leaderId: 'L1', fresh: (p: string) => { if (/flows/.test(p)) n++; return Promise.reject(new Error('down')); } });
     await h.fns._lkHomeFlows(); await h.fns._lkHomeFlows(); await h.fns._lkHomeFlows();
     expect(n).toBe(1);
   });
@@ -1862,12 +1922,12 @@ describe('F3 flow steps', () => {
     expect(k.calls.modals[0]).toContain('Complete');
     expect(k.calls.modals[0]).toContain('Amy Follow-visit');
   });
-  it('the note stops at 1,800; Keep note private is shown; the old warning lines are gone', () => {
+  it('the note stops at 1,800; Private? is shown (unticked); the old warning lines are gone', () => {
     const h = setup();
     h.fns._lkOpenStep(F(2));
     const sheet = h.calls.modals[0]!;
     expect(sheet).toContain('maxlength="1800"');
-    expect(strip(sheet)).toContain('Keep note private');
+    expect(strip(sheet)).toContain('Private?'); expect(sheet).not.toMatch(/<input type="checkbox" checked/); expect(strip(sheet)).not.toContain('Keep note private');
     expect(strip(sheet)).not.toContain('Completing may send');
     const el = { value: 'y'.repeat(2500) };
     h.fns._lkStepNote(el);

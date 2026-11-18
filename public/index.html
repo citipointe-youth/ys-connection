@@ -839,6 +839,36 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .lk-right{text-align:right;margin-top:4px}
 .lk-chk{display:flex;align-items:center;gap:8px;font-size:15px;margin:4px 0 14px;cursor:pointer;min-height:40px}
 .lk-chk input{width:20px;height:20px}
+.lk-hlg{margin-bottom:var(--s2);border-left:5px solid var(--accent)}.lk-hlg.done{border-left-color:var(--success);background:var(--success-light)}
+.lk-sentc{border-left:5px solid var(--success);background:var(--success-light)}
+.lk-rh{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-bottom:var(--s3)}
+.lk-rg{font-family:var(--font-display);font-weight:700;font-size:var(--t-h2);min-width:0}
+.lk-wkc{display:flex;align-items:center;gap:var(--s1);flex:none}
+.lk-ar{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--paper-card);color:var(--ink);padding:0;display:inline-flex;align-items:center;justify-content:center}
+.lk-ar:disabled{opacity:.35}.lk-ar .ic-s{width:14px;height:14px}
+.lk-dchip{position:relative;display:inline-flex;align-items:center;min-height:32px;background:var(--chip);color:var(--accent-dark);font-weight:700;font-size:var(--t-sm);border-radius:999px;padding:0 var(--s3);overflow:hidden;white-space:nowrap}
+.lk-dchip input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.lk-dnm{display:flex;width:100%;align-items:center;justify-content:space-between;min-height:52px;padding:var(--s3) var(--s4);margin-bottom:var(--s3);border-radius:var(--radius);background:var(--paper-card);border:2px solid var(--line);font:inherit;font-size:var(--t-title);font-weight:700;color:var(--ink);cursor:pointer}
+.lk-dnm i{flex:none;width:44px;height:26px;border-radius:999px;background:#c3cad6;position:relative;transition:background .15s}
+.lk-dnm i:after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s}
+.lk-dnm.on{border-color:var(--danger);background:var(--danger-light);color:var(--danger)}.lk-dnm.on i{background:var(--danger)}.lk-dnm.on i:after{left:21px}
+.lk-rl{background:var(--paper-card);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.lk-rr{position:relative;overflow:hidden;border-bottom:1px solid var(--line);background:var(--danger)}.lk-rr:last-child{border-bottom:0}
+.lk-del{position:absolute;right:0;top:0;bottom:0;width:104px;border:0;background:var(--danger);color:#fff;font:inherit;font-size:var(--t-label);font-weight:700;padding:0 6px}
+.lk-ri{position:relative;display:flex;align-items:center;gap:10px;min-height:44px;padding:4px 4px 4px 12px;background:var(--paper-card);transition:transform .18s,background .15s;touch-action:pan-y;cursor:pointer;user-select:none}
+.lk-rr.open .lk-ri{transform:translateX(-104px)}.lk-rr.on .lk-ri{background:var(--accent-light)}
+.lk-addn{display:block;font-size:var(--t-micro);font-weight:500;color:#047857}
+.lk-more{flex:none;width:44px;height:44px;border:0;background:none;color:var(--ink-faint);font-size:20px;line-height:1;border-radius:50%}
+.lk-addb{display:block;width:100%;min-height:44px;margin:var(--s3) 0;border:2px dashed #aab4ff;background:none;border-radius:var(--radius-sm);color:var(--accent);font:inherit;font-weight:700}
+.lk-step{display:flex;align-items:center;justify-content:space-between;background:var(--paper-card);border-radius:var(--radius);padding:var(--s2) var(--s4);box-shadow:var(--shadow);margin-bottom:var(--s3);font-weight:600}
+.lk-step div{display:flex;align-items:center;gap:var(--s4);font-size:18px}
+.lk-step button{width:44px;height:44px;border-radius:50%;border:1.5px solid var(--accent);background:var(--paper-card);color:var(--accent);font-size:20px;line-height:1;padding:0}
+.lk-bar{position:sticky;bottom:calc(var(--nav-h) + var(--safe-b));z-index:40;display:flex;align-items:center;gap:var(--s2);margin:var(--s3) calc(-1 * var(--s4)) 0;padding:var(--s3) var(--s4);background:var(--paper-card);border-top:1px solid var(--line);box-shadow:0 -4px 12px rgba(18,35,59,.08)}
+.lk-bc{flex:1;min-width:0;color:var(--ink-mid);font-size:var(--t-sm)}.lk-bc b{color:var(--ink);font-size:var(--t-title)}
+.lk-pad{padding:var(--s3)}
+.lk-sv{margin:0 0 12px;font-size:17px;font-weight:700;color:var(--ink)}
+#lk-fs{padding-bottom:12px} /* the Private? tickbox clears the sticky buttons */
+.lk-fgn{margin-bottom:0}.lk-fgn .lk-right{margin-top:2px}
 /* R1 DO NOT CONTACT + R4 flow steps (run 2026-10-15) */
 .c-dnc{background:#b91c1c;color:#fff;letter-spacing:.03em}
 .dnc-banner{display:flex;gap:10px;align-items:flex-start;background:#b91c1c;color:#fff;border-radius:var(--radius-sm);padding:12px 14px;margin:0 0 12px;font-size:13px;line-height:1.4}
@@ -2190,12 +2220,13 @@ async function _bdayList(ids) {
 // L8: a lifegroup reminder opens that group's new report for the meeting date d, or just the group page when d's week
 // already has a report. Always through _lkOpenGroup (going to the page clears LINK.gid). A failed load leaves the page's error.
 async function _lgremOpen(gid, d) {
+  d = d || _siteDay(Date.now()); // the Home card: today's meeting
   go('link-groups');
   if (LINK.rf && LINK.rf.dirty && LINK.rf.mode === 'edit') return; // an unsaved edit has no draft: keep that form open
   if (!(await _lkLoadGroups(true)) || S.page !== 'link-groups') return;
   const g = (LINK.groups || []).find((x) => x.groupId === gid);
   if (!g) { toast("This group isn't on this login."); return; }
-  _lkOpenGroup(gid);
+  _lkOpenGroup(gid, true);
   const start = _lkWeekStart(d);
   if (!g.openAction && !_lkWeekReport(g, { start, end: _lkAddDays(start, 6) })) _lkNewReport(d); // a report still pending from the app counts as in
 }
@@ -3440,6 +3471,7 @@ const IC = {
   genderM:  '<circle cx="10" cy="14" r="6"/><line x1="14.5" y1="9.5" x2="20" y2="4"/><polyline points="14 4 20 4 20 10"/>',
   eye:      '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
   plus:     '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  minus:    '<line x1="5" y1="12" x2="19" y2="12"/>',
   /*BUS-HOOK*/ // ── Bus Ministry icons — copied verbatim from _design/bus-ministry-mockup.html's IC object ──
   search:   '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
   bus:      '<rect x="2" y="6" width="20" height="11" rx="2"/><line x1="2" y1="11" x2="22" y2="11"/><line x1="7" y1="6" x2="7" y2="11"/><line x1="17" y1="6" x2="17" y2="11"/><circle cx="7" cy="19" r="1.8"/><circle cx="17" cy="19" r="1.8"/>',
@@ -11716,7 +11748,7 @@ function _lkTick() {
   if (S.page === 'link-checkin' && LINK.svc) _lkLoadPeople(LINK.svc, true).then((ok) => { if (ok) _lkRefreshView(); });
   if (S.page === 'link-checkin' && !LINK.svc) _lkSvcReload(); // N10
   if (S.page === 'link-groups' && !LINK.rf) _lkLoadGroups(true).then((ok) => { if (ok) _lkRefreshView(); });
-  if (S.page === 'link-groups' && !LINK.rf && LINK.gid && LINK.gmOpen[LINK.gid]) _lkMembersLoad(LINK.gid, true);
+  if (S.page === 'link-groups' && LINK.gid && LINK.gmOpen[LINK.gid]) _lkMembersLoad(LINK.gid, true);
   if (S.page === 'link-flows' && !LINK.fs) _lkLoadFlows(true).then((ok) => { if (ok) _lkRefreshView(); });
   if (S.page === 'link-intake') _ikReload(); // T4: the list and the open family (10 s while something is Pending)
 }
@@ -12368,9 +12400,10 @@ function _lkCatFilter(v) {
 // One report: date, service, did-not-meet, guests, ticked members. Never notes. Edit only when the console says it can.
 function _lkReportHtml(g, r) {
   const att = r.attendees || [];
-  const names = (g.members || []).filter((m) => !m.leader && att.includes(m.personId)).map((m) => m.name); // B09: students only (ruling 4)
+  const names = (g.members || []).filter((m) => !m.leader && att.includes(m.personId)).map((m) => _lkFirstLast(m.name)).sort((a, b) => a.localeCompare(b)); // B09: students only (ruling 4); First Last, A-Z
+
   const kv = [['Date', _lkDay(r.date) + (r.time ? ' ' + r.time : '')]];
-  if (r.by) kv.push(['Sent by', r.by]); // the "I am" leader of the app's submit; absent for a report made in Elvanto
+  if (r.by) kv.push(['Sent by', r.by + (r.at ? ' ' + _lkTime(r.at) : '')]); // the "I am" leader of the app's submit (and when); absent for a report made in Elvanto
   if (r.didNotMeet) kv.push(['Group', 'Group did not meet']);
   else kv.push(['Guests', String(r.guests || 0)]);
   // Who came: collapsed by default (2026-10-14), the count stays on the summary line. F-49: it counts ticked members only
@@ -12390,6 +12423,11 @@ function _lkWeekBodyHtml(g, w) {
     return (dup ? `<div class="lk-alert warn">${icS('info')}<div>${dup} reports were sent for the same day. To cancel one out, edit it: untick everyone and set Guests to 0.</div></div>` : '')
       + rs.map((r) => _lkReportHtml(g, r)).join('')
       + (_lkCapOff('submitReport') ? '' : `<button type="button" class="btn btn-secondary btn-full" onclick="_lkAddReport('${esc(w.start)}')">${icS('plus')} Add report</button>`);
+  }
+  const a = _lkGroupAct(g), s = (LINK.sentAt || {})[g.groupId];
+  if (a && ['queued', 'pending', 'claimed'].includes(a.status) && (a.type === 'submitReport' || a.type === 'editReport')) {
+    const me = (LINK.ldrs || []).find((x) => x.id === getMyLeaderId());
+    return `<div class="card lk-sentc"><div class="lk-svc-t">${icS('check')} Report sent</div><p class="lk-sub">Sent by ${esc((me && me.fullName) || 'you')}${s ? ' ' + esc(_lkTime(new Date(s.at).toISOString())) : ''}. It is on its way; Edit appears once it has landed.</p></div>`;
   }
   const d = _lkReportDateFor(g.meets, w, _lkToday());
   if (d.state === 'later') return '<div class="card"><p class="lk-sub">This group has not met yet this week.</p></div>';
@@ -12414,48 +12452,116 @@ function _lkGroupHtml(g) {
   const gap = _lkWeeks(_lkToday()).findIndex((x) => !_lkWeekReports(g, x).length && _lkReportDateFor(g.meets, x, _lkToday()).state === 'ok');
   const jump = gap >= 0 && gap !== k ? `<button type="button" class="btn btn-secondary btn-sm btn-full" onclick="_lkWeekGo(${gap - k})">Go to the newest week with no report</button>` : '';
   return `<div class="card"${_lkTint(g)}><div class="lk-svc-t">${esc(lgDisplayName(g.name))}</div><div class="lk-d">${esc(g.meets)}</div>${line}</div>
-    ${_lkMembersHtml(g)}
     <div class="lk-wknav"><button type="button" class="btn btn-secondary btn-sm"${k >= 7 ? ' disabled' : ''} aria-label="Earlier week" onclick="_lkWeekGo(1)">${icS('arrl')}</button>
       <div class="lk-wkt"><b>${esc(_lkDay(w.start) + ' to ' + _lkDay(w.end))}</b><span class="lk-d">${when}</span></div>
       <button type="button" class="btn btn-secondary btn-sm"${k <= 0 ? ' disabled' : ''} aria-label="Later week" onclick="_lkWeekGo(-1)">${icS('arrr')}</button></div>
     ${jump}${_lkWeekBodyHtml(g, w)}`;
 }
 function _lkNoteCount(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' / 1,800'; }
+// 18 Nov 2026 (faster report): the report opens straight on this form. First Last names, leaders first then A-Z by first
+// name, the whole row ticks, nobody is pre-ticked. Members are managed here: swipe a row (or tap the dots) to remove,
+// "+ Add student" under the list. Both go through the phone queue to the console (addGroupMember / removeGroupMember).
+function _lkFirstLast(n) { const m = /^([^,]+),\s*(.+)$/.exec(String(n || '').trim()); return m ? m[2] + ' ' + m[1] : String(n || '').trim(); }
+function _lkRfRows(g) {
+  const v = LINK.gm[g.groupId];
+  const src = v && !v.err ? _lkMemberRows(v, _lkQGet(), LINK.mres, g.groupId).filter((r) => r.state === 'member' || r.state === 'adding')
+    : (g.members || []).map((m) => Object.assign({}, m, { state: 'member' }));
+  return src.map((r) => Object.assign({}, r, { fl: _lkFirstLast(r.name) }))
+    .sort((a, b) => (b.leader ? 1 : 0) - (a.leader ? 1 : 0) || a.fl.localeCompare(b.fl, undefined, { sensitivity: 'base' }));
+}
+function _lkRfListHtml(g) {
+  const f = LINK.rf, v = LINK.gm[g.groupId], ok = !!v && !v.err;
+  const canRm = ok && v.canEdit && !_lkMemOff('removeGroupMember'), canAdd = ok && v.canEdit && !_lkMemOff('addGroupMember');
+  const rows = _lkRfRows(g).map((r) => {
+    const on = !!f.ticks[r.personId], pid = esc(r.personId), rm = canRm && !r.leader;
+    return `<div class="lk-rr${on ? ' on' : ''}${LINK.openRow === r.personId && rm ? ' open' : ''}" data-pid="${pid}">${rm ? `<button type="button" class="lk-del" onclick="_lkRfRemove('${pid}')">Remove from group</button>` : ''}
+      <div class="lk-ri" role="checkbox" aria-checked="${on}" tabindex="0" onclick="_lkRfTick('${pid}')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();_lkRfTick('${pid}')}" ontouchstart="_lkSwS(event)" ontouchend="_lkSwE(event,this)">
+      <span class="lk-box${on ? ' on' : ''}">${on ? icS('tick') : ''}</span><span class="lk-nm">${esc(r.fl)}${r.state === 'adding' ? '<small class="lk-addn">Added · syncing to Elvanto</small>' : ''}</span>
+      ${r.leader ? '<span class="lk-chip lead">Leader</span>' : ''}${rm ? `<button type="button" class="lk-more" aria-label="More options for ${esc(r.fl)}" onclick="event.stopPropagation();_lkRfMore('${pid}')">${icS('kebab')}</button>` : ''}</div></div>`;
+  }).join('') || `<p class="lk-sub lk-pad">${ok ? 'No members.' : progBar('Loading')}</p>`;
+  return `<div class="lk-rl">${rows}</div>${canAdd ? `<button type="button" class="lk-addb" onclick="_lkMemPick('${esc(g.groupId)}')">${icS('plus')} Add student</button>` : ''}`;
+}
+function _lkRfBarText() {
+  const f = LINK.rf, g = _lkGroup();
+  if (!f || !g) return '';
+  if (f.didNotMeet) return `<b>Didn't meet</b>`;
+  const n = _lkRfRows(g).filter((r) => f.ticks[r.personId]).length, k = f.guests || 0;
+  return `<b>${n} here</b> · ${k} guest${k === 1 ? '' : 's'}`;
+}
+function _lkRfDraw() {
+  const g = _lkGroup(), f = LINK.rf;
+  if (!g || !f) return;
+  const el = document.getElementById('lk-rf-list'), c = document.getElementById('lk-rf-c');
+  if (el) el.innerHTML = _lkRfListHtml(g);
+  if (c) c.innerHTML = _lkRfBarText();
+}
+function _lkSwS(e) { const t = e.touches[0]; LINK.sw = { x: t.clientX, y: t.clientY }; }
+// A swipe left opens the row's Remove button (right closes it); `ontouchend` runs before the click it would cause.
+function _lkSwE(e, el) {
+  const t = e.changedTouches[0], s = LINK.sw, pid = el.parentNode.dataset.pid;
+  if (!s || !el.parentNode.querySelector('.lk-del')) return;
+  const dx = t.clientX - s.x;
+  if (Math.abs(dx) < 50 || Math.abs(t.clientY - s.y) > 30) return;
+  LINK.openRow = dx < 0 ? pid : null; LINK.swAt = Date.now(); // the tap that follows the swipe must not tick the row
+  _lkRfDraw();
+}
+function _lkRfMore(pid) { LINK.openRow = LINK.openRow === pid ? null : pid; _lkRfDraw(); }
+async function _lkRfRemove(pid) {
+  const g = _lkGroup(), f = LINK.rf;
+  if (!g || !f) return;
+  const gone = await _lkMemRemove(g.groupId, pid);
+  if (gone) delete f.ticks[pid];
+  LINK.openRow = null; _lkRfDraw();
+}
+function _lkRfWeek(n) {
+  const f = LINK.rf;
+  if (!f || f.mode === 'edit') return;
+  const today = LINK.today || f.date, d = _lkAddDays(f.date, 7 * n);
+  if (d <= today && d >= _lkAddDays(today, -56)) _lkRfDate(d);
+}
+function _lkRfGuestStep(n) {
+  const f = LINK.rf;
+  if (!f) return;
+  f.guests = Math.max(0, Math.min(99, (f.guests || 0) + n)); f.dirty = true;
+  const el = document.getElementById('lk-rf-gv');
+  if (el) el.textContent = f.guests;
+  const c = document.getElementById('lk-rf-c');
+  if (c) c.innerHTML = _lkRfBarText();
+}
 function _lkFormHtml() {
   const f = LINK.rf, g = _lkGroup();
   if (!f || !g) return '';
   const today = LINK.today || f.date, min = _lkAddDays(today, -56);
   const last = _lkReportOn(g, f.date);
   const clash = f.mode === 'submit' && !!last; // F-03: the console refuses a second report on a date (report-exists)
-  const date = f.mode === 'edit' ? `<div class="lk-svc-t">${esc(_lkDay(f.date))}</div><p class="lk-sub">The date of a report cannot be changed here.</p>`
-    : `<input type="date" class="fi" min="${esc(min)}" max="${esc(today)}" value="${esc(f.date)}" onchange="_lkRfDate(this.value)">`;
+  const edit = f.mode === 'edit';
+  const date = edit ? `<span class="lk-dchip">${esc(_lkDay(f.date))}</span>`
+    : `<div class="lk-wkc"><button type="button" class="lk-ar" aria-label="Previous week"${f.date <= min ? ' disabled' : ''} onclick="_lkRfWeek(-1)">${icS('arrl')}</button>
+      <label class="lk-dchip"><span>${esc(_lkDay(f.date))}</span><input type="date" aria-label="Report date" min="${esc(min)}" max="${esc(today)}" value="${esc(f.date)}" onchange="_lkRfDate(this.value)"></label>
+      <button type="button" class="lk-ar" aria-label="Next week"${f.date >= today ? ' disabled' : ''} onclick="_lkRfWeek(1)">${icS('arrr')}</button></div>`;
   let body = '';
   if (!f.didNotMeet) {
     const svcs = (LINK.services || []).slice();
     if (f.svc && f.svc !== 'none' && !svcs.some((s) => s.serviceTimeId === f.svc)) svcs.push({ serviceTimeId: f.svc, _saved: true });
     const opt = (v, t) => `<option value="${esc(v)}"${f.svc === v ? ' selected' : ''}>${esc(t)}</option>`;
-    body = `<div class="fg"><label class="fl">Who was there</label><div class="lk-lq-list">${(g.members || []).map((m) => {
-        const on = !!f.ticks[m.personId];
-        // F-40: a real checkbox for screen readers and keyboards (Space / Enter tick it).
-        return `<div class="lk-lq-row" role="checkbox" aria-checked="${on}" tabindex="0" onclick="_lkRfTick('${esc(m.personId)}')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();_lkRfTick('${esc(m.personId)}')}"><span class="lk-box${on ? ' on' : ''}">${on ? icS('tick') : ''}</span><div class="lk-nm">${esc(m.name)}</div>${m.leader ? '<span class="lk-chip lead">Leader</span>' : ''}</div>`;
-      }).join('') || '<p class="lk-sub">No members.</p>'}</div></div>
-      <div class="fg"><label class="fl" for="fl-guests">Guests</label><input id="fl-guests" type="number" class="fi" min="0" max="99" inputmode="numeric" value="${esc(f.guests)}" oninput="_lkRfGuests(this.value)"></div>
+    body = `<div id="lk-rf-list">${_lkRfListHtml(g)}</div>
+      <div class="lk-step"><span>Guests</span><div><button type="button" aria-label="Fewer guests" onclick="_lkRfGuestStep(-1)">${icS('minus')}</button><b id="lk-rf-gv">${esc(f.guests || 0)}</b><button type="button" aria-label="More guests" onclick="_lkRfGuestStep(1)">${icS('plus')}</button></div></div>
       <div class="fg"><label class="fl" for="fl-service">Service</label><select id="fl-service" class="fs" onchange="_lkRfSvc(this.value)">
         ${f.svc ? '' : '<option value="" selected>Pick a service</option>'}
         ${svcs.map((s) => opt(s.serviceTimeId, s._saved ? 'The saved service' : _lkSvcLabel(s))).join('')}${opt('none', 'No service')}</select>
         ${f.date && f.date < _lkAddDays(today, -7) ? '<p class="lk-sub lk-mt">Services older than 7 days are not listed. Pick No service.</p>' : ''}</div>`;
   }
-  return `<div class="card"><div class="mo-title">${f.mode === 'edit' ? 'Edit report' : 'New report'}</div><p class="lk-sub">${esc(lgDisplayName(g.name))}</p>
-    <div class="fg"><label class="fl">Date</label>${date}</div>
+  return `<div class="lk-rf"><div class="lk-rh"><div class="lk-rg">${esc(lgDisplayName(g.name))}</div>${date}</div>
     ${clash ? `<div class="lk-alert warn">${icS('info')}<div>${esc("There's already a report for that date. Edit it.")}${last.editable && !last.blocked ? `<div class="lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkEditReport('${esc(last.reportId)}')">Edit that report</button></div>` : '<p class="lk-sub">Edit it in Elvanto, or pick another date.</p>'}</div></div>` : ''}
-    <label class="lk-chk"><input type="checkbox"${f.didNotMeet ? ' checked' : ''} onchange="_lkRfDnm(this.checked)"> Group did not meet</label>
+    <button type="button" class="lk-dnm${f.didNotMeet ? ' on' : ''}" role="switch" aria-checked="${!!f.didNotMeet}" onclick="_lkRfDnm()">Group didn't meet<i></i></button>
     ${body}
-    <div class="fg"><label class="fl" for="fl-note">Note</label><textarea id="fl-note" class="fi" rows="4" maxlength="1800" oninput="_lkRfNote(this)">${esc(f.note)}</textarea>
-      <div class="lk-d lk-right" id="lk-rf-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
-    <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.rf.priv=this.checked"> Keep notes private</label>
+    <div class="card"><div class="lk-sec">${f.didNotMeet ? 'Reason (optional)' : 'Notes'}</div>
+      <textarea id="fl-note" class="fi" rows="${f.didNotMeet ? 2 : 4}" maxlength="1800" placeholder="${f.didNotMeet ? 'e.g. school camp' : 'Anything the team should know?'}" aria-label="${f.didNotMeet ? 'Reason' : 'Notes'}" oninput="_lkRfNote(this)">${esc(f.note)}</textarea>
+      <div class="lk-d lk-right" id="lk-rf-n">${_lkNoteCount(String(f.note || '').length)}</div>
+      <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.rf.priv=this.checked"> Private?</label></div>
     ${f.err && !clash ? `<div class="lk-alert warn">${icS('info')}<div>${esc(f.err)}</div></div>` : ''}
-    <div class="lk-acts"><button type="button" class="btn btn-secondary" onclick="_lkRfBack()">Cancel</button>
-      <button type="button" class="btn btn-primary"${clash ? ' disabled' : ''} onclick="_lkReportSend()">Send</button></div></div>`;
+    <div class="lk-bar"><div class="lk-bc" id="lk-rf-c">${_lkRfBarText()}</div><button type="button" class="btn btn-secondary" onclick="_lkRfBack()">Cancel</button>
+      <button type="button" class="btn btn-primary"${clash ? ' disabled' : ''} onclick="_lkReportSend()">${edit ? 'Update' : 'Send'}</button></div></div>`;
 }
 function _lkPaintGroups() {
   const g = LINK.gid ? _lkGroup() : null;
@@ -12466,7 +12572,7 @@ function _lkPaintGroups() {
 }
 async function _lkLoadGroups(quiet) {
   try {
-    const [r, c] = await Promise.all([API.fresh('/link/lifegroups', quiet), LINK.services ? null : API.fresh('/link/checkin', quiet).catch(() => null)]);
+    const [r, c] = await Promise.all([API.fresh('/link/lifegroups' + (getMyLeaderId() ? '?leaderId=' + encodeURIComponent(getMyLeaderId()) : ''), quiet), LINK.services ? null : API.fresh('/link/checkin', quiet).catch(() => null)]);
     LINK.groups = (r && r.groups) || [];
     if (c) _lkTakeServices(c); // APP-42: one services list for the door, reports and the admin page
     // The server's open row is the truth again; keep only this phone's final answers.
@@ -12492,12 +12598,17 @@ async function renderLinkGroups() {
   _lkPaintGroups();
   if (!LINK.ldrs) API.get('/leaders').then((ls) => { LINK.ldrs = Array.isArray(ls) ? ls : []; if (S.page === 'link-groups' && LINK.rf) _lkPaintGroups(); }, () => {});
 }
-function _lkOpenGroup(id) {
+// A group with no report this week opens straight on the form (2026-11-18); `quiet` (a reminder tap) opens the page only.
+function _lkOpenGroup(id, quiet) {
   navPush(); LINK.gid = id; LINK.gwk = 0; LINK.rf = null;
   // Y5: a report kept at a sign-out opens again, unless this session already holds a draft for that date.
   const d = _lkDraftGet(S.user && S.user.id), key = d && id + '|' + d.rf.date;
   if (d && d.gid === id && !(LINK.rfd && LINK.rfd[key])) { (LINK.rfd || (LINK.rfd = {}))[key] = d.rf; _lkFormOpen('submit', d.rf.date); return; }
   _lkPaintGroups();
+  const g = _lkGroup(), a = g && _lkGroupAct(g), w = _lkWeeks(_lkToday())[0];
+  if (quiet || !g || _lkCapOff('submitReport') || (a && ['queued', 'pending', 'claimed'].includes(a.status)) || _lkWeekReports(g, w).length) return;
+  const dt = _lkReportDateFor(g.meets, w, _lkToday());
+  if (dt.state === 'ok') _lkNewReport(dt.date);
 }
 function _lkGroupsBack() { navBack(); }
 // "I am" is required before a report (decision 11): no "I am" yet: the picker opens first.
@@ -12535,6 +12646,7 @@ function _lkFormOpen(mode, arg) {
     LINK.rf.err = ''; // B16: a restored draft never shows a stale error
   }
   _lkPaintGroups();
+  LINK.gmOpen[g.groupId] = true; _lkMembersLoad(g.groupId, true);
 }
 function _lkRfDate(v) {
   const f = LINK.rf;
@@ -12552,13 +12664,18 @@ function _lkRfDate(v) {
 function _lkRfDnm(on) {
   const f = LINK.rf;
   if (!f) return;
+  if (on === undefined) on = !f.didNotMeet; // the toggle
   f.didNotMeet = !!on; f.err = ''; f.dirty = true;
-  if (on) { f.ticks = {}; f.svc = ''; }
+  if (on) f.svc = ''; // the ticks stay (a mis-tap loses nothing) but are not sent
   else if (!f.svc) f.svc = 'none';
   _lkPaintGroups();
 }
-function _lkRfTick(pid) { const f = LINK.rf; if (!f || f.didNotMeet) return; f.ticks[pid] = !f.ticks[pid]; f.dirty = true; _lkPaintGroups(); }
-function _lkRfGuests(v) { const f = LINK.rf; if (!f) return; const n = parseInt(v, 10); f.guests = isFinite(n) ? Math.max(0, Math.min(99, n)) : 0; f.dirty = true; }
+function _lkRfTick(pid) {
+  const f = LINK.rf;
+  if (!f || f.didNotMeet || Date.now() - (LINK.swAt || 0) < 400) return;
+  if (LINK.openRow) { LINK.openRow = null; _lkRfDraw(); return; } // a tap while a row is opened only closes it
+  f.ticks[pid] = !f.ticks[pid]; f.dirty = true; _lkRfDraw();
+}
 function _lkRfSvc(v) { const f = LINK.rf; if (!f) return; f.svc = v; f.err = ''; f.dirty = true; }
 // The note stops at 1,800 characters (the console adds the leader line in front, inside Elvanto's 1,900).
 function _lkRfNote(el) {
@@ -12590,7 +12707,7 @@ function _lkReportSend() {
   else if (f.mode === 'submit' && (!f.date || f.date > today || f.date < _lkAddDays(today, -56))) err = 'The date must be in the last 8 weeks.';
   else if (!f.didNotMeet && !f.svc) err = 'Pick a service, or pick No service.';
   if (err) { f.err = err; _lkPaintGroups(); return; }
-  const attendees = f.didNotMeet ? [] : (g.members || []).filter((m) => f.ticks[m.personId]).map((m) => m.personId);
+  const attendees = f.didNotMeet ? [] : _lkRfRows(g).filter((r) => f.ticks[r.personId]).map((r) => r.personId);
   const payload = { groupId: g.groupId, date: f.mode === 'edit' ? f.base.date : f.date, didNotMeet: !!f.didNotMeet, attendees, guests: f.guests || 0,
     notesPrivate: !!f.priv, serviceTimeId: f.didNotMeet || f.svc === 'none' ? null : f.svc };
   if (f.mode === 'edit') { payload.reportId = f.reportId; payload.base = f.base; }
@@ -12599,6 +12716,7 @@ function _lkReportSend() {
   if (LINK.rfd) delete LINK.rfd[g.groupId + '|' + f.date];
   _lkDraftDrop(S.user && S.user.id, g.groupId);
   LINK.rf = null;
+  (LINK.sentAt || (LINK.sentAt = {}))[g.groupId] = { at: Date.now(), by: lid };
   _lkPush({ kind: 'action', id: _lkUuid(), type: f.mode === 'edit' ? 'editReport' : 'submitReport', payload, note, leaderId: lid }, true);
   _lkPaintGroups();
 }
@@ -12621,10 +12739,9 @@ function _lkReportCancel() {
   if (!a || !a.id) return;
   _lkPush({ kind: 'cancel', id: a.id, leaderId: getMyLeaderId() || null, _g: g.groupId }, true);
 }
-// ── Lifegroup members (T5/T6, 2026-10-13). A collapsed list per group (<details>; LINK.gmOpen keeps it open across
-// repaints), read on open from GET /link/lifegroups/:id/members. A student opens the app profile only when the server
-// sent a studentId (canAccessStudent); anyone else is name + grade. Adds and removes go through the phone queue like
-// every other link write; the console runs them in Elvanto (Pending / In Elvanto / refused, from the outbox row).
+// ── Lifegroup members (T5/T6, 2026-10-13; moved into the report form 2026-11-18). Read on open from GET
+// /link/lifegroups/:id/members (LINK.gmOpen[gid] = this group is kept fresh). Adds and removes go through the phone queue
+// like every other link write; the console runs them in Elvanto (Pending / In Elvanto / refused, from the outbox row).
 async function _lkMembersLoad(gid, quiet) {
   const lid = getMyLeaderId();
   try {
@@ -12633,19 +12750,10 @@ async function _lkMembersLoad(gid, quiet) {
     // The server's changes are the truth again; keep only this phone's refusals (those rows were never stored).
     Object.keys(LINK.mres).forEach((k) => { if (LINK.mres[k].groupId === gid && LINK.mres[k].status !== 'refused') delete LINK.mres[k]; });
   } catch (e) { if (!LINK.gm[gid] || LINK.gm[gid].err) LINK.gm[gid] = { err: _lkSay(e.message || 'Could not load the members.', "Couldn't load. Try again.") }; }
-  if (S.page === 'link-groups' && LINK.gid === gid && !LINK.rf) {
-    const gp = document.getElementById('lk-gpage'), g = _lkGroup();
-    if (gp && g) gp.innerHTML = _lkGroupHtml(g);
-  }
+  if (S.page === 'link-groups' && LINK.gid === gid) _lkRfDraw();
   _lkYpDraw();
 }
 // ontoggle also fires when a repaint inserts an open <details>: only a real change loads (never a retry loop).
-function _lkMemToggle(gid, open) {
-  if (!!LINK.gmOpen[gid] === !!open) return;
-  LINK.gmOpen[gid] = !!open;
-  if (open && !LINK.gm[gid]) _lkMembersLoad(gid);
-  else if (open) { const gp = document.getElementById('lk-gpage'), g = _lkGroup(); if (gp && g) gp.innerHTML = _lkGroupHtml(g); }
-}
 // A type the newest console does not list (an older console) or reports off: no add / remove controls.
 function _lkMemOff(type) {
   const c = LINK.status && LINK.status.console;
@@ -12677,47 +12785,6 @@ function _lkMemberRows(v, queue, mres, gid) {
   });
   return rows;
 }
-function _lkMembersHtml(g) {
-  const gid = g.groupId, v = LINK.gm[gid], open = !!LINK.gmOpen[gid], a = `'${esc(gid)}'`;
-  let body = '';
-  if (open && !v) body = progBar('Loading');
-  else if (open && v.err) body = `<p class="lk-sub">${esc(v.err)}</p><button type="button" class="btn btn-secondary btn-sm" onclick="_lkMembersLoad(${a})">Try again</button>`;
-  else if (open) {
-    const canAdd = v.canEdit && !_lkMemOff('addGroupMember'), canRm = v.canEdit && !_lkMemOff('removeGroupMember');
-    body = _lkMemberRows(v, _lkQGet(), LINK.mres, gid).map((r) => {
-      const c = r.change, nm = esc(r.name || 'Someone'), b = `${a},'${esc(r.personId)}'`;
-      let btn = '';
-      if (r.state === 'member' && !r.leader && canRm) btn = `<button type="button" class="btn btn-ghost btn-sm" aria-label="Remove ${nm}" onclick="event.stopPropagation();_lkMemRemove(${b})">${icS('trash')}</button>`;
-      // B05: an add the console already sent is in Elvanto (the members push has not caught up): it is a Remove, not a Cancel.
-      else if (r.state === 'adding' && canRm) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkMemRemove(${b})">${c && c.status === 'sent' ? 'Remove' : 'Cancel'}</button>`;
-      // F-38: a remove still on this phone or pending on the server can be cancelled; once sent it is an add back; while
-      // the console is sending it (claimed) nothing can stop it, so no button.
-      else if (r.state === 'removing' && canAdd && c.status !== 'claimed') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="event.stopPropagation();_lkMemKeep(${b})">${c.status === 'queued' || c.status === 'pending' ? 'Cancel remove' : 'Add back'}</button>`;
-      const st = c && c.status !== 'cancelled' ? `<div class="lk-st ${_lkStatusTone(c)}">${_lkStatusHtml(c, _lkLastSeen())}</div>` : '';
-      const grey = r.state === 'adding' || r.state === 'not-added';
-      return `<div class="lk-lq-row${grey ? ' dis' : ''}" role="button" onclick="_lkMemOpen(${b})"><div class="lk-grow"><div class="lk-nm">${r.state === 'removing' ? '<s>' + nm + '</s>' : nm}</div>${st}</div>`
-        + `${r.grade != null ? `<span class="lk-chip">Gr ${esc(r.grade)}</span>` : ''}${r.leader ? '<span class="lk-chip lead">Leader</span>' : ''}${btn}</div>`;
-    }).join('') || '<p class="lk-sub">No members.</p>';
-    if (canAdd) body += `<div class="lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkMemPick(${a})">${icS('plus')} Add student</button></div>`;
-    else if (!v.canEdit && !getMyLeaderId() && S.user && S.user.role !== 'admin' && S.user.role !== 'oversight') {
-      body += `<p class="lk-sub lk-mt">A leader of this group can add or remove students.</p><button type="button" class="btn btn-secondary btn-sm" onclick="_lkMemIam(${a})">Who are you?</button>`;
-    }
-  }
-  const n = v && v.members ? v.members.length : (g.members || []).length;
-  return `<details class="card lk-mem"${open ? ' open' : ''} ontoggle="_lkMemToggle(${a}, this.open)"><summary class="lk-sec">Members (${n})</summary>${body}</details>`;
-}
-function _lkMemIam(gid) { _lkIamPick(() => _lkMembersLoad(gid)); }
-// T5: the app profile (2 columns) for a student this login may see; anyone else is a small name + grade card.
-function _lkMemOpen(gid, pid) {
-  const v = LINK.gm[gid];
-  const r = v && !v.err ? _lkMemberRows(v, _lkQGet(), LINK.mres, gid).find((x) => x.personId === pid) : null;
-  if (!r) return;
-  if (r.studentId) { showStudentDetail(r.studentId, { two: true }); return; }
-  modal(`<div class="mo-title">${esc(r.name || 'Someone')}</div>
-    <div class="lk-mb"><span class="chip c-neutral">${r.grade != null ? 'Gr ' + esc(r.grade) : 'No grade'}</span>${r.leader ? ' <span class="chip c-neutral">Leader</span>' : ''}</div>
-    <p class="lk-sub">${esc(r.leader ? 'A leader of this group.' : 'Not linked to a student you can see in this app.')}</p>
-    <button type="button" class="btn btn-secondary btn-full lk-mt" onclick="closeModal()">Close</button>`);
-}
 async function _lkMemRemove(gid, pid) {
   const v = LINK.gm[gid], g = _lkGroup();
   const r = v && !v.err ? _lkMemberRows(v, _lkQGet(), LINK.mres, gid).find((x) => x.personId === pid) : null;
@@ -12726,6 +12793,7 @@ async function _lkMemRemove(gid, pid) {
   const ok = await _lkAsk(adding ? 'Stop adding ' + (r.name || 'this person') + ' to ' + gn + '?'
     : 'Remove ' + (r.name || 'this person') + ' from ' + gn + _lkSay(' in Elvanto', '') + '?', adding ? 'Stop adding' : 'Remove', 'Keep', adding ? 'Stop adding?' : 'Remove from group?');
   if (ok) _lkMemQueue(gid, pid, 'removeGroupMember', r.name);
+  return !!ok;
 }
 function _lkMemKeep(gid, pid) {
   const v = LINK.gm[gid], r = v && !v.err ? (v.members || []).find((x) => x.personId === pid) : null;
@@ -12775,7 +12843,8 @@ function _lkYpDraw() {
   if (!el || !p) return;
   if (!LINK.youth) { el.innerHTML = LINK.youthErr ? `<p class="lk-sub">${esc(LINK.youthErr)}</p>` : progBar('Loading'); return; }
   const v = LINK.gm[p.gid], ex = {};
-  if (v && !v.err) _lkMemberRows(v, _lkQGet(), LINK.mres, p.gid).forEach((r) => { if (r.state !== 'not-added') ex[r.personId] = true; });
+  // a person being removed stays pickable: the add cancels the remove (_lkMemQueue)
+  if (v && !v.err) _lkMemberRows(v, _lkQGet(), LINK.mres, p.gid).forEach((r) => { if (r.state === 'member' || r.state === 'adding') ex[r.personId] = true; });
   if (p.just) delete ex[p.just]; // F-02: the tapped row stays in place, greyed, for 600 ms (no row slides under the finger)
   const list = _lkYouthFilter(LINK.youth, p.q, p.grade, ex);
   p.drawn = Date.now(); // B24: rows may have moved under the finger; _lkYpAdd ignores taps for 400 ms
@@ -12792,7 +12861,8 @@ function _lkYpAdd(pid) {
   if (!r || Date.now() - (p.at || 0) < 600 || Date.now() - (p.drawn || 0) < 400) return;
   p.at = Date.now(); p.just = pid;
   _lkMemQueue(p.gid, pid, 'addGroupMember', r.name);
-  toast('Adding ' + r.name, 2000);
+  if (LINK.rf) { LINK.rf.ticks[pid] = true; LINK.rf.dirty = true; _lkRfDraw(); }
+  toast('Added ' + r.name + ' and ticked', 2000);
   setTimeout(() => { if (LINK.yp === p && p.just === pid) { p.just = null; _lkYpDraw(); } }, 600);
 }
 // ── Flow steps (F3; spec §11.3) ──
@@ -13121,9 +13191,41 @@ function _lkHomeFlowsHtml() {
     return `<div class="li lk-row lk-a${r.dnc ? ' lk-dnc' : ''}" role="button" tabindex="0" onclick="_lkOpenStep('${esc(r.rowId)}')">${inner}</div>`;
   }).join('');
 }
+// 18 Nov 2026: a leader's group on its meeting day, from its start time until its report is in ("report due"), then
+// "Sent by <name> <time>" for the rest of that day. A tap opens the group's report (or its sent view).
+function _lkMeetsMin(meets) {
+  const m = /(\d{1,2})(?::(\d{2}))?\s*([ap])m/i.exec(String(meets || ''));
+  return m ? ((Number(m[1]) % 12) + (/p/i.test(m[3]) ? 12 : 0)) * 60 + Number(m[2] || 0) : 0;
+}
+function _lkHomeLgHtml() {
+  if (!_linkOn('lifegroupReport') || !getMyLeaderId() || !LINK.groups) return '';
+  const now = Date.now(), today = _siteDay(now), hm = _siteHHMM(now), w = _lkWeeks(today)[0];
+  const nowMin = Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3));
+  return LINK.groups.filter((g) => g.mine).map((g) => {
+    const d = _lkReportDateFor(g.meets, w, today);
+    if (d.state !== 'ok' || d.date !== today || nowMin < _lkMeetsMin(g.meets)) return '';
+    const r = _lkWeekReport(g, w), a = _lkGroupAct(g), open = !!a && ['queued', 'pending', 'claimed'].includes(a.status), s = (LINK.sentAt || {})[g.groupId];
+    const me = (LINK.ldrs || []).find((x) => x.id === getMyLeaderId());
+    const by = (r && r.by) || (open && me && me.fullName) || '', at = r && r.at ? _lkTime(r.at) : open && s ? _lkTime(new Date(s.at).toISOString()) : '';
+    const sent = !!r || open;
+    return `<div class="li lk-row lk-a lk-hlg${sent ? ' done' : ''}" role="button" tabindex="0" onclick="_lgremOpen('${esc(g.groupId)}')"><div class="lk-grow"><div class="lk-nm">${esc(lgDisplayName(g.name))}${sent ? '' : ' — report due'}</div>
+      <div class="lk-d">${sent ? icS('check') + ' Sent' + (by ? ' by ' + esc(by) : '') + (at ? ' ' + esc(at) : '') : 'Started ' + esc(g.meets) + ' · tap to fill in'}</div></div>${icS('chevr')}</div>`;
+  }).join('');
+}
+function _lkHomeDraw() {
+  const el = document.getElementById('home-flows');
+  if (el && S.page === 'home') el.innerHTML = _lkOfflineHtml() + _lkHomeLgHtml() + (_linkOn('flows') && getMyLeaderId() ? _lkHomeFlowsHtml() : '');
+}
+async function _lkHomeLgLoad() {
+  if (!_linkOn('lifegroupReport') || !getMyLeaderId() || Date.now() - (LINK.hlgAt || 0) < 30000) return;
+  LINK.hlgAt = Date.now();
+  if (await _lkLoadGroups(true)) _lkHomeDraw();
+  if (!LINK.ldrs) _lkLoadLeaders().then(() => _lkHomeDraw());
+}
 async function _lkHomeFlows() {
-  const draw = () => { const el = document.getElementById('home-flows'); if (el && S.page === 'home') el.innerHTML = _lkOfflineHtml() + (_linkOn('flows') && getMyLeaderId() ? _lkHomeFlowsHtml() : ''); };
+  const draw = _lkHomeDraw;
   draw();
+  _lkHomeLgLoad();
   // R8: admin/oversight Home shows the red console-offline line too (status read at most once a minute).
   if (typeof _attnBusy !== 'undefined' && _attnBusy) _attnBusy.then(draw); // Y6c: Needs attention is reading it; draw when it lands
   if (_lkBoss() && _linkOn() && Date.now() - (LINK.statusAt || 0) > 60000) {
@@ -13192,20 +13294,18 @@ function _lkStepHtml() {
     // 2026-10-24 flows reassign: admin/oversight pick from the leaders who fit this person; Reassign saves it, Complete gives them the next step
     const ls = _lkPickList(r), l = _lkPicked(r);
     assign = `<div class="fg"><label class="fl" for="lk-assign">Assigned to</label><select class="fs" id="lk-assign" onchange="LINK.fs.pick=this.value||null;_lkStepDraw()"><option value="">Nobody (Elvanto's usual pick)</option>
-      ${ls.map((x) => `<option value="${esc(x.id)}"${l && x.id === l.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
-      <p class="lk-hint">${_lkReassignElv(r, l) ? 'Reassign changes the leader in Elvanto too.' : 'Reassign changes who has this person.'} Complete gives them the next step.</p></div>${!_lkCanComplete(r) ? '' : l && !l.personId ? q4('Not linked to an Elvanto person: Elvanto picks who gets the next step.')
+      ${ls.map((x) => `<option value="${esc(x.id)}"${l && x.id === l.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>${!_lkCanComplete(r) ? '' : l && !l.personId ? q4('Not linked to an Elvanto person: Elvanto picks who gets the next step.')
         : l && !_lkOffers(r, l.personId) ? q4("Elvanto doesn't offer them for the next step. Complete will leave it to Elvanto to pick.") : ''}`;
   } else if (r.personId) {
     // other logins see who has the person; Complete keeps them (the server sets it). No app leader known = Elvanto picks.
-    assign = `<p class="lk-sub">Assigned to: ${esc(_lkWho(r) || 'Nobody')}</p>
-      <p class="lk-hint">${r.currentLeaderId && r.currentLeaderLinked ? 'Complete gives the next step to them if Elvanto offers them.' : _lkSys('Elvanto will pick who gets the next step.')} Ask the admin to change it.</p>`;
+    assign = `<p class="lk-sub">Assigned to: ${esc(_lkWho(r) || 'Nobody')}</p>`;
   }
   const done = _lkCanComplete(r) ? (_lkFlowKind(r) === 'parent' ? `<p class="lk-sub">${esc("Elvanto sends the consent text. It can't be recalled.")}</p>` : '')
-    + (_lkNotReceived(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(_lkNotReceivedText(r))}</div></div>` : '') + (_lkCatStep(r) ? _lkCatHtml(f) : '') + `<div class="fg"><label class="fl" for="fl-note-2">Note</label><textarea id="fl-note-2" class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
+    + (_lkNotReceived(r) ? `<div class="lk-alert warn">${icS('info')}<div>${esc(_lkNotReceivedText(r))}</div></div>` : '') + (_lkCatStep(r) ? _lkCatHtml(f) : '') + `<div class="fg lk-fgn"><label class="fl" for="fl-note-2">Note</label><textarea id="fl-note-2" class="fi" rows="3" maxlength="1800" oninput="_lkStepNote(this)">${esc(f.note)}</textarea>
       <div class="lk-d lk-right" id="lk-fs-n">${_lkNoteCount(String(f.note || '').length)}</div></div>
-    <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Keep note private</label>` : '';
+    <label class="lk-chk"><input type="checkbox"${f.priv ? ' checked' : ''} onchange="LINK.fs.priv=this.checked"> Private?</label>` : '';
   const rm = _lkCanRemove(r) ? `<button type="button" class="btn btn-ghost btn-full bus-danger" onclick="_lkRemoveAsk()">Remove from this step</button>` : '';
-  return `<div class="mo-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div><p class="lk-sub">${esc(r.stepName)} · ${esc(r.flowName)}${r.due ? ' · ' + _lkFlowDue(r, today) : ''}</p>${typeof r.serviceVisits === 'number' ? `<p class="lk-sub">Service Visits: ${r.serviceVisits}</p>` : ''}
+  return `<div class="mo-title">${esc(r.name)} ${_busGradeChip(r.grade, r.gender)}</div><p class="lk-sub">${esc(r.stepName)}${r.due ? ' · ' + _lkFlowDue(r, today) : ''}</p>${typeof r.serviceVisits === 'number' ? `<p class="lk-sv">Service Visits: ${r.serviceVisits}</p>` : ''}
     ${text}${hub}${blocked}${assign}${done}${rm}`;
 }
 // The remove confirm (in the same sheet): an optional note goes to the person's Elvanto notes.

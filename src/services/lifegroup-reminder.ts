@@ -32,6 +32,14 @@ export function dueOccurrences(meets: string, now: Date, tz: string): string[] {
   });
 }
 
+/** The morning nudge: meeting dates D (always yesterday) whose 08:00-08:59 next-morning window is open now. */
+export function nudgeOccurrences(meets: string, now: Date, tz: string): string[] {
+  const wd = meetsWeekday(meets);
+  if (wd < 0) return [];
+  const d = addDays(brisbaneToday(now, tz), -1), at = now.getTime(), from = instantOf(addDays(d, 1), '08:00', tz);
+  return weekdayOf(d) === wd && from <= at && at < from + 60 * MIN ? [d] : [];
+}
+
 /** L3/L5: a report for g is in for D's Mon-Sun week (open/sent outbox row, mirror report, or this week's mirror state). */
 export function reportDone(g: LinkGroupRow, outbox: OutboxRow[], d: string, today: string): boolean | 'unreadable' {
   if (g.thisWeek === 'unreadable') return 'unreadable';
@@ -55,7 +63,9 @@ export function makeLifegroupKind(deps: {
       if (!gAt || ctx.now.getTime() - Date.parse(gAt) > STALE_MS) return { skipped: 'stale', items: [] };
 
       const today = brisbaneToday(ctx.now, ctx.tz);
-      const due = (await deps.link.groups()).flatMap((g) => dueOccurrences(g.meets || '', ctx.now, ctx.tz).map((d) => ({ g, d })));
+      const due = (await deps.link.groups()).flatMap((g) => [
+        ...dueOccurrences(g.meets || '', ctx.now, ctx.tz).map((d) => ({ g, d, nudge: false })),
+        ...nudgeOccurrences(g.meets || '', ctx.now, ctx.tz).map((d) => ({ g, d, nudge: true }))]);
       if (!due.length) return { skipped: null, items: [], hidden: 0, unlinked: 0 };
       const leaders = ctx.leaders;
       const [outbox, roster] = await Promise.all([
@@ -69,10 +79,12 @@ export function makeLifegroupKind(deps: {
 
       let hidden = 0, unlinked = 0;
       const items: AlertItem[] = [];
-      for (const { g, d } of due) {
+      for (const { g, d, nudge } of due) {
         if (reportDone(g, outbox, d, today) !== false) continue;
         const name = g.name.length > NAME_MAX ? `${g.name.slice(0, NAME_MAX - 1).trimEnd()}…` : g.name;
-        const payload = { title: 'Lifegroup report', body: `${name} met at ${clock12(meetsTime(g.meets)!)}. Tap to fill in the report.`,
+        const t = meetsTime(g.meets);
+        const body = nudge ? `${name}: still no report from last night. Tap to fill it in.` : `${name} met at ${clock12(t!)}. Tap to fill in the report.`;
+        const payload = { title: 'Lifegroup report', body,
           tag: `lgrem:${g.groupId}`, screen: 'lgreport', g: g.groupId, d };
         for (const pid of new Set(g.members.filter((m) => m.leader).map((m) => m.personId))) {
           const leaderId = leaderOf.get(pid);
@@ -80,7 +92,7 @@ export function makeLifegroupKind(deps: {
           const mine = subs.filter((s) => s.leaderId === leaderId);
           const ok = mine.filter((s) => { const a = toActor(s.user); return canOpen(a) && groupVisible(a, g, ctx.structure); });
           hidden += mine.length - ok.length;
-          if (ok.length) items.push({ key: `${g.groupId}:${d}`, leaderId, subs: ok, payload });
+          if (ok.length) items.push({ key: `${g.groupId}:${d}${nudge ? ':n2' : ''}`, leaderId, subs: ok, payload });
         }
       }
       return { skipped: null, items, hidden, unlinked };

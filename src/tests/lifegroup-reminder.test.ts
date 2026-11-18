@@ -1,6 +1,6 @@
 // L2: lifegroup report reminders (spec 7.1, L1-L7). Pure helpers, then the sweep through makeAlertRun.
 import { describe, it, expect } from 'vitest';
-import { dueOccurrences, reportDone, makeLifegroupKind } from '../services/lifegroup-reminder';
+import { dueOccurrences, nudgeOccurrences, reportDone, makeLifegroupKind } from '../services/lifegroup-reminder';
 import { makeAlertRun } from '../services/alert-run.service';
 import { InMemoryNoticePushRepository, InMemoryAlertSendRepository } from '../repositories/in-memory/in-memory.repositories';
 import type { PushSender } from '../services/push-send';
@@ -29,6 +29,21 @@ describe('dueOccurrences (L2, L4)', () => {
   it('no weekday or no time: none', () => {
     expect(at('2026-11-10T10:30:00Z', 'Tue')).toEqual([]);
     expect(at('2026-11-10T10:30:00Z', '6:30 PM')).toEqual([]);
+  });
+});
+
+describe('nudgeOccurrences (08:00 the next morning, Brisbane)', () => {
+  const at = (iso: string, meets = 'Tue 6:30 PM', tz = BNE) => nudgeOccurrences(meets, new Date(iso), tz);
+  it('08:00 to 08:59 the day after the meeting', () => {
+    expect(at('2026-11-10T21:59:00Z')).toEqual([]);             // Wed 07:59
+    expect(at('2026-11-10T22:00:00Z')).toEqual(['2026-11-10']); // Wed 08:00
+    expect(at('2026-11-10T22:59:00Z')).toEqual(['2026-11-10']); // Wed 08:59
+    expect(at('2026-11-10T23:00:00Z')).toEqual([]);             // Wed 09:00
+  });
+  it('not on the meeting day, and nothing without a weekday', () => {
+    expect(at('2026-11-09T22:00:00Z')).toEqual([]);              // Tue 08:00
+    expect(at('2026-11-10T22:00:00Z', 'Tue')).toEqual(['2026-11-10']); // time not needed for the morning nudge
+    expect(at('2026-11-10T22:00:00Z', '6:30 PM')).toEqual([]);
   });
 });
 
@@ -163,5 +178,32 @@ describe('lifegroup reminder sweep', () => {
   it('outside the due window -> nothing', async () => {
     const r = await rig();
     expect((await r.go(new Date('2026-11-10T09:00:00Z'))).sent).toBe(0);
+  });
+
+  it('second nudge at 08:00 next morning if still unsent; its own claim, sent once', async () => {
+    const r = await rig({ takenAt: '2026-11-10T21:00:00Z' });
+    await r.go(); // Tue 20:45 first push
+    const WED = new Date('2026-11-10T22:05:00Z'); // Wed 08:05
+    expect(await r.go(WED)).toMatchObject({ sent: 1 });
+    expect(JSON.parse(r.sent[1]!.payload)).toMatchObject({ screen: 'lgreport', g: G, d: '2026-11-10', body: 'Year 8 Boys Tuesday: still no report from last night. Tap to fill it in.' });
+    expect((await r.go(WED)).sent).toBe(0);
+  });
+
+  it('a report in before 08:00 stops the nudge', async () => {
+    const r = await rig({ groups: [grp({ thisWeek: 'reported' })], takenAt: '2026-11-10T21:00:00Z' });
+    expect((await r.go(new Date('2026-11-10T22:05:00Z'))).sent).toBe(0);
+  });
+
+  it('co-leader sent the report: neither leader is pushed (first push or nudge)', async () => {
+    const P3 = '000000f3-0000-4000-8000-000000000000', L2 = '00000002-0000-4000-8000-000000000000';
+    const two = grp({ members: [{ personId: P1, name: 'Ari Leaderson', leader: true }, { personId: P3, name: 'Bee Coleader', leader: true }] });
+    const mk = (outbox: OutboxRow[]) => rig({ groups: [two], outbox, roster: [ros(P1, 'Ari', 'Leaderson'), ros(P3, 'Bee', 'Coleader')],
+      leaders: [{ id: L1, fullName: 'Ari Leaderson', gender: null, active: true }, { id: L2, fullName: 'Bee Coleader', gender: null, active: true }],
+      subs: [sub('d1', 'u1', L1), sub('d2', 'u1', L2)], takenAt: '2026-11-10T21:00:00Z' });
+    const both = await mk([]);
+    expect((await both.go()).sent).toBe(2);       // control: both get it while unsent
+    const done = await mk([ob('pending', '2026-11-10')]);
+    expect((await done.go()).sent).toBe(0);
+    expect((await done.go(new Date('2026-11-10T22:05:00Z'))).sent).toBe(0);
   });
 });

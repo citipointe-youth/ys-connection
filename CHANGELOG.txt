@@ -4,6 +4,24 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+FASTER LIFEGROUP REPORT 2026-11-18  (ysc-v178, no migration, LINK_REV unchanged)
+-------------------------------------------------------------------------------
+- Lifegroup report: opening a group with no report this week goes straight to
+  the form. Big "Group didn't meet" switch (optional reason), First Last names
+  with leaders first then A-Z, one-tap rows, nobody pre-ticked, Guests stepper,
+  always-open Notes with "Private?" (unticked), and a sticky "N here / guests"
+  bar with Send (Update when editing). After sending: "Sent by <name> <time>".
+- Members are managed inside the form (swipe a row or tap the dots to remove,
+  "+ Add student" to add; both go to Elvanto). The Members dropdown is gone.
+- Lifegroup reminders (module Off until the admin turns it on): a push 2 hours
+  after the group starts and a second one at 8:00 next morning, only while no
+  leader has sent that week's report. The tap opens the form. Leaders also get
+  a Home card "<group> - report due" on meeting day, then "Sent by <name>".
+- Flow step sheet: the sub-line is "<step> - Due <date>", the Assigned to hints
+  are gone, Service Visits is bold and larger, the note counter sits closer to
+  the Private? tickbox (now fully visible above the buttons).
+
+-------------------------------------------------------------------------------
 NEEDS-ACTION ROUND 2 2026-11-14  (ysc-v176, LINK_REV 24)
 -------------------------------------------------------------------------------
 - New youth & consent: Decline / Undo on each Needs-you or Ready row (intakeMark), a Declined (n) chip, Waiting rows grey and uncounted, Refresh for the week on screen only with "Refreshing... (week x of y)", unclear card shows the family name. Migration 0057.

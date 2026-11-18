@@ -21,13 +21,16 @@ const DRAFT_FNS = ['_lkFresh', '_lkKey', '_lkBoot', '_lkClear', '_lkSoftReset', 
   '_lkFormOpen', '_lkRfTick', '_lkRfBack', '_lkReportSend', '_lkAddDays'];
 function draftEnv(broken = false) {
   const { m, ls } = store(broken);
-  const t: any = { pushed: [], paints: 0, ask: true, back: 0 };
+  const t: any = { pushed: [], paints: 0, ask: true, back: 0, capOff: true };
   const G = { groupId: 'g1', defaultDate: '2026-10-19', members: [{ personId: 'p1' }, { personId: 'p2' }] };
   const fns = new Function('__t', 'localStorage', '__G', `
     const S = { user: { id: 'u1', role: 'grade' }, page: 'link-groups' };
     const navPush = () => {}; const _lkPaintGroups = () => { __t.paints++; }; const _lkGroup = () => (LINK.gid === __G.groupId ? __G : null);
     const _lkReports = () => []; const getMyLeaderId = () => 'L1'; const _lkReportOn = () => false; const _lkIamPick = () => {};
     const _lkPush = (it) => { __t.pushed.push(it); }; const _lkUuid = () => 'id-1'; const _lkQGet = () => []; const _lkSchedule = () => {};
+    const _lkCapOff = () => !!__t.capOff; const _lkGroupAct = () => __t.act || null; const _lkWeeks = () => [{ start: '2026-10-19', end: '2026-10-25' }]; const _lkToday = () => '2026-10-20';
+    const _lkWeekReports = () => __t.reports || []; const _lkReportDateFor = () => ({ state: 'ok', date: '2026-10-19' }); const _lkNewReport = (d) => { __t.newRep = (__t.newRep || []).concat(d); };
+    const _lkRfDraw = () => {}; const _lkMembersLoad = () => {}; const _lkRfRows = (g) => g.members;
     const _lkAdmFresh = () => ({}); const _lkAsk = async () => __t.ask; const _lkGroupsBack = () => { __t.back++; };
     ${withPlain(DRAFT_FNS.map((n) => extractFn(HTML, n)).join('\n'))}
     let LINK = _lkFresh();
@@ -75,6 +78,20 @@ describe('Y5 half-typed lifegroup report survives a sign-out', () => {
     e2.fns._lkBoot();
     e2.fns._lkOpenGroup('g1');
     expect(e2.fns.LINK.rf).toBeNull();
+  });
+  it('a group with no report this week opens straight on the form; a report, a pending one, or a reminder tap does not', () => {
+    const e = draftEnv();
+    e.t.capOff = false;
+    e.fns._lkBoot();
+    e.fns._lkOpenGroup('g1');
+    expect(e.t.newRep).toEqual(['2026-10-19']);
+    e.t.reports = [{ reportId: 'r1' }]; e.t.newRep = [];
+    e.fns._lkOpenGroup('g1');
+    e.t.reports = []; e.t.act = { status: 'pending' };
+    e.fns._lkOpenGroup('g1');
+    e.t.act = null;
+    e.fns._lkOpenGroup('g1', true);
+    expect(e.t.newRep).toEqual([]);
   });
   it('the new report still starts on No service (operator ruling)', () => {
     const e = draftEnv();
@@ -246,7 +263,7 @@ describe('Y5 leader wording', () => {
   const LEADER_FNS = ['renderLeaderHome', 'renderHome', 'renderMyStudents', 'renderAtRisk', 'renderPrayers', 'renderUpcomingBirthdays',
     'renderBus', 'renderNewYouth', 'renderConnect', 'renderConnectView', 'renderLink', 'renderLinkCheckin', 'renderLinkGroups', 'renderLinkFlows',
     '_lkListHtml', '_lkDoneRowsHtml', '_lkRowHtml', '_lkPickHtml', '_lkLeadersHtml', '_lkIamListHtml', '_lkGroupsHtml', '_lkReportHtml',
-    '_lkWeekBodyHtml', '_lkGroupHtml', '_lkFormHtml', '_lkMembersHtml', '_lkFfHtml', '_lkFqGet', '_lkFqHit', '_lkFlowRowHtml', '_lkFlowsHtml',
+    '_lkWeekBodyHtml', '_lkGroupHtml', '_lkGroupAct', '_lkWeekReports', '_lkReportDateFor', '_lkWeeks', '_lkMemberRows', '_lkMemOff', '_lkMembersLoad', '_lkFormHtml', '_lkFirstLast', '_lkRfRows', '_lkRfListHtml', '_lkRfBarText', '_lkRfDraw', '_lkRfGuestStep', '_lkRfWeek', '_lkSwS', '_lkSwE', '_lkRfMore', '_lkRfRemove', '_lkFfHtml', '_lkFqGet', '_lkFqHit', '_lkFlowRowHtml', '_lkFlowsHtml',
     '_lkHomeFlowsHtml', '_lkStepHtml', '_lkRemoveHtml', '_lkOfflineHtml', '_lkStatusText', '_lkStatusHtml', 'showChangeOwnPassword',
     'renderMustChangePassword', 'openMore', 'moreItems'];
   it('rule: no leader-page string contains "console"', () => {

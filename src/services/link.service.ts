@@ -135,6 +135,8 @@ export interface ActionListRow { id: string; type: ActionType; status: Status; r
 export interface LifegroupView { groupId: string; name: string; grade: number | null; gender: LinkGroupRow['gender'];
   meets: string; members: LinkGroupRow['members']; thisWeek: LinkGroupRow['thisWeek']; lastReport: LinkLastReport | null;
   history: LinkLastReport[]; defaultDate: string; openAction: ActionView | null;
+  /** The query's "I am" leads this group (the Home report-due card); absent without one. */
+  mine?: boolean;
   /** S-1 / D7: the newest report row of the last 8 weeks (REPORT_SUBMIT_DAYS) when it was refused and nothing is open; else the key is absent. */
   lastRefused?: ActionView }
 /** T4/T6: the person's own grade/gender/mobile (decrypted, bare digits) and the app-side assignee. */
@@ -193,7 +195,8 @@ export interface LinkService {
   checkin(actor: Actor, serviceTimeId?: string): Promise<CheckinView>;
   listActions(actor: Actor, q: unknown): Promise<ActionListRow[]>;
   batch(actor: Actor, body: unknown): Promise<{ results: BatchItemResult[] }>;
-  lifegroups(actor: Actor): Promise<{ groups: LifegroupView[] }>;
+  /** `q.leaderId` = the device's "I am": each group then says whether that leader leads it (`mine`). */
+  lifegroups(actor: Actor, q?: unknown): Promise<{ groups: LifegroupView[] }>;
   /** `steps` (link:admin only): every pushed flow step, hidden ones included, for the Youth Setup hidden-step picker. */
   /** T12: every login gets `steps` (the console's pushed list, else from the rows), minus the hidden step for a non-admin. */
   /** 2026-10-24: `leaders` (admin/oversight only) = the active app leaders for the Assigned to picker; personId null = no Elvanto match. */
@@ -1161,16 +1164,22 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       return { results };
     },
 
-    async lifegroups(actor) {
+    async lifegroups(actor, q) {
       const c = context(actor, await gate(actor, ['lifegroupReport']));
+      const lid = z.object({ leaderId: Uuid.optional() }).parse(q ?? {}).leaderId;
       const [groups, mirrors, sent, open, done] = await Promise.all([c.groups(), c.mirror(),
         d.link.listActions({ types: REPORT_TYPES, statuses: ['sent'] }),
         d.link.listActions({ types: ['submitReport', 'editReport'], statuses: OPEN }),
         d.link.listActions({ types: REPORT_TYPES, statuses: ['sent', 'refused', 'cancelled'], serviceDateFrom: addDays(c.today, -REPORT_SUBMIT_DAYS) })]); // T3: refusals show back as far as a submit can go
       const gAt = takenAt(mirrors, 'groups');
       // 2026-10-14: who sent each report from the app (the submit's "I am" leader), so same-day duplicates can be told apart.
-      const byId = new Map(sent.filter((r) => r.type === 'submitReport' && r.reportId).map((r) => [r.reportId!, r.leaderName]));
-      const withBy = (x: LinkLastReport): LinkLastReport => ({ ...x, by: byId.get(x.reportId) ?? null });
+      const byId = new Map(sent.filter((r) => r.type === 'submitReport' && r.reportId).map((r) => [r.reportId!, r]));
+      const withBy = (x: LinkLastReport): LinkLastReport => ({ ...x, by: byId.get(x.reportId)?.leaderName ?? null, at: byId.get(x.reportId)?.createdAt ?? null });
+      let myPid: string | null = null;
+      if (lid) {
+        const ls = await c.leaders(), me = ls.find((x) => x.id === lid);
+        myPid = me ? rosterPersonMatcher(await c.roster(), ls)(me) : null;
+      }
       // T8 + R2 (2026-10-17): grade 6..12, girls then boys, then Mon..Sun (no day last), then name; no grade last.
       // A Junior group sorts after grade 9, a Senior one after grade 12 (2026-10-24).
       const rank = (g: LinkGroupRow) => {
@@ -1189,6 +1198,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
           .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
         return { groupId: g.groupId, name: g.name, grade: g.grade, gender: g.gender, meets: g.meets, members: g.members,
           thisWeek: g.thisWeek, lastReport: last, history, defaultDate: lastMeetingDate(g.meets, c.today), openAction: o ? view(o) : null,
+          ...(lid ? { mine: !!myPid && g.members.some((m) => m.leader && m.personId === myPid) } : {}),
           ...refusedLast(o, done.filter((r) => (r.payload as { groupId?: string }).groupId === g.groupId)) };
       }) };
     },

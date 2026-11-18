@@ -84,8 +84,8 @@ describe('Flow steps: no tiles; step 0 and Parent Consent step 1 are the hub\'s'
   });
   it('Service Visits line: shown for a number (including 0), hidden for null or missing', () => {
     const sheet = (extra: any) => { L.flows = [...L.flows.filter((r: any) => r.rowId !== 'sv'), { ...L.flows.find((r: any) => r.rowId === 'a'), rowId: 'sv', ...extra }]; L.fs = { rowId: 'sv', note: '', priv: false }; return f._lkStepHtml(); };
-    expect(sheet({ serviceVisits: 2 })).toContain('<p class="lk-sub">Service Visits: 2</p>');
-    expect(sheet({ serviceVisits: 0 })).toContain('<p class="lk-sub">Service Visits: 0</p>');
+    expect(sheet({ serviceVisits: 2 })).toContain('<p class="lk-sv">Service Visits: 2</p>');
+    expect(sheet({ serviceVisits: 0 })).toContain('<p class="lk-sv">Service Visits: 0</p>');
     expect(sheet({ serviceVisits: null })).not.toContain('Service Visits');
     expect(sheet({ serviceVisits: undefined })).not.toContain('Service Visits');
   });

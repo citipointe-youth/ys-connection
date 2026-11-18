@@ -22,7 +22,7 @@ Cutover planned Sun 25 Oct night (fallback Mon 26 / Wed 28). Do these first, in 
 - Watch the console log counts at 08:00 and the YS error log for `push-dob-held` and `ALERT_PUSH_FAILED`. Test with a student whose DOB is today, connected to a leader whose phone has "I am" set.
 - **Tom to confirm IA-1 (B13): Elvanto's date of birth wins over a stored YS one** (a blank Elvanto DOB never clears it). The alternative, fill-blanks-only, would keep a wrong YS DOB firing every year.
 
-## Lifegroup report reminders, Part L (2026-11-07, branch feat/lg-reminders; HELD, built but not live)
+## Lifegroup report reminders, Part L (2026-11-07; shipped 2026-11-18 with feat/lg-fast, module still Off until the admin turns it on)
 
 - **Not shipped.** The branch is held for the operator's OK; until it ships `modules.lifegroupReminders` does nothing. Ship later with `bash scripts/ship.sh feat/lg-reminders` from `C:\dev\lg-ys` after re-checking the SW `CACHE` (`ysc-v174`) and the 0054 CRLF test. After the ship, turn the module on only once phones have sent their "I am" (Part F).
 - **Watch a Mon-Thu evening** after turning it on: one lifegroup that met, no report filed, its leader's phone with "I am" and the Lifegroup reminders switch on; the push should arrive 2 h after the meeting time and not repeat. Also watch the console log counts (`unlinked`, `hidden`, `stale`) and `ALERT_PUSH_FAILED`. R9, R10, R11 are the spec's watch items for this run.

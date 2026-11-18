@@ -16,8 +16,8 @@ const prelude = `
   function _lkTime() { return '7:02 pm'; }
   function setState(o) { if (o.LINK) LINK = Object.assign(LINK, o.LINK); if (o.Q) Q = o.Q; if ('MY' in o) MY = o.MY; if (o.role) S.user.role = o.role; }
 `;
-const f = loadFns(['esc', '_lkMemberRows', '_lkYouthFilter', '_lkMemOff', '_lkStatusText', '_lkStatusHtml', '_lkStatusTone', '_lkMembersHtml'],
-  prelude, ['_lkMemberRows', '_lkYouthFilter', '_lkMemOff', '_lkStatusText', '_lkMembersHtml', 'setState']);
+const f = loadFns(['esc', '_lkMemberRows', '_lkYouthFilter', '_lkMemOff', '_lkStatusText', '_lkStatusHtml', '_lkStatusTone'],
+  prelude, ['_lkMemberRows', '_lkYouthFilter', '_lkMemOff', '_lkStatusText', 'setState']);
 
 const G = 'g1';
 const M = (personId: string, name: string, o: object = {}) => ({ personId, name, leader: false, grade: 9, studentId: null, ...o });
@@ -83,50 +83,10 @@ describe('T6 _lkMemOff and status lines', () => {
   });
 });
 
-describe('T5/T6 _lkMembersHtml', () => {
-  const g = { groupId: G, members: [] };
-  it('closed: only the summary with the count; open: rows with names escaped', () => {
-    f.setState({ LINK: { gm: { [G]: view({ members: [M('a', '<b>Amy</b>')] }) }, gmOpen: {}, mres: {}, status: null }, Q: [] });
-    const closed = f._lkMembersHtml(g);
-    expect(closed).toContain('Members (1)'); expect(closed).not.toContain('Amy');
-    f.setState({ LINK: { gmOpen: { [G]: true } } });
-    const open = f._lkMembersHtml(g);
-    expect(open).toContain('&lt;b&gt;Amy&lt;/b&gt;'); expect(open).not.toContain('<b>Amy');
-  });
-  it('canEdit: a remove control for a non-leader member only, and Add student; not when the console lacks the type', () => {
-    f.setState({ LINK: { gm: { [G]: view() }, gmOpen: { [G]: true }, status: null }, Q: [] });
-    const h = f._lkMembersHtml(g);
-    expect(h.match(/_lkMemRemove\(/g)).toHaveLength(1);
-    expect(h).toContain('Add student');
-    f.setState({ LINK: { status: { console: { lastSeenAt: 'x', capabilities: {} } } } });
-    const old = f._lkMembersHtml(g);
-    expect(old).not.toContain('_lkMemRemove('); expect(old).not.toContain('Add student');
-  });
-  it('no edit right and no "I am": asks to pick who you are; an admin is never asked', () => {
-    f.setState({ LINK: { gm: { [G]: view({ canEdit: false }) }, gmOpen: { [G]: true }, status: null }, Q: [], MY: null, role: 'grade' });
-    expect(f._lkMembersHtml(g)).toContain('Who are you?');
-    f.setState({ role: 'admin' });
-    expect(f._lkMembersHtml(g)).not.toContain('Who are you?');
-    f.setState({ role: 'grade' });
-  });
-  it('a queued remove is struck through with a Keep button and "Waiting to send."', () => {
-    f.setState({ LINK: { gm: { [G]: view() }, gmOpen: { [G]: true }, status: null },
-      Q: [{ kind: 'action', id: 'q1', type: 'removeGroupMember', payload: { groupId: G, personId: 'a' } }] });
-    const h = f._lkMembersHtml(g);
-    expect(h).toContain('<s>Amy</s>'); expect(h).toContain('_lkMemKeep('); expect(h).toContain('Waiting to send.');
-  });
-});
-
 describe('T5 the source keeps its rules', () => {
   const html = loadIndexHtml();
-  it('a member with a studentId opens the existing profile in 2 columns', () => {
-    expect(extractFn(html, '_lkMemOpen')).toContain('showStudentDetail(r.studentId, { two: true })');
-    const sd = extractFn(html, 'showStudentDetail');
-    expect(sd).toContain("two ? { boxClass: 'mo-two' } : undefined");
-    expect(sd).toContain('<div class="sd-two"><div>');
-  });
-  it('remove asks first; the group page shows the members list', () => {
+  it('remove asks first; the group page no longer has a Members dropdown', () => {
     expect(extractFn(html, '_lkMemRemove')).toContain('await _lkAsk(');
-    expect(extractFn(html, '_lkGroupHtml')).toContain('${_lkMembersHtml(g)}');
+    expect(extractFn(html, '_lkGroupHtml')).not.toContain('Members');
   });
 });
