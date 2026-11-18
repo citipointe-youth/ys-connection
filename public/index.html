@@ -12542,15 +12542,9 @@ function _lkFormHtml() {
       <button type="button" class="lk-ar" aria-label="Next week"${f.date >= today ? ' disabled' : ''} onclick="_lkRfWeek(1)">${icS('arrr')}</button></div>`;
   let body = '';
   if (!f.didNotMeet) {
-    const svcs = (LINK.services || []).slice();
-    if (f.svc && f.svc !== 'none' && !svcs.some((s) => s.serviceTimeId === f.svc)) svcs.push({ serviceTimeId: f.svc, _saved: true });
-    const opt = (v, t) => `<option value="${esc(v)}"${f.svc === v ? ' selected' : ''}>${esc(t)}</option>`;
+    // 19 Nov: no Service picker. A new report is sent with no service; an edit keeps the service it already has (f.svc).
     body = `<div id="lk-rf-list">${_lkRfListHtml(g)}</div>
-      <div class="lk-step"><span>Guests</span><div><button type="button" aria-label="Fewer guests" onclick="_lkRfGuestStep(-1)">${icS('minus')}</button><b id="lk-rf-gv">${esc(f.guests || 0)}</b><button type="button" aria-label="More guests" onclick="_lkRfGuestStep(1)">${icS('plus')}</button></div></div>
-      <div class="fg"><label class="fl" for="fl-service">Service</label><select id="fl-service" class="fs" onchange="_lkRfSvc(this.value)">
-        ${f.svc ? '' : '<option value="" selected>Pick a service</option>'}
-        ${svcs.map((s) => opt(s.serviceTimeId, s._saved ? 'The saved service' : _lkSvcLabel(s))).join('')}${opt('none', 'No service')}</select>
-        ${f.date && f.date < _lkAddDays(today, -7) ? '<p class="lk-sub lk-mt">Services older than 7 days are not listed. Pick No service.</p>' : ''}</div>`;
+      <div class="lk-step"><span>Guests</span><div><button type="button" aria-label="Fewer guests" onclick="_lkRfGuestStep(-1)">${icS('minus')}</button><b id="lk-rf-gv">${esc(f.guests || 0)}</b><button type="button" aria-label="More guests" onclick="_lkRfGuestStep(1)">${icS('plus')}</button></div></div>`;
   }
   return `<div class="lk-rf"><div class="lk-rh"><div class="lk-rg">${esc(lgDisplayName(g.name))}</div>${date}</div>
     ${clash ? `<div class="lk-alert warn">${icS('info')}<div>${esc("There's already a report for that date. Edit it.")}${last.editable && !last.blocked ? `<div class="lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_lkEditReport('${esc(last.reportId)}')">Edit that report</button></div>` : '<p class="lk-sub">Edit it in Elvanto, or pick another date.</p>'}</div></div>` : ''}
@@ -13159,9 +13153,9 @@ function _lkFlowsHtml() {
     // 6 Nov: ticks survive a filter change, but bulk acts only on ticked rows that are shown; the bar says how many are hidden.
     const n = _lkSelIds(shown, LINK.fsel).length, hid = _lkSelIds(rs, LINK.fsel).length - n;
     top += _lkFfHtml(_lkFfGet()) + _lkNotInElvHtml(rs);
-    body = n || hid ? `<div class="card lk-bulk"><span>${n} selected</span><button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>
-      ${n ? `<button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} Complete ${n}</button>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="_lkBulkReassignOpen()"${LINK.frBusy ? ' disabled' : ''}>Reassign ${n}</button>` : ''}
+    body = n || hid ? `<div class="card lk-bulk"><span>${n} selected</span>
+      ${n ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkBulkReassignOpen()"${LINK.frBusy ? ' disabled' : ''}>Reassign ${n}</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="_lkBulkOpen()">${icS('check')} Complete ${n}</button>` : `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkSelClear()">Clear</button>`}
       ${hid ? `<p class="lk-hint" style="flex-basis:100%;margin:0">${hid} more ticked but hidden by the filter (not included).</p>` : ''}</div>` : '';
   }
   return bar + top + '<div id="lk-fbody">' + body + _lkFlowGroups(shown, today, steps).map((f) => `<div class="lk-sec">${esc(f.flowName)}</div>` + f.steps.map((s) => {

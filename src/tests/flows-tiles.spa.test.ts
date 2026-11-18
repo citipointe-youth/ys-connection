@@ -110,7 +110,7 @@ describe('Flow steps: no tiles; step 0 and Parent Consent step 1 are the hub\'s'
       load(role); L.fsel = { a: true };
       const h = f._lkFlowsHtml();
       expect(h).toContain('onclick="_lkBulkReassignOpen()">Reassign 1</button>');
-      expect(h.indexOf('_lkBulkReassignOpen')).toBeGreaterThan(h.indexOf('Complete 1'));
+      expect(h.indexOf('_lkBulkReassignOpen')).toBeLessThan(h.indexOf('Complete 1')) // 19 Nov: Reassign sits where Clear was;
     }
     load('quad'); L.fsel = { a: true };
     expect(f._lkFlowsHtml()).not.toContain('_lkBulkReassignOpen');

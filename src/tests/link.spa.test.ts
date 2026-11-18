@@ -1473,16 +1473,15 @@ describe('F2 lifegroup report', () => {
     expect(form).not.toContain('Elvanto will show');
     expect(form).toContain('Ben &lt;b&gt;Sample&lt;/b&gt;');
   });
-  it('a new report starts on No service; the older-than-7-days line', () => {
+  it('a new report starts on No service and shows no Service picker', () => {
     const h = setup();
     h.fns._lkNewReport();
     h.fns._lkRfDate('2026-10-16');
     expect(h.get().LINK.rf.svc).toBe('none'); // operator 2026-10-17 (reverses F-25): every new report starts on No service
     expect(h.fns._lkFormHtml()).not.toContain('Older services are not listed.');
     h.fns._lkRfDate('2026-10-08');
-    expect(h.fns._lkFormHtml()).toContain('Services older than 7 days are not listed. Pick No service.'); // T3 (2026-10-21)
+    expect(h.fns._lkFormHtml()).not.toMatch(/fl-service|Services older than 7 days/); // 19 Nov: the Service picker is gone
     expect(h.fns._lkFormHtml()).not.toContain('do it in Elvanto');
-    expect(h.fns._lkFormHtml()).toContain('>No service</option>');
   });
   it('a refusal from the batch shows on the group; a pending answer offers Cancel', async () => {
     const reply = (outcome: string, extra: any = {}) => (_p: string, b: any) =>

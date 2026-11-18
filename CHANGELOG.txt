@@ -4,6 +4,15 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+SMALL TIDY-UPS 2026-11-19  (ysc-v179, no migration, LINK_REV unchanged)
+-------------------------------------------------------------------------------
+- Lifegroup report: the Service picker is gone. A new report is sent with no
+  service; editing a report keeps the service it already has.
+- Flow steps: the Clear button is gone from the selection bar, and Reassign N
+  now sits next to Complete N. (If every ticked person is hidden by a filter,
+  Clear still shows, as the only way out.)
+
+-------------------------------------------------------------------------------
 FASTER LIFEGROUP REPORT 2026-11-18  (ysc-v178, no migration, LINK_REV unchanged)
 -------------------------------------------------------------------------------
 - Lifegroup report: opening a group with no report this week goes straight to

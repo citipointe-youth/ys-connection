@@ -198,7 +198,7 @@ describe('F-25 report form: default service, a draft per group and date, Discard
     const h = setup();
     h.fns._lkNewReport('2026-10-16'); // RSVC marks P(50) as this day's default
     expect(h.get().LINK.rf.svc).toBe('none');
-    expect(h.fns._lkFormHtml()).toContain('<option value="none" selected>No service</option>');
+    expect(h.fns._lkFormHtml()).not.toContain('fl-service'); // 19 Nov: no Service picker; the report is sent with serviceTimeId null
     h.fns._lkRfDate('2026-10-13'); // also a day with a default (P(52))
     expect(h.get().LINK.rf.svc).toBe('none');
   });

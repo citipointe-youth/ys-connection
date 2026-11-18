@@ -144,9 +144,11 @@ describe('Flow steps: quad dropdown + name search', () => {
     let h = f._lkFlowsHtml();
     expect(h).toContain('2 selected'); expect(h).toContain('Complete 2'); expect(h).toContain('Reassign 2');
     expect(h).toContain('1 more ticked but hidden by the filter (not included)');
+    expect(h).not.toContain('_lkSelClear'); // 19 Nov: no Clear beside Reassign / Complete
+    expect(h.indexOf('Reassign 2')).toBeLessThan(h.indexOf('Complete 2')); // Reassign sits where Clear was
     expect(f._lkSelIds(f._lkFlowVisible(), L.fsel)).toEqual(['jg2', 'sf1']);
     L.fq = 'dan'; h = f._lkFlowsHtml(); // nothing ticked on screen: the bar stays to say so, without Complete / Reassign
-    expect(h).toContain('0 selected'); expect(h).toContain('3 more ticked but hidden'); expect(h).not.toContain('Complete 0');
+    expect(h).toContain('0 selected'); expect(h).toContain('3 more ticked but hidden'); expect(h).not.toContain('Complete 0'); expect(h).toContain('_lkSelClear'); // only way out when all ticks are hidden
     L.fq = ''; expect(f._lkFlowsHtml()).toContain('3 selected');
     expect(L.fsel).toEqual({ jg1: true, jg2: true, sf1: true });
   });
