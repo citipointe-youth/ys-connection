@@ -35,6 +35,14 @@ Cutover planned Sun 25 Oct night (fallback Mon 26 / Wed 28). Do these first, in 
 - Test gate state at the last full run: 4608 pass, 9 skipped, 2 fail (the known 0054 CRLF test, and an `id-check.privacy` 5 s timeout under load that passes alone).
 - Rollback: turn the module off (instant, no ship).
 
+## Lifegroup report faster, review leftovers (2026-11-18, feat/lg-fast)
+
+- A student added in the form is ticked but NOT sent as an attendee until Elvanto has them (the console refuses a report with an unknown attendee); a toast says so, edit the report later.
+- Edit mode starts from the current members only: an attendee who has since left the group is dropped (or the report hits `member-left`). Edit "Private?" starts unticked (notes are never read back).
+- Home card loads `/link/lifegroups` (+ `/link/checkin` once) on Home visits (30 s throttle); trim the check-in read if Home feels slow.
+- The 08:00 nudge for a Sunday meeting relies on the mirror (an Elvanto-typed report only shows after the next groups push, up to 6 h stale).
+- Leaders see "Remove X from group?" (plain wording, `_lkSay`); admin/oversight see "... in Elvanto?".
+
 ## Open items
 
 **Operator decisions pending**

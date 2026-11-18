@@ -12474,7 +12474,7 @@ function _lkRfListHtml(g) {
   const canRm = ok && v.canEdit && !_lkMemOff('removeGroupMember'), canAdd = ok && v.canEdit && !_lkMemOff('addGroupMember');
   const rows = _lkRfRows(g).map((r) => {
     const on = !!f.ticks[r.personId], pid = esc(r.personId), rm = canRm && !r.leader;
-    return `<div class="lk-rr${on ? ' on' : ''}${LINK.openRow === r.personId && rm ? ' open' : ''}" data-pid="${pid}">${rm ? `<button type="button" class="lk-del" onclick="_lkRfRemove('${pid}')">Remove from group</button>` : ''}
+    return `<div class="lk-rr${on ? ' on' : ''}${LINK.openRow === r.personId && rm ? ' open' : ''}" data-pid="${pid}">${rm ? `<button type="button" class="lk-del"${LINK.openRow === r.personId ? '' : ' tabindex="-1" aria-hidden="true"'} onclick="_lkRfRemove('${pid}')">Remove from group</button>` : ''}
       <div class="lk-ri" role="checkbox" aria-checked="${on}" tabindex="0" onclick="_lkRfTick('${pid}')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();_lkRfTick('${pid}')}" ontouchstart="_lkSwS(event)" ontouchend="_lkSwE(event,this)">
       <span class="lk-box${on ? ' on' : ''}">${on ? icS('tick') : ''}</span><span class="lk-nm">${esc(r.fl)}${r.state === 'adding' ? '<small class="lk-addn">Added · syncing to Elvanto</small>' : ''}</span>
       ${r.leader ? '<span class="lk-chip lead">Leader</span>' : ''}${rm ? `<button type="button" class="lk-more" aria-label="More options for ${esc(r.fl)}" onclick="event.stopPropagation();_lkRfMore('${pid}')">${icS('kebab')}</button>` : ''}</div></div>`;
@@ -12510,7 +12510,8 @@ async function _lkRfRemove(pid) {
   const g = _lkGroup(), f = LINK.rf;
   if (!g || !f) return;
   const gone = await _lkMemRemove(g.groupId, pid);
-  if (gone) delete f.ticks[pid];
+  if (LINK.rf !== f) return;
+  if (gone) { delete f.ticks[pid]; f.dirty = true; }
   LINK.openRow = null; _lkRfDraw();
 }
 function _lkRfWeek(n) {
@@ -12600,7 +12601,7 @@ async function renderLinkGroups() {
 }
 // A group with no report this week opens straight on the form (2026-11-18); `quiet` (a reminder tap) opens the page only.
 function _lkOpenGroup(id, quiet) {
-  navPush(); LINK.gid = id; LINK.gwk = 0; LINK.rf = null;
+  navPush(); LINK.gid = id; LINK.gwk = 0; LINK.rf = null; LINK.openRow = null;
   // Y5: a report kept at a sign-out opens again, unless this session already holds a draft for that date.
   const d = _lkDraftGet(S.user && S.user.id), key = d && id + '|' + d.rf.date;
   if (d && d.gid === id && !(LINK.rfd && LINK.rfd[key])) { (LINK.rfd || (LINK.rfd = {}))[key] = d.rf; _lkFormOpen('submit', d.rf.date); return; }
@@ -12628,7 +12629,7 @@ function _lkEditReport(reportId) { if (!getMyLeaderId()) { _lkIamPick(() => _lkE
 function _lkFormOpen(mode, arg) {
   const g = _lkGroup();
   if (!g) return;
-  navPush();
+  navPush(); LINK.openRow = null;
   if (mode === 'edit') {
     const r = _lkReports(g).find((x) => x.reportId === arg);
     if (!r || !r.editable || r.blocked) return;
@@ -12707,7 +12708,10 @@ function _lkReportSend() {
   else if (f.mode === 'submit' && (!f.date || f.date > today || f.date < _lkAddDays(today, -56))) err = 'The date must be in the last 8 weeks.';
   else if (!f.didNotMeet && !f.svc) err = 'Pick a service, or pick No service.';
   if (err) { f.err = err; _lkPaintGroups(); return; }
-  const attendees = f.didNotMeet ? [] : _lkRfRows(g).filter((r) => f.ticks[r.personId]).map((r) => r.personId);
+  // A student whose add is still on its way is not in Elvanto's group yet: the console refuses the whole report for an unknown attendee.
+  const ticked = f.didNotMeet ? [] : _lkRfRows(g).filter((r) => f.ticks[r.personId]), late = ticked.filter((r) => r.state === 'adding').length;
+  const attendees = ticked.filter((r) => r.state !== 'adding').map((r) => r.personId);
+  if (late) toast(late + (late === 1 ? ' added student is' : ' added students are') + " not in Elvanto yet, so not marked here. Edit the report once they are.", 5000);
   const payload = { groupId: g.groupId, date: f.mode === 'edit' ? f.base.date : f.date, didNotMeet: !!f.didNotMeet, attendees, guests: f.guests || 0,
     notesPrivate: !!f.priv, serviceTimeId: f.didNotMeet || f.svc === 'none' ? null : f.svc };
   if (f.mode === 'edit') { payload.reportId = f.reportId; payload.base = f.base; }
