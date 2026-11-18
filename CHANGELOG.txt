@@ -4,6 +4,21 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+CONSENT WEEK FIX 2026-11-19  (ysc-v180, no migration, LINK_REV unchanged, no console change)
+-------------------------------------------------------------------------------
+- New youth & consent: a family whose parent text is held as late (the console
+  plan says "Parent texted late") no longer shows "Record consent". The app now
+  counts the consent week from the text date in the console's plan (the first
+  youth night after the text), the same rule the step list already used, and the
+  later of the two wins. Bella-type case: texted Sat 14 Nov = the Fri 20 Nov check.
+- A row the console holds has no Mark consent; "Mark not received" also waits
+  for that Friday. The hold says: texted <day>, too late for the <Fri> check, it
+  counts for the <Fri> check. The Save reason says "Wait for the <Fri> check, or
+  look in Elvanto" instead of pointing at the line that is itself the reason.
+- Names on the card read First Last ("England, April Taylor" is "April Taylor
+  England"); the child pills show the given first name, "April: Done".
+
+-------------------------------------------------------------------------------
 SMALL TIDY-UPS 2026-11-19  (ysc-v179, no migration, LINK_REV unchanged)
 -------------------------------------------------------------------------------
 - Lifegroup report: the Service picker is gone. A new report is sent with no

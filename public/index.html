@@ -14085,6 +14085,8 @@ function _ikHoldText(h, d) {
     : "Parent Consent step 1 has more people than the console can read, so this parent can't be found. Do this one in Elvanto.";
   if (t === 'Not found in consent step') return (who || 'This student') + " isn't in New People step 0, so no follow-up can be planned. Add them in Elvanto.";
   const late = /^Parent texted late \((\d{2}\/\d{2}\/\d{4})\)\? Check in Elvanto$/.exec(t);
+  const lt = late && _hubLate(d);
+  if (lt && lt.next) return 'Parent texted ' + _lkDay(lt.ymd) + ', too late for the ' + _lkDay(_ik().date) + ' check. It counts for the ' + _lkDay(lt.fri) + ' check. Look in Elvanto if that is wrong.';
   if (late) { // F-17: plain dates; the missed week is the intake Friday (consent date - 7)
     const p = late[1].split('/'), D = _ik().date, wk = D ? new Date(Date.parse(D + 'T00:00:00Z') - 7 * 864e5).toISOString().slice(0, 10) : '';
     return 'Parent texted ' + _lkDay(p[2] + '-' + p[1] + '-' + p[0]) + ', too late for ' + (wk ? 'the ' + _lkDay(wk) + ' week' : 'that week') + '. Look in Elvanto before saving.';
@@ -14118,6 +14120,7 @@ function _ikNext(det, d) {
   if (hs.length && hs.every((h) => h.text === 'Waiting for parent form')) return '';
   // I9b: holds the phone can answer (a verdict, a parent-form pick, Keep as is); any other hold is fixed in Elvanto.
   const app = IK_VERDICT_HOLDS.concat(['Check the match', 'Siblings share one parent form', 'Waiting for parent form', 'Fix the flagged items', 'Picked profile no longer matches']);
+  { const lt = hs.length === 1 && _hubLate(d); if (lt && lt.next) return 'On hold for the next check:'; }
   if (hs.length && hs.every((h) => !app.includes(h.text))) return 'Fix in Elvanto, then Refresh:';
   if (!_ikHoldLines(d).length) return 'Before this ' + who + ' can be saved, answer ' + (hs.filter((h) => IK_VERDICT_HOLDS.includes(h.text)).length > 1 ? 'both questions' : 'the question') + ' below.';
   return 'Before this ' + who + ' can be saved:';
@@ -14131,6 +14134,7 @@ function _ikHoldReason(d) {
   if (t.includes('Fix the flagged items')) parts.push('fix the flagged answers');
   if (parts.length) { const s = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]; return s.charAt(0).toUpperCase() + s.slice(1) + ' first.'; }
   if (t.includes('Profile archived')) return 'Unarchive the profile first.';
+  { const lt = t.length === 1 && _hubLate(d); if (lt && lt.next) return 'Wait for the ' + _lkDay(lt.fri) + ' check, or look in Elvanto.'; } // never points at the hold that is itself the reason
   if (!t.length) return '';
   return 'Sort the line' + (t.length > 1 ? 's' : '') + ' at the top first.'; // F-17: the hold itself is already at the top; never say it twice
 }
@@ -14806,8 +14810,27 @@ function _ikConsentHtml(det, list, st) {
 const HUB_STAGES = [['form', 'Form in'], ['elvanto', 'Add to Elvanto'], ['consent', 'Consent week'], ['decided', 'Record consent'], ['done', 'Done']];
 function _hubFold(s) { return String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/,/g, ' ').replace(/\s+/g, ' ').trim(); }
 function _hubAddDays(ymd, n) { const t = Date.parse(String(ymd) + 'T00:00:00Z'); return isFinite(t) ? new Date(t + n * 864e5).toISOString().slice(0, 10) : null; }
-// The Friday the child's consent week ends: the step-0 row's (it knows the texted date), else the consent date, else intake + 7.
-function _hubFriday(c) { return (c.flow && c.flow.consentFriday) || (c.consent && c.consent.date) || (c.intake ? _hubAddDays(c.intake.date, 7) : null); }
+// ONE rule for which consent week a text belongs to (the server's consentFriday): the first youth night after the text.
+function _hubFriAfter(ymd) {
+  const t = Date.parse(String(ymd) + 'T00:00:00Z');
+  return isFinite(t) ? _hubAddDays(ymd, ((_serviceDow() - new Date(t).getUTCDay() + 6) % 7) + 1) : null;
+}
+// The Friday the child's consent week ends. The console's plan row knows the texted date (textedOn, also for a held late text) and so does the
+// step-0 row (consentFriday): the LATER of the two wins, so the app never decides a week the console is still holding. Else the consent date, else intake + 7.
+function _hubFriday(c) {
+  const tx = c.consent && c.consent.row && c.consent.row.textedOn, best = [c.flow && c.flow.consentFriday, tx && _hubFriAfter(tx)].filter(Boolean).sort().pop();
+  return best || (c.consent && c.consent.date) || (c.intake ? _hubAddDays(c.intake.date, 7) : null);
+}
+// Mark not received is only offered once the child's consent Friday has passed (the one rule above), never on the server's flag alone.
+function _hubMarkOk(c) { const f = _hubFriday(c); return !!(c.flow && c.flow.notReceivedOk && !c.flow.dnc) && !(f && Date.now() < _siteInstant(f, _consentCutoff())); }
+// A "Parent texted late (dd/mm/yyyy)" hold on this plan: {ymd, fri, next} - next = the text came after this check's Friday, so it counts for fri.
+function _hubLate(d) {
+  for (const h of (d && d.holds) || []) {
+    const m = /^Parent texted late \((\d{2})\/(\d{2})\/(\d{4})\)\? Check in Elvanto$/.exec(String(h.text || ''));
+    if (m) { const ymd = m[3] + '-' + m[2] + '-' + m[1], D = _ik().date, fri = _hubFriAfter(ymd); return { ymd, fri, next: !!(D && fri && fri > D) }; }
+  }
+  return null;
+}
 // cut(ymd) = that Friday's cut-off instant (ms); flowsKnown = the step-0 rows were read (off step 0 then means step 0 is complete).
 function _hubStage(c, now, cut, flowsKnown) {
   const ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
@@ -14852,7 +14875,8 @@ function _hubNext(c) {
   if (c.mis) return ['fix', 'Make profile match'];
   if (c.stage === 'form' || (c.stage === 'elvanto' && ir && ir.status === 'ready' && !_hubTextNext(ir))) return ['save', 'Save to Elvanto'];
   if (c.stage === 'elvanto') return ['text', 'Text parent'];
-  if (c.stage === 'decided') return cr && cr.status !== 'done' ? ['consent', 'Mark consent'] : c.flow && c.flow.notReceivedOk && !c.flow.dnc ? ['mark', 'Mark consent'] : null;
+  // A row the console holds offers no Mark consent: the hold reason is shown instead (c.reasons, the Save line).
+  if (c.stage === 'decided') return cr && cr.status === 'needs-you' ? null : cr && cr.status !== 'done' ? ['consent', 'Mark consent'] : _hubMarkOk(c) ? ['mark', 'Mark consent'] : null;
   return null;
 }
 function _hubFamilies(src) {
@@ -14866,13 +14890,13 @@ function _hubFamilies(src) {
     if (isDecl('intake', l.date, r)) { declined.push({ mode: 'intake', date: l.date, row: r }); continue; }
     const was = r.personId && byPerson.get(r.personId);
     if (was) { was.intake = { date: l.date, row: r }; continue; } // a newer date wins
-    add('f:' + (r.family || r.key), { name: r.title, personId: r.personId || null, intake: { date: l.date, row: r }, consent: null, flow: null, mis: null });
+    add('f:' + (r.family || r.key), { name: _ikFormName(r.title), personId: r.personId || null, intake: { date: l.date, row: r }, consent: null, flow: null, mis: null });
   }
   for (const l of of('consent')) for (const r of l.rows || []) {
     if (isDecl('consent', l.date, r)) { declined.push({ mode: 'consent', date: l.date, row: r }); continue; }
     const c = byPerson.get(r.key);
     if (c) c.consent = { date: l.date, row: r };
-    else add('p:' + r.key, { name: r.title, personId: r.key, intake: null, consent: { date: l.date, row: r }, flow: null, mis: null });
+    else add('p:' + r.key, { name: _ikFormName(r.title), personId: r.key, intake: null, consent: { date: l.date, row: r }, flow: null, mis: null });
   }
   for (const r of (src && src.flows) || []) {
     if (!r.consentStep || !r.personId) continue;
@@ -15192,7 +15216,7 @@ function _hubStripHtml() {
   if (!f || !c) return '';
   const at = HUB_STAGES.findIndex((s) => s[0] === c.stage);
   return `<div class="card"><div class="lk-svc-t">${esc(f.title)}</div><div class="lk-d">${HUB_STAGES.map(([, l], i) => i === at ? '<b>' + esc(l) + '</b>' : esc(l)).join(' ' + icS('arrr') + ' ')}</div>`
-    + (f.kids.length > 1 ? `<div class="tbbar">${f.kids.map((k, i) => `<button type="button" class="tbbtn ${i === I.hubKid ? 'on' : ''}" onclick="_hubKid(${i})">${esc(String(k.name || '').split(' ')[0] + ' · ' + ((HUB_STAGES.find((s) => s[0] === k.stage) || [])[1] || ''))}</button>`).join('')}</div>` : '')
+    + (f.kids.length > 1 ? `<div class="tbbar">${f.kids.map((k, i) => `<button type="button" class="tbbtn ${i === I.hubKid ? 'on' : ''}" onclick="_hubKid(${i})">${esc(String(k.name || '').split(' ')[0] + ': ' + ((HUB_STAGES.find((s) => s[0] === k.stage) || [])[1] || ''))}</button>`).join('')}</div>` : '')
     + (c.mis ? _ikMisRow(c.mis.row, c.mis.i, '', _ikSt()) : '') + '</div>';
 }
 // ONE primary button: Save to Elvanto (Mark consent on a consent row) while steps are left, else Text parent.
@@ -15215,7 +15239,7 @@ function _hubKidMore(c) {
   const out = [], ul = c && c.personId ? _hubUnlinkIdx(c.personId) : -1;
   if (c && c.flow) out.push('<button type="button" class="btn btn-secondary btn-sm" onclick="_hubRemove()">Remove from New People</button>');
   if (ul >= 0) out.push(`<button type="button" class="btn btn-secondary btn-sm" onclick="_ikClUnlink(${Number(ul)})">Unlink consent form</button>`);
-  if (c && c.flow && c.flow.notReceivedOk && !c.flow.dnc && !(c.next && c.next[0] === 'mark')) out.push('<button type="button" class="btn btn-secondary btn-sm" onclick="_hubMark()">Mark not received</button>');
+  if (c && _hubMarkOk(c) && !(c.next && c.next[0] === 'mark')) out.push('<button type="button" class="btn btn-secondary btn-sm" onclick="_hubMark()">Mark not received</button>');
   return out;
 }
 function _hubMoreHtml(det, list, st, keeps) {

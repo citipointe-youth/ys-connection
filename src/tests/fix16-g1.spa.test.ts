@@ -7,7 +7,7 @@ const IK = ['esc', 'progBar', '_lkTime', '_lkDay', 'fmtDay', '_lkAt', '_lkSeen',
   '_ikOpenOf', '_ikReasons', '_ikAct', '_ikChip', '_ikTodo', '_ikSaveBlock', '_ikTextBlock', '_ikBanner', '_ikVal', '_ikNm', '_ikNames',
   '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikHoldReason', '_ikDTag', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikResultHtml', '_ikFieldLabel',
   '_ikSheetHtml', '_ikSaveOpen', '_ikAns', '_ikSeed', '_ikMob', '_ikMobText', '_ikIssueText', '_ikCompareHtml',
-  '_ikPageHtml', '_ikSchedule', '_ikD26', '_intakeOn', '_ikModuleOn'];
+  '_hubAddDays', '_hubFriAfter', '_hubLate', '_ikNext', '_ikPageHtml', '_ikSchedule', '_ikD26', '_intakeOn', '_ikModuleOn'];
 const CONSTS = [/^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m, /^const IK_ISSUE = \{[\s\S]*?\};$/m]
   .map((re) => HTML.match(re)![0]).join('\n');
 const extra = (src: string) => (src.match(/^function (_ik[A-Za-z0-9]+)\(/gm) || []).map((s) => s.slice(9, -1));
@@ -18,7 +18,7 @@ function env(o: { tab?: string; date?: string | null } = {}) {
   const calls = { modals: [] as string[], timers: [] as number[], cbs: [] as Array<() => void>, loads: 0, vis: 'visible' };
   const prelude = `
     const __calls = globalThis.__g1;
-    const S = { user: { id: 'u1', role: 'admin' }, page: 'link-intake', settings: { ministryConfig: { modules: { intakeAdmin: 'on' } } } };
+    const S = { user: { id: 'u1', role: 'admin' }, page: 'link-intake', settings: { ministryConfig: { modules: { intakeAdmin: 'on' }, structure: { serviceDayOfWeek: 5 } } } };
     const LINK = { ik: null, status: null, adm: {} };
     ${CONSTS}
     const localStorage = { getItem: () => null, setItem() {} };
@@ -111,12 +111,21 @@ describe('F-17 the late-text hold is one plain sentence, shown once', () => {
     const { f, I } = env({ tab: 'consent', date: '2026-10-09' });
     const d = { key: P(1), status: 'needs-you', title: 'Tom LDummyton', holds: [{ role: 'student', text: 'Parent texted late (09/10/2026)? Check in Elvanto' }],
       outcome: '', consent: null, consentNote: '', textedOn: null, profiles: { student: null }, steps: [], links: [] };
-    const want = 'Parent texted Fri 9 Oct, too late for the Fri 2 Oct week. Look in Elvanto before saving.';
+    const want = 'Parent texted Fri 9 Oct, too late for the Fri 9 Oct check. It counts for the Fri 16 Oct check. Look in Elvanto if that is wrong.';
     expect(f._ikHoldLines(d)).toEqual([want]);
     I.head = ST();
     const why = f._ikSaveBlock({ row: { key: P(1), status: 'needs-you' }, detail: d, actions: [] }, LIST(), ST());
-    expect(why).toBe('Sort the line at the top first.');
-    expect(why).not.toContain('texted');
+    expect(why).toBe('Wait for the Fri 16 Oct check, or look in Elvanto.'); // 19 Nov: never "sort the line at the top" when that line IS the reason
+    expect(why).not.toContain('texted'); expect(why).not.toContain('at the top');
+    expect(f._ikNext({ row: { status: 'needs-you' } }, d)).toBe('On hold for the next check:');
+  });
+  it('a late text that is NOT for a later check keeps the older wording and Save reason', () => {
+    const { f, I } = env({ tab: 'consent', date: '2026-10-23' });
+    const d = { key: P(1), status: 'needs-you', title: 'Tom LDummyton', holds: [{ role: 'student', text: 'Parent texted late (14/10/2026)? Check in Elvanto' }],
+      outcome: '', consent: null, consentNote: '', textedOn: null, profiles: { student: null }, steps: [], links: [] };
+    expect(f._ikHoldLines(d)).toEqual(['Parent texted Wed 14 Oct, too late for the Fri 16 Oct week. Look in Elvanto before saving.']);
+    I.head = ST();
+    expect(f._ikSaveBlock({ row: { key: P(1), status: 'needs-you' }, detail: d, actions: [] }, LIST(), ST())).toBe('Sort the line at the top first.');
   });
 });
 

@@ -1,12 +1,12 @@
 // Consent hub (2026-10-23, design.md): the pure helpers. One row per family, a stage per child; Needs action reasons; search per child.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { loadIndexHtml, loadFns } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
 const STAGES = HTML.match(/^const HUB_STAGES = .*$/m)![0];
-const NAMES = ['esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubTextNext', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
+const NAMES = ['esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubFriAfter', '_hubMarkOk', '_hubStage', '_hubStray', '_hubTextNext', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText'];
-const F = loadFns(NAMES, `${STAGES}\nconst _lkSeen = (x) => x; const IK_FIX_REASON = {};`, NAMES);
+const F = loadFns(NAMES, `${STAGES}\nconst _lkSeen = (x) => x; const IK_FIX_REASON = {}; var S = { settings: { ministryConfig: { structure: { serviceDayOfWeek: 5, consentCutoff: '09:00' } } } };`, NAMES);
 const P = (n: number) => `9e000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const CUT = (y: string) => Date.parse(y + 'T06:30:00+10:00'); // Friday 06:30 Brisbane
 const irow = (o: any = {}) => ({ key: P(100 + (o.n || 0)), status: 'done', title: 'Ava Sample', reason: '', outcome: '', hasText: false, personId: P(1), family: null, actions: [], ...o });
@@ -164,7 +164,7 @@ describe('final-review fixes', () => {
 });
 
 describe('family page', () => {
-  const NAMES2 = ['esc', '_hubNextHtml', '_hubStray', '_ikTextOpen', '_hubKidMore', '_hubUnlinkIdx', '_ikTextStep', '_ikIsText', '_ikTodo', '_ikStepText'];
+  const NAMES2 = ['esc', '_hubNextHtml', '_hubStray', '_ikTextOpen', '_hubKidMore', '_hubMarkOk', '_hubFriday', '_hubFriAfter', '_hubAddDays', '_hubUnlinkIdx', '_ikTextStep', '_ikIsText', '_ikTodo', '_ikStepText'];
   const mk = (I: any) => loadFns(NAMES2, `const __I = ${JSON.stringify(I)}; const _ik = () => __I; const _ikSt = () => ({}); const icS = () => '';
     const _ikTextBlock = () => ''; const _ikSaveHtml = (det, list, st, label) => '<button>' + label + '</button>';
     let __m = ''; const modal = (h) => { __m = h; }; const _ikSheetHtml = (t) => t;
@@ -381,5 +381,53 @@ describe('save tag on the landing row (operator 2026-10-24)', () => {
   it('the newest save of the child wins across its intake and consent rows', () => {
     expect(tag([act({ status: 'sent' })], [act({ type: 'intakeSave', status: 'refused', createdAt: '2026-10-23T01:00:00Z' })])).toBe('Saved');
     expect(tag([act({ status: 'sent', createdAt: '2026-10-22T01:00:00Z' })], [act({ type: 'intakeText', status: 'pending' })])).toBe('Saving…');
+  });
+});
+
+// 19 Nov 2026: "England, April Taylor & Marcus, Bella" - April done, Bella's parent text (Sat 14 Nov) is held by the 13 Nov plan.
+describe('late-text hold: the app and the console agree which consent week it is', () => {
+  const NOW = Date.parse('2026-11-19T17:23:00+10:00'); // Thu, the day of the screenshot
+  const cut = (y: string) => Date.parse(y + 'T09:00:00+10:00');
+  const lateRow = (o: any = {}) => crow({ key: P(2), title: 'Marcus, Bella', status: 'needs-you', reason: 'Parent texted late (14/11/2026)? Check in Elvanto', textedOn: '2026-11-14', personId: P(2), family: P(9), ...o });
+  const src = (extra: any = {}) => ({
+    lists: {
+      'intake|2026-11-06': { date: '2026-11-06', rows: [irow({ n: 1, title: 'England, April Taylor', personId: P(1), family: P(9) }), irow({ n: 2, title: 'Marcus, Bella', personId: P(2), family: P(9) })] },
+      'consent|2026-11-13': { date: '2026-11-13', rows: [crow({ key: P(1), title: 'England, April Taylor', status: 'done', outcome: 'Contact allowed' }), lateRow(extra.row)] },
+    },
+    flows: extra.flows || [], mis: [],
+  });
+  it('the texted Friday is the first youth night after the text (Sat 14 Nov -> Fri 20 Nov), whatever the 13 Nov list says', () => {
+    expect(F._hubFriAfter('2026-11-14')).toBe('2026-11-20');
+    expect(F._hubFriAfter('2026-11-13')).toBe('2026-11-20'); // a text ON the Friday counts for the next one
+    const bella = kid({ personId: P(2), consent: { date: '2026-11-13', row: lateRow() } });
+    expect(F._hubFriday(bella)).toBe('2026-11-20');
+    // a step-0 row that still says 13 Nov (no textedOn sent) does not pull it back
+    expect(F._hubFriday(kid({ ...bella, flow: flow({ personId: P(2), consentFriday: '2026-11-13' }) }))).toBe('2026-11-20');
+  });
+  it('Bella is in Consent week (not Record consent) with no Mark consent offered; April stays Done; the hold reason is shown', () => {
+    const M = F._hubModel(src(), NOW, cut, {}, {});
+    const fam = M.fams[0];
+    expect(fam.kids.map((c: any) => c.stage)).toEqual(['done', 'consent']);
+    expect(fam.kids[1].next).toBeNull();
+    expect(fam.kids[1].reasons).toEqual([['hold', 'Parent texted late (14/11/2026)? Check in Elvanto']]);
+    expect(fam.stage).toBe('consent');
+  });
+  it('even once Friday has passed, a row the console still holds has no live Mark consent', () => {
+    const M = F._hubModel(src(), cut('2026-11-20') + 1, cut, {}, {});
+    expect(M.fams[0].kids[1].stage).toBe('decided');
+    expect(M.fams[0].kids[1].next).toBeNull();
+    const ready = F._hubModel(src({ row: { status: 'ready', reason: '', outcome: 'No reply: assume consent' } }), cut('2026-11-20') + 1, cut, {}, {});
+    expect(ready.fams[0].kids[1].next).toEqual(['consent', 'Mark consent']); // a ready row keeps its button
+  });
+  it('Mark not received (server flag) waits for the same Friday', () => {
+    const c = kid({ personId: P(2), consent: { date: '2026-11-13', row: lateRow() }, flow: flow({ personId: P(2), consentFriday: '2026-11-13', notReceivedOk: true }) });
+    vi.useFakeTimers(); vi.setSystemTime(NOW); try { expect(F._hubMarkOk(c)).toBe(false); vi.setSystemTime(cut('2026-11-20') + 1); expect(F._hubMarkOk(c)).toBe(true); } finally { vi.useRealTimers(); }
+  });
+  it('labels: "Last, First Middle" titles read First Middle Last everywhere on the card; the pill uses the given first name only', () => {
+    const M = F._hubModel(src(), NOW, cut, {}, {});
+    const fam = M.fams[0];
+    expect(fam.title).toBe('April Taylor England & Bella Marcus');
+    expect(fam.kids.map((c: any) => c.name)).toEqual(['April Taylor England', 'Bella Marcus']);
+    expect(fam.kids.map((c: any) => c.name.split(' ')[0])).toEqual(['April', 'Bella']);
   });
 });
