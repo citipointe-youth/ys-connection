@@ -36,8 +36,8 @@ update app_settings set ministry_config = jsonb_set(ministry_config #- '{roles,e
 6. Rollback below Part 2 needs nothing: 0053 is additive and the tables stay unused. Rollback below Part 1 uses the SQL above, run before the Instant Rollback.
 
 <!-- live -->
-- master sha: 893e147 (feat/small-3)
-- last ship: 2026-11-19 06:31 EAST
+- master sha: b9d31df (feat/small-3)
+- last ship: 2026-11-19 06:39 EAST
 - migration: 0057
 - SW version: ysc-v180
 - promote: auto (Vercel promotes every master build); check /health after the build
