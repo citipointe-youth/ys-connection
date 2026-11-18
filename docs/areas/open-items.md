@@ -67,3 +67,9 @@ Cutover planned Sun 25 Oct night (fallback Mon 26 / Wed 28). Do these first, in 
 - Import: `#import-status` guard done 2026-10-02 (`_setImportStatus` null-safe); what emptied the history cache mid-flow is still not established (docs/HISTORY.md "OPEN — raise on the next update").
 
 **Never visually verified by Claude** (owner checks on a real phone): Bus past-night map, Optimise route, iOS reload viewport fix, `ce7eaff`/`4c4a9e1`; real-phone 360 px grade chips (P1-22 / I1).
+
+## 2026-11-19 (small-3, ysc-v179/v180)
+- **Elvanto profile table (proposed, not built, needs Tom's yes):** a second table under Forms, same two columns (student profile, parent profile), same rows, "Differs" flags, "Not available (archived)" for archived profiles. The console already reads first/last/birthday/mobile/gender/grade/suburb (`reader.facts`, parents via the family ids); school is not read; archived = partial (`archivedFacts`). Needs a contract bump (the intake `Profile` is only id/name/archived), a console release (HOMESERVER via "home server 2") and a PII review.
+- **Flow steps Complete / Mark not received** still use the server's `consentFriday` (flow row `textedOn`, which the console does not always send). Only New youth & consent uses the plan row's `textedOn` (v180). Aligning needs a server change.
+- Check Bella Marcus's card (family England / Marcus): expect Consent week until Fri 20 Nov, then Record consent once the console publishes that check.
+- Stale git worktree entry `wt-consent-week` may remain in the console's `.git/worktrees` (OneDrive refused the delete); `git worktree prune` from a non-OneDrive shell.
