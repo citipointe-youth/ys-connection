@@ -14086,7 +14086,9 @@ function _ikHoldText(h, d) {
   if (t === 'Not found in consent step') return (who || 'This student') + " isn't in New People step 0, so no follow-up can be planned. Add them in Elvanto.";
   const late = /^Parent texted late \((\d{2}\/\d{2}\/\d{4})\)\? Check in Elvanto$/.exec(t);
   const lt = late && _hubLate(d);
-  if (lt && lt.next) return 'Parent texted ' + _lkDay(lt.ymd) + ', too late for the ' + _lkDay(_ik().date) + ' check. It counts for the ' + _lkDay(lt.fri) + ' check. Look in Elvanto if that is wrong.';
+  if (lt && lt.next) return 'Parent texted ' + _lkDay(lt.ymd) + ', too late for the ' + _lkDay(_ik().date) + ' check. ' + (lt.passed
+    ? 'The ' + _lkDay(lt.fri) + ' check has passed, but the console still holds this row.'
+    : 'It counts for the ' + _lkDay(lt.fri) + ' check. Look in Elvanto if that is wrong.');
   if (late) { // F-17: plain dates; the missed week is the intake Friday (consent date - 7)
     const p = late[1].split('/'), D = _ik().date, wk = D ? new Date(Date.parse(D + 'T00:00:00Z') - 7 * 864e5).toISOString().slice(0, 10) : '';
     return 'Parent texted ' + _lkDay(p[2] + '-' + p[1] + '-' + p[0]) + ', too late for ' + (wk ? 'the ' + _lkDay(wk) + ' week' : 'that week') + '. Look in Elvanto before saving.';
@@ -14120,7 +14122,7 @@ function _ikNext(det, d) {
   if (hs.length && hs.every((h) => h.text === 'Waiting for parent form')) return '';
   // I9b: holds the phone can answer (a verdict, a parent-form pick, Keep as is); any other hold is fixed in Elvanto.
   const app = IK_VERDICT_HOLDS.concat(['Check the match', 'Siblings share one parent form', 'Waiting for parent form', 'Fix the flagged items', 'Picked profile no longer matches']);
-  { const lt = hs.length === 1 && _hubLate(d); if (lt && lt.next) return 'On hold for the next check:'; }
+  { const lt = hs.length === 1 && _hubLate(d); if (lt && lt.next) return lt.passed ? 'On hold in the console:' : 'On hold for the next check:'; }
   if (hs.length && hs.every((h) => !app.includes(h.text))) return 'Fix in Elvanto, then Refresh:';
   if (!_ikHoldLines(d).length) return 'Before this ' + who + ' can be saved, answer ' + (hs.filter((h) => IK_VERDICT_HOLDS.includes(h.text)).length > 1 ? 'both questions' : 'the question') + ' below.';
   return 'Before this ' + who + ' can be saved:';
@@ -14134,7 +14136,7 @@ function _ikHoldReason(d) {
   if (t.includes('Fix the flagged items')) parts.push('fix the flagged answers');
   if (parts.length) { const s = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]; return s.charAt(0).toUpperCase() + s.slice(1) + ' first.'; }
   if (t.includes('Profile archived')) return 'Unarchive the profile first.';
-  { const lt = t.length === 1 && _hubLate(d); if (lt && lt.next) return 'Wait for the ' + _lkDay(lt.fri) + ' check, or look in Elvanto.'; } // never points at the hold that is itself the reason
+  { const lt = t.length === 1 && _hubLate(d); if (lt && lt.next) return lt.passed ? 'Check Elvanto, then press Assume consent anyway on the console PC.' : 'Wait for the ' + _lkDay(lt.fri) + ' check, or look in Elvanto.'; } // never points at the hold that is itself the reason
   if (!t.length) return '';
   return 'Sort the line' + (t.length > 1 ? 's' : '') + ' at the top first.'; // F-17: the hold itself is already at the top; never say it twice
 }
@@ -14823,11 +14825,15 @@ function _hubFriday(c) {
 }
 // Mark not received is only offered once the child's consent Friday has passed (the one rule above), never on the server's flag alone.
 function _hubMarkOk(c) { const f = _hubFriday(c); return !!(c.flow && c.flow.notReceivedOk && !c.flow.dnc) && !(f && Date.now() < _siteInstant(f, _consentCutoff())); }
-// A "Parent texted late (dd/mm/yyyy)" hold on this plan: {ymd, fri, next} - next = the text came after this check's Friday, so it counts for fri.
+// A "Parent texted late (dd/mm/yyyy)" hold on this plan: {ymd, fri, next, passed} - next = the text came after this check's Friday, so it counts for fri;
+// passed = fri's cut-off has gone by and the console still holds the row (20 Nov 2026: it never re-plans it under fri, so "wait" was false).
 function _hubLate(d) {
   for (const h of (d && d.holds) || []) {
     const m = /^Parent texted late \((\d{2})\/(\d{2})\/(\d{4})\)\? Check in Elvanto$/.exec(String(h.text || ''));
-    if (m) { const ymd = m[3] + '-' + m[2] + '-' + m[1], D = _ik().date, fri = _hubFriAfter(ymd); return { ymd, fri, next: !!(D && fri && fri > D) }; }
+    if (m) {
+      const ymd = m[3] + '-' + m[2] + '-' + m[1], D = _ik().date, fri = _hubFriAfter(ymd), next = !!(D && fri && fri > D);
+      return { ymd, fri, next, passed: next && Date.now() >= _siteInstant(fri, _consentCutoff()) };
+    }
   }
   return null;
 }

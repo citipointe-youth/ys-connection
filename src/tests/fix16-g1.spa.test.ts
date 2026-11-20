@@ -1,5 +1,5 @@
 // Fix round 16 Oct 2026, lane G1 (intake + admin link page). Extract-and-run: the REAL functions from public/index.html.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { loadFns, loadIndexHtml } from './helpers/extract-fn';
 
 const HTML = loadIndexHtml();
@@ -107,7 +107,9 @@ describe('F-15 Save result lines are plain and counted', () => {
 
 // F-16's text card was deleted by I8 (R2-G4, 2026-10-17): the parent text is sent from Flow steps.
 describe('F-17 the late-text hold is one plain sentence, shown once', () => {
+  afterEach(() => { vi.useRealTimers(); });
   it('says when the parent was texted and which week it missed; the Save reason does not repeat it', () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(Date.parse('2026-10-14T12:00:00+10:00')); // before the Fri 16 Oct check
     const { f, I } = env({ tab: 'consent', date: '2026-10-09' });
     const d = { key: P(1), status: 'needs-you', title: 'Tom LDummyton', holds: [{ role: 'student', text: 'Parent texted late (09/10/2026)? Check in Elvanto' }],
       outcome: '', consent: null, consentNote: '', textedOn: null, profiles: { student: null }, steps: [], links: [] };
@@ -126,6 +128,22 @@ describe('F-17 the late-text hold is one plain sentence, shown once', () => {
     expect(f._ikHoldLines(d)).toEqual(['Parent texted Wed 14 Oct, too late for the Fri 16 Oct week. Look in Elvanto before saving.']);
     I.head = ST();
     expect(f._ikSaveBlock({ row: { key: P(1), status: 'needs-you' }, detail: d, actions: [] }, LIST(), ST())).toBe('Sort the line at the top first.');
+  });
+  // 20 Nov 2026 (Bella): the console still holds the 13 Nov row after the 20 Nov check, so "Wait for the Fri 20 Nov check" was false.
+  it('once the later check\'s cut-off has passed, it says the console still holds it and how to clear it', () => {
+    const { f, I } = env({ tab: 'consent', date: '2026-11-13' });
+    const d = { key: P(1), status: 'needs-you', title: 'Bella Sample', holds: [{ role: 'student', text: 'Parent texted late (14/11/2026)? Check in Elvanto' }],
+      outcome: '', consent: null, consentNote: '', textedOn: '2026-11-14', profiles: { student: null }, steps: [], links: [] };
+    I.head = ST();
+    const det = { row: { key: P(1), status: 'needs-you' }, detail: d, actions: [] };
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(Date.parse('2026-11-20T08:59:00+10:00')); // 1 min before the 9:00 cut-off
+    expect(f._ikSaveBlock(det, LIST(), ST())).toBe('Wait for the Fri 20 Nov check, or look in Elvanto.');
+    vi.setSystemTime(Date.parse('2026-11-20T14:00:00+10:00'));
+    expect(f._ikHoldLines(d)).toEqual(['Parent texted Sat 14 Nov, too late for the Fri 13 Nov check. The Fri 20 Nov check has passed, but the console still holds this row.']);
+    expect(f._ikNext({ row: { status: 'needs-you' } }, d)).toBe('On hold in the console:');
+    const why = f._ikSaveBlock(det, LIST(), ST());
+    expect(why).toBe('Check Elvanto, then press Assume consent anyway on the console PC.');
+    expect(why).not.toContain('Wait for');
   });
 });
 

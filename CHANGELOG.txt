@@ -4,6 +4,17 @@ All changes since the project was first uploaded to GitHub (2026-06-12).
 Original codebase was copied from the youth-allocation-platform project.
 
 -------------------------------------------------------------------------------
+LATE HOLD AFTER ITS FRIDAY 2026-11-20  (ysc-v181, no migration, LINK_REV unchanged, no console change)
+-------------------------------------------------------------------------------
+- New youth & consent: a row held as "Parent texted late" kept saying "Wait for
+  the <Fri> check" after that Friday's cut-off had passed. The console still
+  holds the row then, so the wait was never going to end. Once the cut-off has
+  passed the card says "On hold in the console:", the hold line says the check
+  has passed but the console still holds this row, and the Save reason says
+  "Check Elvanto, then press Assume consent anyway on the console PC."
+  Mark consent stays off for a held row (unchanged).
+
+-------------------------------------------------------------------------------
 CONSENT WEEK FIX 2026-11-19  (ysc-v180, no migration, LINK_REV unchanged, no console change)
 -------------------------------------------------------------------------------
 - New youth & consent: a family whose parent text is held as late (the console
