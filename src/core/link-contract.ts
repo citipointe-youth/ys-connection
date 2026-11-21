@@ -42,7 +42,14 @@ export const LINK_CONTRACT_VERSION = 1;
 // Rev 24 (2026-11-14, needs-action round 2): type intakeMark {mode, date, row, mark: decline|undo} marks one plan row declined (or
 // undoes it) in Elvanto; an intake/consent push row may carry declined: true (the console keeps pushing declined rows, flagged); an
 // unclear result item may carry name (the family, for the unclear card). MIN_CONSOLE_REV stays 12: an older console never lists the type.
-export const LINK_REV = 24;
+// Rev 25 (2026-11-21, consent automation): an intake/consent row may carry stuck (the step keys the console saved before and Elvanto
+// doesn't show now); intakeSave/consentSave may carry resend: true ("Check and save again": the console re-reads, then sends once, for
+// the idempotent writers only); POST /sync/alerts may carry due (the Fri 19:45 / 06:30 prompts). MIN_CONSOLE_REV stays 12: an older
+// console sends none of them, an older app strips stuck (its rows are strict: the console only sends it to a rev 25 app).
+export const LINK_REV = 25;
+/** Rev 25 R3b: the console writers safe to repeat ("Check and save again"); never complete (a second text), note or approveNew.
+ *  The SPA's IK_IDEMPOTENT and the console's sent-log IDEMPOTENT are byte-equal copies (spike/verify-ys-link-contract.js). */
+export const IDEMPOTENT_ACTIONS = ['approve', 'unarchive', 'category', 'familyLink', 'setField', 'formFix', 'consentFix', 'consentNotReceived', 'removeFromStep', 'locDemo', 'youthDemo', 'inactivate'] as const;
 export const MIN_CONSOLE_REV = 12;
 /** C-1 (F-37): the `detail` stored on a sent removeFromFlowStep row whose Elvanto note was not saved. */
 export const NOTE_FAILED_DETAIL = 'Removed; the note was not saved.';
@@ -148,9 +155,9 @@ export const PAYLOAD_SCHEMAS = {
     choices: z.record(Uuid, z.union([z.enum(['same', 'new']), Uuid])).refine((r) => Object.keys(r).length <= 2, 'at most 2 choices'),
     pairs: z.record(Uuid, z.union([Uuid, z.literal('none')])).refine((r) => Object.keys(r).length <= 1, 'at most 1 pair'),
     undo: z.boolean() }).strict(),
-  intakeSave: z.object({ date: Ymd, row: Uuid, confirmed: z.array(StepKey).min(1).max(20), one: z.boolean() }).strict()
+  intakeSave: z.object({ date: Ymd, row: Uuid, confirmed: z.array(StepKey).min(1).max(20), one: z.boolean(), resend: z.literal(true).optional() }).strict()
     .refine((p) => !p.one || p.confirmed.length === 1, 'one: exactly one key'),
-  consentSave: z.object({ date: Ymd, row: Uuid, confirmed: z.array(StepKey).min(1).max(4) }).strict(),
+  consentSave: z.object({ date: Ymd, row: Uuid, confirmed: z.array(StepKey).min(1).max(4), resend: z.literal(true).optional() }).strict(),
   intakeText: z.object({ date: Ymd, row: Uuid,
     key: StepKey.refine((k) => k.startsWith('complete:parent:'), 'the parent text step') }).strict(),
   // Rev 6 (R4): admin/oversight; the optional note (encrypted outbox note) goes to the person's Elvanto notes.
@@ -301,7 +308,7 @@ const Advice = z.object({ form: Cut(20), profile: Cut(20), state: Cut(20) }).str
 const Links = z.array(z.tuple([Cut(40), z.string().regex(/^https:\/\//).max(300)])).max(4);
 const PlanStatus = z.enum(['needs-you', 'ready', 'done']);
 export const IntakeRow = z.object({ key: Uuid, status: PlanStatus, declined: z.literal(true).optional(), // rev 24
-  title: Cut(120), holds: z.array(Hold).max(10), fromApp: z.boolean(),
+  title: Cut(120), holds: z.array(Hold).max(10), fromApp: z.boolean(), stuck: z.array(StepKey).max(20).optional(), // rev 25
   siblings: z.array(Cut(60)).max(6),
   match: z.object({ kind: z.enum(['exact', 'near', 'manual', 'app']).nullable(), parentSub: Uuid.nullable(),
     options: z.array(z.object({ subId: Uuid, name: Cut(120), when: Cut(40) }).strict()).max(10) }).strict(),
@@ -315,7 +322,7 @@ export const IntakeRow = z.object({ key: Uuid, status: PlanStatus, declined: z.l
   dropped: z.array(z.object({ role: Role, key: FixKey }).strict()).max(14),
   links: Links }).strict();
 export const ConsentRow = z.object({ key: Uuid, status: PlanStatus, declined: z.literal(true).optional(), // rev 24
-  title: Cut(120), holds: z.array(Hold).max(10),
+  title: Cut(120), holds: z.array(Hold).max(10), stuck: z.array(StepKey).max(20).optional(), // rev 25
   outcome: z.enum(['Contact allowed', 'No contact', 'No reply: assume consent', '']),
   consent: z.object({ ymd: Ymd.nullable(), contact: z.boolean(), total: Cut(40) }).strict().nullable(),
   consentNote: Cut(40), textedOn: Ymd.nullable(),

@@ -1,0 +1,18 @@
+{
+  "contractVersion": 1,
+  "consoleId": "0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a",
+  "due": [
+    {
+      "kind": "consentText",
+      "date": "2026-11-27",
+      "counts": {
+        "save": 4,
+        "text": 3,
+        "record": 0,
+        "assume": 0,
+        "move": 0,
+        "held": 2
+      }
+    }
+  ]
+}

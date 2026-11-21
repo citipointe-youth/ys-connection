@@ -10,7 +10,7 @@ const FNS = ['esc', 'progBar', '_hubAddDays', '_hubFriAfter', '_hubLate', '_lkRc
   '_ikDTag', '_ikD26', '_ikTagHtml', '_ikPast', '_ikStepText', '_ikStepsHtml', '_ikResultHtml', '_ikSeed', '_ikAnswerBody',
   '_ikAns', '_ikPost', '_ikQKey', '_ikQRow', '_ikQSlot', '_ikSame', '_ikQGet', '_ikQSet', '_ikQFind', '_ikQFlush', '_ikQApply', '_ikUnlocal', '_ikOutcome', '_ikLocal', '_ikAnswerSend', '_ikForm', '_ikStudentSub', '_ikChoose', '_ikPair', '_ikPairIdx', '_ikKeep',
   '_ikFieldLabel', '_ikSheetHtml', '_ikSaveOpen', '_ikOneOpen', '_ikSheetGo', 'renderLinkIntake', '_ikDraw', '_ikPageHtml',
-  '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikCompareHtml', '_ikMatchHtml', '_ikDiffHtml',
+  '_ikConsentHelp', '_ikFamilyPage', '_ikHead', '_ikStuckSteps', '_ikStuckHtml', '_ikCompareHtml', '_ikMatchHtml', '_ikDiffHtml',
   '_ikLinkedLine', '_ikVerdictHtml', '_ikVal', '_ikNm', '_ikNames', '_ikPoss', '_ikHoldText', '_ikHoldLines', '_ikNext', '_ikHoldReason', '_ikConseq',
   '_ikIssueText', '_ikMob', '_ikMobText', '_ikUnkeep', '_ikPickParent', '_ikSaveHtml', '_ikFamilyHtml', '_ikConsentHtml', '_ikLoad', '_ikLoadRow', '_ikAfterLoad',
   '_ikSchedule', '_ikLeave',
@@ -32,7 +32,7 @@ const FNS = ['esc', 'progBar', '_hubAddDays', '_hubFriAfter', '_hubLate', '_lkRc
 const HTML = loadIndexHtml();
 const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');
 const CONSTS = [/^const IK_FIX = \[[^\]]*\];/m, /^const IK_HOLD = \{[\s\S]*?\n\};/m, /^const IK_VERDICT_HOLDS = \[[^\]]*\];/m,
-  /^const IK_ISSUE = \{[\s\S]*?\};$/m, /^const IK_CONTACT_RE = .*;$/m, /^const IK_FIX_REASON = \{[\s\S]*?\};$/m, /^const _LK_RC = \{\};$/m, /^const IK_LK_KINDS = .*$/m, /^const HUB_STAGES = .*$/m].map((re) => HTML.match(re)![0]).join('\n');
+  /^const IK_ISSUE = \{[\s\S]*?\};$/m, /^const IK_CONTACT_RE = .*;$/m, /^const IK_FIX_REASON = \{[\s\S]*?\};$/m, /^const _LK_RC = \{\};$/m, /^const IK_LK_KINDS = .*$/m, /^const HUB_STAGES = .*$/m, /^const IK_IDEMPOTENT = .*$/m].map((re) => HTML.match(re)![0]).join('\n');
 
 const P = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const HOSTILE = '<img src=x onerror=alert(1)>';

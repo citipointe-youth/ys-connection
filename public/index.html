@@ -14667,7 +14667,34 @@ function _ikFamilyPage() {
 function _ikHead(det, st, d) {
   const row = det.row || {}, nx = d ? _ikNext(det, d) : '';
   return `<div class="card"><div class="lk-svc-t">${esc(row.title)}</div>` + (nx ? `<div class="lk-d">${esc(nx)}</div>` : '')
-    + (d ? _ikHoldLines(d) : []).map((t) => `<div class="lk-st bad">${esc(t)}</div>`).join('') + '</div>';
+    + (d ? _ikHoldLines(d) : []).map((t) => `<div class="lk-st bad">${esc(t)}</div>`).join('') + (d ? _ikStuckHtml(det, d) : '') + '</div>';
+}
+// Consent automation R3b (rev 25): "Check and save again" for a step the console saved before and Elvanto doesn't show now. Only
+// the writers that are safe to repeat; the console re-reads Elvanto first and sends once only if it is still missing. Same list as
+// the console's sent-log IDEMPOTENT (spike/verify-ys-link-contract.js compares them).
+const IK_IDEMPOTENT = ['approve', 'unarchive', 'category', 'familyLink', 'setField', 'formFix', 'consentFix', 'consentNotReceived', 'removeFromStep', 'locDemo', 'youthDemo', 'inactivate'];
+function _ikStuckSteps(d) { const k = new Set((d && d.stuck) || []); return ((d && d.steps) || []).filter((s) => s.state !== 'done' && k.has(s.key)); }
+function _ikStuckHtml(det, d) {
+  const ss = _ikStuckSteps(d);
+  if (!ss.length) return '';
+  const WHY = { complete: 'Saving again could send a second text', note: 'Saving again could add a second note', approveNew: 'Saving again could make a duplicate profile' };
+  const no = ss.filter((s) => !IK_IDEMPOTENT.includes(s.action));
+  if (no.length) return no.map((s) => `<div class="lk-d">${esc((WHY[s.action] || 'Saving again could do it twice') + ', so check this one in Elvanto.')}</div>`).join('');
+  return `<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_ikResend(_ik().det)">Check and save again</button></div>`;
+}
+async function _ikResend(det) {
+  const I = _ik(), d = det && det.detail, row = det && det.row, ss = _ikStuckSteps(d);
+  if (!row || !ss.length || ss.some((s) => !IK_IDEMPOTENT.includes(s.action))) return;
+  const consent = I.tab === 'consent', type = consent ? 'consentSave' : 'intakeSave', id = _lkUuid(), keys = ss.map((s) => s.key);
+  const payload = consent ? { date: I.date, row: row.key, confirmed: keys, resend: true } : { date: I.date, row: row.key, confirmed: keys, one: false, resend: true };
+  let res;
+  try { res = await _ikPost([{ kind: 'action', id, type, payload, note: null, leaderId: null }]); }
+  catch (e) { toast(!e || !e.status || e.status >= 500 ? 'Not sent yet. It goes again by itself.' : e.message || 'Not sent. Try again.'); return; }
+  const r = _ikOutcome(res, id);
+  if (!(r && (r.outcome === 'saved' || r.outcome === 'replay'))) { toast((r && r.message) || 'Not sent. Try again.'); return; }
+  _ikLocal(row.key, { id, type, status: 'pending', reason: null, detail: null, steps: null, stop: null, createdAt: new Date().toISOString(), resultAt: null });
+  toast('Checking Elvanto, then saving again if it is still missing.');
+  _ikDraw();
 }
 // The two forms side by side (spec 2026-10-14 §2): one row per question, the parent-name and parent-mobile mismatch
 // highlighted, flagged answers marked with what is wrong, Keep as is on its own row, the Elvanto links last.

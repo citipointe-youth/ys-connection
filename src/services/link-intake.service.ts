@@ -6,7 +6,7 @@ import { z } from 'zod';
 import type { Actor } from '../core/entities/user';
 import type { AppSettings } from '../core/entities/settings';
 import type { ActionType, Capabilities, OutboxRow } from '../core/link-types';
-import { ConsentPush, INTAKE_TYPES, IntakeNote, IntakePush, Uuid } from '../core/link-contract';
+import { ConsentPush, IDEMPOTENT_ACTIONS, INTAKE_TYPES, IntakeNote, IntakePush, Uuid } from '../core/link-contract';
 import { BadRequestError, ForbiddenError, ModuleDisabledError } from '../core/errors/app-error';
 import { IntakeStale } from '../core/errors/link-errors';
 import { MINISTRY_CONFIG_DEFAULTS } from '../core/ministry-config';
@@ -45,7 +45,7 @@ export function consentsGate(actor: Actor, s: AppSettings): void {
   if (!canUseIntakeAdmin(actor, 'on')) throw new ForbiddenError('Only the admin can do this.');
 }
 
-interface StepLike { key: string; alone?: boolean; alts?: { key: string }[] }
+interface StepLike { key: string; action?: string; alone?: boolean; alts?: { key: string }[] }
 /**
  * One intake batch item, after its payload parsed (§6): the date was pushed, the plan is under 2 h old (Save / Text),
  * every confirmed key is in the stored plan of that row, and an intakeAnswer note is an IntakeNote within 1,900.
@@ -81,6 +81,11 @@ export async function checkIntakeItem(repo: ILinkIntakeRepository, type: ActionT
   const known = new Set(all.flatMap((s) => [s.key, ...(s.alts ?? []).map((a) => a.key)]));
   const keys = type === 'intakeText' ? [p.key as string] : (p.confirmed as string[]);
   if (keys.some((k) => !known.has(k))) throw new BadRequestError('This plan changed. Refresh and check again.');
+  if (p.resend === true) { // rev 25 R3b: only keys the console named stuck, and only the writers safe to repeat
+    const stuck = new Set(((x!.detail as { stuck?: string[] }).stuck) ?? []);
+    const safe = new Set<string>(IDEMPOTENT_ACTIONS);
+    if (keys.some((k) => !stuck.has(k) || !safe.has(all.find((y) => y.key === k)?.action ?? ''))) throw new BadRequestError('This step cannot be saved again from here. Check it in Elvanto.');
+  }
   if (type === 'intakeSave') {
     // The parent text is its own row with its own confirm (D16 / B6), never part of a Save.
     if (keys.some((k) => k.startsWith('complete:parent:'))) throw new BadRequestError('The parent text is sent on its own.');

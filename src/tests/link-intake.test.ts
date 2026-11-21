@@ -349,6 +349,17 @@ describe('/link/batch intake items', () => {
     expect(await one(h, act('intakeAnswer', answerP(), 'not json'))).toMatchObject({ code: 'BAD_REQUEST' });
     expect(await one(h, act('intakeSave', saveP(), 'a note'))).toMatchObject({ code: 'BAD_REQUEST' });
   });
+  it('rev 25 resend: only keys the console named stuck, and only the writers safe to repeat', async () => {
+    const h = await setup();
+    const r = row1(), cat = r.steps.find((s: any) => s.action === 'category').key, nw = r.steps.find((s: any) => s.action === 'approveNew').key;
+    expect(await one(h, act('intakeSave', saveP({ confirmed: [cat], resend: true })))).toMatchObject({ code: 'BAD_REQUEST' }); // not stuck
+    const px = fx('push-intake.json');
+    px.rows[0] = { ...px.rows[0], status: 'needs-you', holds: [{ role: 'parent', text: 'Saved before, not in Elvanto now' }], stuck: [cat, nw] };
+    px.takenAt = new Date(Date.parse(px.takenAt) + 1000).toISOString();
+    expect(await h.sync.push('intakePlan', px)).toMatchObject({ applied: true });
+    expect((await one(h, act('intakeSave', saveP({ confirmed: [cat], resend: true })))).outcome).toBe('saved');
+    expect(await one(h, act('intakeSave', saveP({ confirmed: [nw], resend: true })))).toMatchObject({ code: 'BAD_REQUEST' }); // a new profile: never twice
+  });
   it('checkIntakeItem without a repo detail: refused, never thrown as a 500', async () => {
     const repo = new InMemoryLinkIntakeRepository(() => NOW);
     await expect(checkIntakeItem(repo, 'intakeSave', saveP(), null, NOW)).rejects.toMatchObject({ statusCode: 400 });
