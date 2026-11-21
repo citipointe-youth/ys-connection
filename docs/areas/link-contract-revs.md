@@ -23,3 +23,6 @@ Lifted from the root CLAUDE.md Release process (2026-10-30). Each entry describe
 
 ## 2026-11-16: completeStep category fields (no rev)
 `completeStep` payload may carry `category` (member|visitor|inactive); inactive also needs `inactiveOn` (YYYY-MM-DD) and `reasonComment` (<=200). Optional like `assignTo`: an older console ignores them (the app also writes a "Category:" line in the note). Console 11.1 `src/ys-category.js` maps them to the step modal's Change People Category / Date Inactivated / Reason Other / Reason Comments, and refuses (nothing sent) if the modal does not offer them. Flow list: Elvanto's "You" reads **Console account**; **Only mine** filter; admin list of rows assigned in YS to a leader Elvanto cannot hold.
+
+## 2026-11-21: LINK_REV 25 (consent automation)
+Intake/consent rows may carry `stuck` (step keys, max 20); `intakeSave` / `consentSave` may carry `resend: true` (only for `stuck` keys of `IDEMPOTENT_ACTIONS`); `POST /sync/alerts` may carry `due` (max 2, counts only). Migration 0058 `prompt_sends`. MIN_CONSOLE_REV stays 12: an older console sends none of these. Fixtures `push-intake-rev25.json`, `alerts-request-rev25.json` (11.1 byte-copies them). Ship YS first.
