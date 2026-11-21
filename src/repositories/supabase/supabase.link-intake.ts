@@ -96,8 +96,9 @@ export class SupabaseLinkIntakeRepository implements ILinkIntakeRepository {
   // Unprocessed rows (needs-you, ready) are kept until openBefore; their date stays so the hub still lists them.
   // ponytail: no advisory lock, so a push to an old date racing the date delete could orphan its rows; old dates are rarely pushed.
   async purge(before: string, openBefore: string) {
-    await this.sql`delete from link_intake_rows where (date < ${before} and status = 'done') or date < ${openBefore}`;
+    const gone = await this.sql`delete from link_intake_rows where (date < ${before} and status = 'done') or date < ${openBefore} returning status`;
     await this.sql`delete from link_intake_dates d where date < ${before} and not exists (select 1 from link_intake_rows r where r.mode = d.mode and r.date = d.date)`;
+    return gone.filter((r) => r.status !== 'done').length;
   }
 
   async clear() {

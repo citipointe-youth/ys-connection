@@ -36,7 +36,8 @@ export interface ILinkIntakeRepository {
   markViewed(): Promise<void>;
   viewedAt(): Promise<string | null>;
   /** Deletes done rows older than `before` and any row older than `openBefore` (YYYY-MM-DD, exclusive), then dates with no rows left. */
-  purge(before: string, openBefore: string): Promise<void>;
+  /** Returns how many unprocessed (not done) rows went (F4: they were never saved). */
+  purge(before: string, openBefore: string): Promise<number>;
   /** Module Off: deletes every link_intake_* row. */
   clear(): Promise<void>;
 }

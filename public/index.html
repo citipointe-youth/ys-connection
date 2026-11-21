@@ -14993,6 +14993,7 @@ async function _hubLoad(quiet) {
     if (_ik() !== I || I.gen !== gen) return;
     I.head = { console: hi && hi.console, consoleLinkRev: hi && hi.consoleLinkRev, appLinkRev: hi && hi.appLinkRev };
     I.dates = (ik && hi && hi.dates) || [];
+    I.nearPurge = ((ik && hi && hi.nearPurge) || 0) + ((hc && hc.nearPurge) || 0); // F4: unprocessed rows within 14 days of the 56-day clear-out
     const want = [['intake', I.dates], ['consent', (hc && hc.dates) || []]].flatMap(([m, ds]) => ds.map((x) => [m, x.date]));
     const got = _intakeOn(I.head) ? await Promise.all(want.map(([m, d]) => get('/link/intake?mode=' + m + '&date=' + encodeURIComponent(d)).catch(() => null))) : [];
     if (_ik() !== I || I.gen !== gen) return;
@@ -15239,8 +15240,7 @@ function _cwCounts(mode, date) {
     c.held++; c.holds[why] = (c.holds[why] || 0) + 1;
     if (why === 'Saved before, not in Elvanto now') c.unclear++; // the STUCK hold (_ikWhy)
   }
-  const l = ((_ik().hub || {}).lists || {})[mode + '|' + date];
-  c.nearPurge = (l && l.nearPurge) || 0;
+  c.nearPurge = _ik().nearPurge || 0; // every date (the rows near the clear-out are older weeks)
   return c;
 }
 function _cwOpen(mode, date) {

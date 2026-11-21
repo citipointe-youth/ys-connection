@@ -349,6 +349,26 @@ describe('/link/batch intake items', () => {
     expect(await one(h, act('intakeAnswer', answerP(), 'not json'))).toMatchObject({ code: 'BAD_REQUEST' });
     expect(await one(h, act('intakeSave', saveP(), 'a note'))).toMatchObject({ code: 'BAD_REQUEST' });
   });
+  it('F4: nearPurge counts unfinished rows aged 42-55 days (dates index only)', async () => {
+    const h = await setup();
+    const old = (days: number) => new Date(NOW.getTime() - days * 864e5).toISOString().slice(0, 10);
+    for (const [days, status] of [[43, 'needs-you'], [50, 'ready'], [44, 'done'], [30, 'needs-you']] as const) {
+      const px = fx('push-intake.json');
+      px.date = old(days); px.rows = [{ ...px.rows[0], status }];
+      await h.sync.push('intakePlan', px);
+    }
+    expect(((await h.intake.list(ADMIN, { mode: 'intake' })) as any).nearPurge).toBe(2);
+  });
+  it('F4: purging an unfinished row writes one error-log line with a count, no ids or names', async () => {
+    const h = await setup();
+    const px = fx('push-intake.json');
+    px.date = new Date(NOW.getTime() - 50 * 864e5).toISOString().slice(0, 10); px.rows = [{ ...px.rows[0], status: 'needs-you' }];
+    await h.sync.push('intakePlan', px);
+    h.clock.now = new Date(NOW.getTime() + 7 * 864e5);
+    await h.intake.list(ADMIN, { mode: 'intake' });
+    const calls = h.errorLog.record.mock.calls.map((c: any[]) => c[0]).filter((r: any) => r.code === 'intake-purge-open');
+    expect(calls).toEqual([{ category: 'link', code: 'intake-purge-open', route: 'intake purge', count: 1 }]);
+  });
   it('rev 25 resend: only keys the console named stuck, and only the writers safe to repeat', async () => {
     const h = await setup();
     const r = row1(), cat = r.steps.find((s: any) => s.action === 'category').key, nw = r.steps.find((s: any) => s.action === 'approveNew').key;

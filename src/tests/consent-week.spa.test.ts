@@ -13,7 +13,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 // bulk: what _hubBulkRows(M, kind) returns per kind; kids: the family kids (for held / unclear counts)
 function env(o: { bulk?: Record<string, any[]>; kids?: any[]; nearPurge?: number; hub?: boolean } = {}) {
   const calls = { go: [] as string[], modal: [] as string[], bulk: [] as any[], toasts: [] as string[] };
-  const I: any = { hub: o.hub === false ? null : { lists: { ['intake|' + D]: { nearPurge: o.nearPurge || 0 }, ['consent|' + D]: { nearPurge: o.nearPurge || 0 } } } };
+  const I: any = { nearPurge: o.nearPurge || 0, hub: o.hub === false ? null : { lists: {} } };
   const f = new Function('ARGS', `
     const { calls, I, o } = ARGS;
     const history = { replaceState: () => {} }, location = { search: '', pathname: '/' };

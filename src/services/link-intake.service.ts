@@ -26,6 +26,7 @@ const HURRY_LOOKUP_MS = 5 * 60_000;           // L8: a consentLookup made in the
 const HURRY_VIEW_MS = 30 * 60_000;             // R1: an admin opened Intake in the last 30 min
 const REFRESH_ASK_MS = 10 * 60_000;            // R2: a refresh ask is offered to the console for 10 min only
 const REFRESH_BACK_DAYS = 56;                  // a Refresh may ask for a date up to 8 weeks back
+const NEAR_PURGE_DAYS = REFRESH_BACK_DAYS - 14;  // F4 (2026-11-21): an unprocessed row this old is listed as near the clear-out
 const INTAKE: readonly string[] = INTAKE_TYPES;
 export const isIntakeType = (t: ActionType) => INTAKE.includes(t);
 const modeOf = (t: ActionType, p?: Record<string, unknown>): IntakeMode =>
@@ -127,7 +128,8 @@ export function makeIntakeService(d: IntakeServiceDeps) {
     lastPurge = t.getTime();
     const today = brisbaneToday(t, tz);
     // An unprocessed row stays until a Refresh can no longer reach its date (8 weeks); then it can never be saved, so it goes too.
-    await d.intake.purge(addDays(today, -INTAKE_KEEP_DAYS), addDays(today, -REFRESH_BACK_DAYS));
+    const open = await d.intake.purge(addDays(today, -INTAKE_KEEP_DAYS), addDays(today, -REFRESH_BACK_DAYS));
+    if (open) await d.errorLog?.record({ category: 'link', code: 'intake-purge-open', route: 'intake purge', count: open }); // F4: counts only
   };
   const stale = (takenAt: string | null, t: Date) => !takenAt || t.getTime() - Date.parse(takenAt) > INTAKE_STALE_MS;
   const actionsOf = async (mode: IntakeMode, date: string) =>
@@ -148,7 +150,8 @@ export function makeIntakeService(d: IntakeServiceDeps) {
       const dateView = (x: (typeof dates)[number]) => ({ date: x.date, takenAt: x.takenAt, stale: stale(x.takenAt, t), cut: x.cut,
         inputs: x.inputsFrom ? { from: x.inputsFrom, at: x.inputsAt } : null, refreshAskedAt: x.refreshAskedAt });
       if (!f.date) {
-        return { ...head, dates: dates.map((x) => {
+        const near = addDays(brisbaneToday(t, s.ministryConfig.structure.timeZone), -NEAR_PURGE_DAYS);
+        return { ...head, nearPurge: rows.filter((r) => r.status !== 'done' && !r.declined && r.date <= near).length, dates: dates.map((x) => {
           const declined = rows.filter((r) => r.date === x.date && r.declined).length; // rev 24: counted apart, never in needs-you / ready / done
           const mine = rows.filter((r) => r.date === x.date && !r.declined);
           const n = (s: string) => mine.filter((r) => r.status === s).length;
