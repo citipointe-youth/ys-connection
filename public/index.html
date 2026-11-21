@@ -2198,10 +2198,11 @@ function _navRoute(params) {
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (p.ids != null) p.ids = Array.isArray(p.ids) ? p.ids : String(p.ids).split(',');
   const ok = Object.entries(p).every(([k, v]) => k === 'screen' || k === 'nav' || k === 'type'
-    || (k === 'ids' ? v.length >= 1 && v.length <= 10 && v.every((x) => UUID.test(String(x)))
+    || (k === 'mode' ? v === 'intake' || v === 'consent' : k === 'ids' ? v.length >= 1 && v.length <= 10 && v.every((x) => UUID.test(String(x)))
       : k === 'date' || k === 'd' ? /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(String(v)) : UUID.test(String(v))));
   if (ok && screen === 'student' && p.ids) { _bdayList(p.ids); return true; }
   if (ok && screen === 'lgreport' && p.g && p.d) { _lgremOpen(p.g, p.d); return true; }
+  if (ok && screen === 'consentweek' && p.mode && p.date) { _cwOpen(p.mode, p.date); return true; }
   go('notices');
   return ok && screen === 'notices';
 }
@@ -14982,6 +14983,8 @@ async function _hubLoad(quiet) {
   if (_ik() !== I || I.gen !== gen) return;
   if (!quiet) _usLoad().then(() => { if (_ik() === I) _ikDraw(); });
   _ikDraw(); _ikSchedule();
+  if (I.hub && I.cw && I.cw.show) _cwSheet();
+  if (I.cwChain) _cwNext();
 }
 // The newest stored list date for a mode ('intake' or 'consent'): the one Refresh re-reads, and so the one the Checked label counts.
 function _hubNewest(L, m) { return Object.keys(L || {}).filter((k) => k.startsWith(m + '|')).sort().pop(); }
@@ -15157,8 +15160,8 @@ function _hubBulkHtml(stage, M) {
 // One confirm for the group: each row's own detail is read (the step keys go verbatim, as Save all), blocked ones are named and skipped.
 // wk (landing button only): just the families in that week, as the landing counts.
 function _hubWkM(M, wk) { const today = _siteDay(Date.now()); return { ...M, fams: M.fams.filter((f) => _hubInWeek(f.date, wk, today)) }; }
-async function _hubBulkOpen(kind, wk) {
-  const I = _ik(), xs = _hubBulkRows(wk ? _hubWkM(_hubM(), wk) : _hubM(), kind), st = _ikSt();
+async function _hubBulkOpen(kind, wk, cw) {
+  const I = _ik(), xs = _hubBulkRows(wk ? _hubWkM(_hubM(), wk) : _hubM(), kind).filter(([, x]) => !cw || x.date === cw.date), st = _ikSt();
   if (!xs.length || I.saBusy) return;
   I.saBusy = true; _ikDraw();
   const h = _here();
@@ -15182,6 +15185,7 @@ async function _hubBulkOpen(kind, wk) {
   _ikDraw();
   if (!items.length) { toast('Nothing to do yet. Open each one to see why.'); return; }
   I.sa = { type, items };
+  if (cw && cw.auto) { _ikSaveAllGo(); return; } // the "This week" Run already listed and confirmed these (R4)
   const n = items.length;
   const title = type === 'intakeText' ? `Text ${n} parent${n === 1 ? '' : 's'}?` : type === 'consentSave' ? `Save ${n} consent${n === 1 ? '' : 's'} to Elvanto?` : `Save ${n} famil${n === 1 ? 'y' : 'ies'} to Elvanto?`;
   modal(`<div class="mo-title">${esc(title)}</div>`
@@ -15190,6 +15194,66 @@ async function _hubBulkOpen(kind, wk) {
     + (type === 'consentSave' && items.some((it) => it.outcome === 'No reply: assume consent') ? `<div class="ik-line">${esc(_ikD26())}</div>` : '')
     + `<p class="lk-sub lk-mt">${esc('The console does them one at a time.' + (skipped.length ? ' Not included (open them to see why): ' + skipped.join(', ') + '.' : ''))}</p>`
     + `<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="button" class="btn btn-primary" onclick="_ikSaveAllGo()">${esc((type === 'intakeText' ? 'Send ' : 'Save ') + n)}</button></div>`);
+}
+// Consent automation (2026-11-21): the "This week" sheet. The Fri 19:45 push opens it for that Friday's intake (Save all, then
+// Text all once the saves land), the Fri 06:30 push for that Friday's consents (Save all: record, assume, move). Counts only;
+// held rows are never in a bulk list (_hubBulkRows takes ready rows only). One Run = the confirm for every step it lists (R4).
+function _cwRows(kind, date) { return _hubBulkRows(_hubM(), kind).filter(([, x]) => x.date === date); }
+function _cwCounts(mode, date) {
+  const c = { save: 0, text: 0, record: 0, assume: 0, move: 0, held: 0, holds: {}, unclear: 0, nearPurge: 0 };
+  if (mode === 'intake') { c.save = _cwRows('save', date).length; c.text = _cwRows('text', date).length; }
+  else for (const [, x] of _cwRows('consent', date)) { const o = x.row.outcome; c.move++; if (o === 'No reply: assume consent') c.assume++; else c.record++; }
+  for (const f of _hubM().fams) for (const k of f.kids) {
+    const x = k[mode], r = x && x.row;
+    if (!r || x.date !== date || r.status !== 'needs-you' || String(r.reason || '').startsWith('Waiting for replies until')) continue;
+    const why = r.reason || 'Needs a look';
+    c.held++; c.holds[why] = (c.holds[why] || 0) + 1;
+    if (why === 'Saved before, not in Elvanto now') c.unclear++; // the STUCK hold (_ikWhy)
+  }
+  const l = ((_ik().hub || {}).lists || {})[mode + '|' + date];
+  c.nearPurge = (l && l.nearPurge) || 0;
+  return c;
+}
+function _cwOpen(mode, date) {
+  go('link-intake');
+  const I = _ik();
+  I.cw = { mode, date, show: true };
+  if (I.hub) _cwSheet();
+}
+function _cwSheet() {
+  const I = _ik(), w = I.cw;
+  if (!w) return;
+  w.show = false;
+  const c = _cwCounts(w.mode, w.date), n = w.mode === 'intake' ? c.save + c.text : c.move;
+  const line = (t) => `<div class="ik-step"><span class="ik-dot"></span><span>${esc(t)}</span></div>`;
+  const lines = (w.mode === 'intake'
+    ? [c.save + ' to save to Elvanto', c.text + ' parents to text now' + (c.save ? ' (more after the saves land)' : '')]
+    : [c.record + ' consents to record', c.assume + ' no reply: assume consent', c.move + ' to move on in New People'])
+    .concat(c.held ? ['Held ' + c.held + ': ' + Object.entries(c.holds).map(([k, v]) => k + ' ' + v).join(', ') + ' (open each in the list)'] : [])
+    .concat(c.unclear ? [c.unclear + ' unclear saves need you'] : [])
+    .concat(c.nearPurge ? [c.nearPurge + ' rows near the 56-day clear-out: finish them soon'] : []);
+  modal(`<div class="mo-title">${esc((w.mode === 'intake' ? 'Save and text: ' : 'Record consents: ') + _lkDay(w.date))}</div>` + lines.map(line).join('')
+    + (w.mode === 'intake' && n ? `<div class="ik-line">${esc("Elvanto sends each consent text. They can't be recalled.")}</div>` : '')
+    + `<div class="lk-acts lk-mt"><button type="button" class="btn btn-secondary" onclick="closeModal()">${n ? 'Cancel' : 'Close'}</button>`
+    + (n ? `<button type="button" class="btn btn-primary" onclick="_cwRun()">Run</button>` : `<span class="lk-d">Nothing to run</span>`) + '</div>');
+}
+async function _cwRun() {
+  const I = _ik(), w = I.cw;
+  if (!w || I.cwRunning) return;
+  I.cwRunning = true;
+  closeModal();
+  try {
+    if (w.mode === 'consent') { await _hubBulkOpen('consent', null, { date: w.date, auto: true }); return; }
+    I.cwChain = { date: w.date, at: Date.now() }; // texts follow once the saves land and the console re-pushes (_hubLoad)
+    if (_cwRows('save', w.date).length) await _hubBulkOpen('save', null, { date: w.date, auto: true });
+    else _cwNext();
+  } finally { I.cwRunning = false; }
+}
+function _cwNext() {
+  const I = _ik(), ch = I.cwChain;
+  if (!ch || (I.hubSend && I.hubSend.done < I.hubSend.ids.length)) return;
+  if (_cwRows('text', ch.date).length) { I.cwChain = null; _hubBulkOpen('text', null, { date: ch.date, auto: true }); return; }
+  if (Date.now() - ch.at > 600e3) { I.cwChain = null; toast('No parents to text yet. Open the list to see why.'); }
 }
 function _hubPage() {
   const I = _ik(), st = _ikSt(), at = _hubCheckedAt();
