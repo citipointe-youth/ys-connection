@@ -15044,7 +15044,7 @@ async function _hubRefresh() {
   await forms;
   I.hubWeek = null;
   if (_ik() !== I) return;
-  if (!(h.snap && h.snap.live)) for (const k of ['unlinked', 'mismatches', 'forms']) _ikLkGo(k, 1, ''); // F5: the ask stays open; _ikSchedule polls 5 s
+  if (!(h.snap && h.snap.live)) { for (const k of ['unlinked', 'mismatches', 'forms']) _ikLkGo(k, 1, ''); if (!I.hubAskDates.length) I.hubAsk = 0; } // F5: the ask stays open (5 s polls) while a date waits
   _hubLoad(true);
 }
 function _hubQ(v) { const I = _ik(); I.hubQ = v; const el = document.getElementById('hub-res'); if (el) { el.innerHTML = _hubBodyHtml(); _usPaint(); } }
@@ -15269,6 +15269,7 @@ function _cwSheet() {
 async function _cwRun() {
   const I = _ik(), w = I.cw;
   if (!w || I.cwRunning) return;
+  if (I.saBusy) { toast('A save is still being read. Try Run again in a moment.'); return; } // never arm the text chain behind it
   I.cwRunning = true;
   closeModal();
   try {

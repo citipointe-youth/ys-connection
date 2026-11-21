@@ -121,6 +121,15 @@ describe('consentweek: Run', () => {
     expect(e.calls.bulk).toEqual([['consent', { date: D, auto: true }]]);
     expect(e.I.cwChain || null).toBeNull();
   });
+  it('final review: a Run while another save is still being read arms nothing (no texts later)', async () => {
+    const e = env({ bulk: { save: [at('intake', 1)] } });
+    e._cwOpen('intake', D);
+    e.I.saBusy = true;
+    await e._cwRun();
+    expect(e.calls.bulk).toHaveLength(0);
+    expect(e.I.cwChain || null).toBeNull();
+    expect(e.calls.toasts[0]).toMatch(/still/);
+  });
   it('run is single-flight', async () => {
     const e = env({ bulk: { save: [at('intake', 1)] } });
     e._cwOpen('intake', D);

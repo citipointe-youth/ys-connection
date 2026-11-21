@@ -62,7 +62,7 @@ describe('Refresh asks then polls', () => {
     const I: any = { hub: { lists: { ['intake|' + D]: {}, ['consent|' + D]: {} }, snap: { live: false } } };
     (globalThis as any).__I = I; (globalThis as any).__posts = posts;
     const F = loadFns(['_hubRefresh'], `
-      const __I = globalThis.__I; const _ik = () => __I; const _ikDraw = () => {}; const _hubWk = () => 'all';
+      const _ik = () => globalThis.__I; const _ikDraw = () => {}; const _hubWk = () => 'all';
       const _hubInWeek = () => true; const _lkWeekStart = (d) => d; const _ikLkGo = () => {};
       const API = { post: (p, b) => { globalThis.__posts.push([p, b]); return Promise.resolve({}); } };
       const _hubLoad = () => {};`, ['_hubRefresh']);
@@ -70,6 +70,17 @@ describe('Refresh asks then polls', () => {
     expect(I.hubAsk).toBeGreaterThan(0);
     expect(I.hubAskDates.sort()).toEqual(['consent|' + D, 'intake|' + D]);
     expect(I.hubMsg).toBe('');
+  });
+  it('final review: an empty week on a non-live snapshot has nothing to wait for (no false console-did-not-answer)', async () => {
+    const I: any = { hub: { lists: {}, snap: { live: false } } };
+    (globalThis as any).__I = I; (globalThis as any).__posts = [];
+    const F = loadFns(['_hubRefresh'], `
+      const _ik = () => globalThis.__I; const _ikDraw = () => {}; const _hubWk = () => 'all';
+      const _hubInWeek = () => true; const _lkWeekStart = (d) => d; const _ikLkGo = () => {};
+      const API = { post: (p, b) => { globalThis.__posts.push([p, b]); return Promise.resolve({}); } };
+      const _hubLoad = () => {};`, ['_hubRefresh']);
+    await F._hubRefresh();
+    expect(I.hubAsk).toBe(0);
   });
   it('the label reads Updating… while asking', () => {
     expect(HTML).toContain("I.hubAsk ? 'Updating…'");
