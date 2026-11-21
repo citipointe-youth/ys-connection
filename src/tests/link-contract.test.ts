@@ -121,6 +121,7 @@ const FIXTURES: Record<string, z.ZodTypeAny> = {
   'result-request-rev24.json': C.ResultRequest,
   'push-intake-rev25.json': C.PUSH_SCHEMAS.intakePlan, // rev 25 (2026-11-21, consent automation: stuck keys)
   'alerts-request-rev25.json': C.AlertsRequest, // rev 25: the console's due prompts
+  'idempotent-actions-rev25.json': z.tuple(C.IDEMPOTENT_ACTIONS.map((a) => z.literal(a)) as any), // rev 25: the writers safe to repeat, in order (11.1 sent-log IDEMPOTENT compares)
 };
 
 describe('link contract: every fixture parses with its schema', () => {
