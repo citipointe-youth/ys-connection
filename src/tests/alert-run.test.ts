@@ -34,7 +34,7 @@ function make(o: { env?: Record<string, string>; notices?: 'on' | 'off'; sender?
   const claimed: string[] = [];
   const pruned: Date[] = [];
   const claimSpy = { claim: async (k: 'bday' | 'lgrem', key: string, l: string) => { const won = await claims.claim(k, key, l); if (won) claimed.push(l); return won; },
-    prune: async (d: Date) => { pruned.push(d); } };
+    claimOnce: async () => true, prune: async (d: Date) => { pruned.push(d); } };
   const sent: string[] = [];
   const logged: any[] = [];
   const n = o.leaders ?? 2;

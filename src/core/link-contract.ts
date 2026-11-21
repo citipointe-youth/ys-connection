@@ -434,6 +434,11 @@ export const PushResponse = z.object({ applied: z.boolean(), rows: z.number().in
 
 // ---- POST /sync/leaders (T8, rev 5): the envelope only; the reply is every active app leader's full name.
 export const LeadersRequest = z.object({ contractVersion: Version, consoleId: Uuid });
+// Consent automation (rev 25): the alerts call may name the consent prompts due now (counts only). Optional; an older console sends none.
+const DueN = z.number().int().min(0).max(10000);
+export const AlertsRequest = LeadersRequest.extend({ due: z.array(z.object({ kind: z.enum(['consentText', 'consentRecord']),
+  date: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/),
+  counts: z.object({ save: DueN, text: DueN, record: DueN, assume: DueN, move: DueN, held: DueN }).strict() }).strict()).max(2).optional() });
 export const LeadersResponse = z.object({ contractVersion: Version, names: z.array(z.string().max(200)).max(2000) });
 
 // Part 2 reconciliation (spec 2026-10-17 s5.8). Additive; no contract version bump (an older console never calls it).

@@ -6,7 +6,7 @@ import type { ReconcileService } from '../../services/reconcile.service';
 import type { NightSummaryService } from '../../services/night-summary.service';
 import type { AlertRun } from '../../services/alert-run.service';
 import { parseBody } from '../../services/sync.service';
-import { LeadersRequest } from '../../core/link-contract';
+import { AlertsRequest } from '../../core/link-contract';
 
 export function makeSyncController(deps: { sync: SyncService; reconcile: Pick<ReconcileService, 'latest'>; nightSummary: NightSummaryService;
   alerts: AlertRun }) {
@@ -20,7 +20,9 @@ export function makeSyncController(deps: { sync: SyncService; reconcile: Pick<Re
     nightSummary: (r: HttpRequest) => deps.nightSummary.get(r.body), // Friday night check: read only, counts only
     // F4 leader alerts: the console's 15-min trigger runs every kind. Body is { contractVersion, consoleId } (same shape as /sync/leaders).
     // Never ModuleDisabledError and not gated on liveLink: an off module is a 200 with skipped: 'module-off'.
-    alerts: async (r: HttpRequest) => { parseBody(LeadersRequest, r.body); return deps.alerts.run(new Date(), ['bday', 'lgrem']); },
+    // Consent automation: `due` adds the consent prompts the console says are due now (claimed once per kind + date).
+    alerts: async (r: HttpRequest) => { const b = parseBody(AlertsRequest, r.body), due = b.due ?? [];
+      return deps.alerts.run(new Date(), ['bday', 'lgrem', ...due.map((d) => d.kind)], due); },
     // The Vercel cron catch-up (cron secret, checked in the adapter): birthdays only (Hobby is daily).
     alertsCron: () => deps.alerts.run(new Date(), ['bday']),
   };

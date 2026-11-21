@@ -81,6 +81,8 @@ export type INoticePushRepository = IRepository<NoticePushSub>;
 /** Alert send ledger. `claim` is true when this caller won the (kind, key, leader) row and may send. */
 export interface IAlertSendRepository {
   claim(kind: 'bday' | 'lgrem', key: string, leaderId: string): Promise<boolean>;
+  /** Consent prompts: one claim per (kind, key) for every recipient (prompt_sends, 0058). */
+  claimOnce(kind: 'consentText' | 'consentRecord', key: string): Promise<boolean>;
   prune(before: Date): Promise<void>;
 }
 

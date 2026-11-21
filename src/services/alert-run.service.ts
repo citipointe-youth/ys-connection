@@ -10,14 +10,19 @@ import type { ErrorLogService } from './error-log.service';
 import { can, type StructureScope } from './access-control';
 import { readVapid, sendToSubs, webPushSender, type PushSender } from './push-send';
 
-export type AlertKindName = 'bday' | 'lgrem';
+export type AlertKindName = 'bday' | 'lgrem' | 'consentText' | 'consentRecord';
+/** Consent automation: a prompt the console says is due now (Fri 19:45 text, Fri 06:30 record), counts only. */
+export interface Due { kind: 'consentText' | 'consentRecord'; date: string; counts: { save: number; text: number; record: number; assume: number; move: number; held: number } }
 export type Skip = 'window' | 'push-off' | 'module-off' | 'stale' | null;
 export interface Counts { leaders: number; sent: number; failed: number; skipped: Skip; hidden?: number; unlinked?: number }
 /** A subscription that may receive leader alerts (S6): leader picked and active, user active with notice:alerts. */
 export type EligibleSub = NoticePushSub & { user: User };
-export interface AlertCtx { now: Date; tz: string; modules: Modules; structure: StructureScope; leaders: Leader[]; subs: EligibleSub[] }
+export interface AlertCtx { now: Date; tz: string; modules: Modules; structure: StructureScope; leaders: Leader[]; subs: EligibleSub[];
+  /** Subs of active users with notice:alerts + intake:admin, leader picked or not (the consent prompts). */
+  admins: NoticePushSub[]; due: Due[] }
 /** One leader's alert; `subs` already filtered by the kind (its pref, visibility). */
-export interface AlertItem { key: string; leaderId: string; subs: NoticePushSub[]; payload: object }
+/** `once`: claimed once per (kind, key) for everyone (prompt_sends), not per leader; leaderId is then ''. */
+export interface AlertItem { key: string; leaderId: string; subs: NoticePushSub[]; payload: object; once?: true }
 export interface AlertKind {
   kind: AlertKindName;
   plan(ctx: AlertCtx): Promise<{ skipped: Skip; items: AlertItem[]; hidden?: number; unlinked?: number }>;
@@ -38,16 +43,16 @@ export interface AlertRunDeps {
   clock?: () => number;
 }
 
-export type AlertRun = { run(now: Date, which: AlertKindName[]): Promise<{ bday?: Counts; lgrem?: Counts }> };
+export type AlertRun = { run(now: Date, which: AlertKindName[], due?: Due[]): Promise<Partial<Record<AlertKindName, Counts>>> };
 
 export function makeAlertRun(deps: AlertRunDeps, kinds: AlertKind[]): AlertRun {
   const clock = deps.clock ?? Date.now;
   const sender = deps.sender ?? webPushSender;
   return {
-    async run(now, which) {
+    async run(now, which, due = []) {
       const start = clock();
       const todo = kinds.filter((k) => which.includes(k.kind));
-      const out: { bday?: Counts; lgrem?: Counts } = {};
+      const out: Partial<Record<AlertKindName, Counts>> = {};
       if (!todo.length) return out;
       const vapid = readVapid(deps.env ?? process.env);
       const cfg = (await deps.settings.getSettings()).ministryConfig;
@@ -64,17 +69,20 @@ export function makeAlertRun(deps: AlertRunDeps, kinds: AlertKind[]): AlertRun {
         const u = s.leaderId && activeLeaders.has(s.leaderId) ? userById.get(s.userId) : undefined;
         return u && u.status === 'active' && can(u as unknown as Actor, 'notice:alerts') ? [{ ...s, user: u }] : [];
       });
+      const admins = subs.filter((s) => { const u = userById.get(s.userId);
+        return !!u && u.status === 'active' && can(u as unknown as Actor, 'notice:alerts') && can(u as unknown as Actor, 'intake:admin'); });
 
       let failedAll = 0;
       for (const k of todo) {
-        const p = await k.plan({ now, tz: cfg.structure.timeZone, modules: cfg.modules, structure: cfg.structure, leaders, subs: eligible });
+        const p = await k.plan({ now, tz: cfg.structure.timeZone, modules: cfg.modules, structure: cfg.structure, leaders, subs: eligible, admins, due });
         const c: Counts = { leaders: 0, sent: 0, failed: 0, skipped: p.skipped };
         if (p.hidden !== undefined) c.hidden = p.hidden;
         if (p.unlinked !== undefined) c.unlinked = p.unlinked;
         const reached = new Set<string>();
         for (const it of p.items) {
           if (clock() - start > ALERT_BUDGET_MS) break; // the rest stay unclaimed for the next run
-          if (!(await deps.claims.claim(k.kind, it.key, it.leaderId))) continue;
+          const won = it.once ? await deps.claims.claimOnce(k.kind as Due['kind'], it.key) : await deps.claims.claim(k.kind as 'bday' | 'lgrem', it.key, it.leaderId);
+          if (!won) continue;
           const r = await sendToSubs(it.subs, JSON.stringify(it.payload), { sender, vapid: vapid!, repo: deps.subs });
           c.sent += r.sent;
           c.failed += r.failed;

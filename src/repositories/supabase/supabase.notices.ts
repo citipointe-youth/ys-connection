@@ -90,7 +90,14 @@ export class SupabaseAlertSendRepository implements IAlertSendRepository {
       on conflict do nothing returning leader_id`;
     return rows.length > 0;
   }
+  async claimOnce(kind: 'consentText' | 'consentRecord', key: string): Promise<boolean> {
+    const rows = await this.sql`
+      insert into prompt_sends (kind, key) values (${kind}, ${key})
+      on conflict do nothing returning key`;
+    return rows.length > 0;
+  }
   async prune(before: Date): Promise<void> {
     await this.sql`delete from alert_sends where sent_at < ${before.toISOString()}`;
+    await this.sql`delete from prompt_sends where sent_at < ${before.toISOString()}`;
   }
 }

@@ -186,6 +186,9 @@ export class InMemoryAlertSendRepository implements IAlertSendRepository {
     this.sent.add(k);
     return true;
   }
+  async claimOnce(kind: 'consentText' | 'consentRecord', key: string): Promise<boolean> {
+    return this.claim(kind as never, key, '');
+  }
   async prune(_before: Date): Promise<void> { /* ponytail: in-memory dev ledger never expires */ }
 }
 
