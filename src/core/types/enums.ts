@@ -67,7 +67,7 @@ export function groupScopeOf(name: string): { grades: number[]; genders: ('femal
   const female = /\bgirls?\b/i.test(name), male = /\b(?:boys?|guys?)\b/i.test(name);
   const genders: ('female' | 'male')[] = female === male ? ['female', 'male'] : female ? ['female'] : ['male'];
   // ponytail: "Grade 7 and 12" reads as the range 7..12; list each grade if a group ever skips one
-  const gm = name.match(/\bGrades?\s+(\d+)(?:\s*(?:-|–|&|,|and|to)\s*(\d+))?/i);
+  const gm = name.match(/\b(?:Grade|Year)s?\s+(\d+)(?:\s*(?:-|–|&|,|and|to)\s*(\d+))?/i);
   if (gm) { const lo = +gm[1]!; return { grades: range(lo, Math.max(lo, +(gm[2] ?? lo))), genders, quads: [] }; }
   const jr = /\bjunior\b/i.test(name), sr = /\bsenior\b/i.test(name);
   const bands = [...(jr || !sr ? ['79'] : []), ...(sr || !jr ? ['1012'] : [])];

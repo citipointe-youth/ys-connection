@@ -28,11 +28,12 @@ screen use `structure.gradeLabel` (`_gradeWord()`), never a hard-coded "Yr".
 **Who sees a lifegroup (2026-11-21, Tom, year-end rename): its Elvanto name only**, never its members' grades
 (`groupScopeOf(name)` in `enums.ts`; `lifegroupNameVisible` in `access-control.ts` for stats, `groupVisible` in
 `link.service.ts` for the link screens and reminders):
-- "Grade 9", "Grade 9-10", "Grades 11 & 12" -> those grades; Girls / Guys / Boys -> that gender, else both.
+- "Grade 9", "Grade 9-10", "Grades 11 & 12" (or "Year N") -> those grades; Girls / Guys / Boys -> that gender, else both.
 - Otherwise Junior / Senior / both / neither (= both bands) x Girls / Guys|Boys / neither (= both genders) -> quads.
   So "Senior Wednesday Mt Gravatt Lifegroup" = both senior quads; "Youth Lifegroup" = all four; "Junior & Senior Girls" = both girl quads.
 - A group's own leaders (leader in the pushed members, matched to the "I am" leader) always see it and get its
-  reminder, whatever their login. Member lists show names + grades only outside the login's scope (no student link).
+  reminder, whatever their login, but only an "I am" leader that login may act as (`leaderInScope` via `scopedLeader`;
+  review 21 Nov: an out-of-scope leader id unlocks nothing). Member lists show names + grades only outside the login's scope (no student link).
 - The group import stamps the Elvanto group id by name only when no other group has that name (`groupIdsByName`);
   Reconcile matches by that id. Rename + import within one push (~15 min) gives "no id" rows until the next import.
 

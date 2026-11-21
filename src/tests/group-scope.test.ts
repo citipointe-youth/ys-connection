@@ -71,3 +71,9 @@ describe('import: group id by name only when the name is unique', () => {
     expect([...m]).toEqual([['ys - grade 10 boys lifegroup', 'c']]);
   });
 });
+
+describe('review 21 Nov minors', () => {
+  it('"Year 11 Boys" reads as Grade 11 (not mixed across every band)', () => {
+    expect(groupScopeOf('Year 11 Boys')).toEqual({ grades: [11], genders: ['male'], quads: [] });
+  });
+});

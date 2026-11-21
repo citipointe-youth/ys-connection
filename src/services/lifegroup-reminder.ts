@@ -7,7 +7,7 @@ import type { ILinkRepository } from '../repositories/interfaces/link.repository
 import { alertModuleOn, resolveModules } from '../core/module-tree';
 import type { AlertItem, AlertKind } from './alert-run.service';
 import { toActor } from './auth.service';
-import { can, modeAllows } from './access-control';
+import { can, leaderInScope, modeAllows } from './access-control';
 import { groupVisible } from './link.service';
 import { addDays, brisbaneToday, instantOf, meetsTime, meetsWeekday, rosterPersonMatcher, weekdayOf } from './link-rules';
 
@@ -90,7 +90,9 @@ export function makeLifegroupKind(deps: {
           const leaderId = leaderOf.get(pid);
           if (!leaderId) { unlinked++; continue; }
           const mine = subs.filter((s) => s.leaderId === leaderId);
-          const ok = mine.filter((s) => { const a = toActor(s.user); return canOpen(a) && groupVisible(a, g, ctx.structure, pid); });
+          const me = leaders.find((l) => l.id === leaderId);
+          const ok = mine.filter((s) => { const a = toActor(s.user); return canOpen(a) && (groupVisible(a, g, ctx.structure)
+            || (!!me && leaderInScope(a, me, ctx.structure) && groupVisible(a, g, ctx.structure, pid))); });
           hidden += mine.length - ok.length;
           if (ok.length) items.push({ key: `${g.groupId}:${d}${nudge ? ':n2' : ''}`, leaderId, subs: ok, payload });
         }

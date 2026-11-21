@@ -37,7 +37,7 @@ import { checkIntakeItem, consentsGate, intakeGate, isIntakeType } from './link-
 import {
   can, canAccessGender, canAccessGrade, canAccessQuadGroup, lifegroupNameVisible, canAccessStudent, canEditGroupMembers, genderScopeOf, isAdminRole, leaderInScope, modeAllows, type StructureScope,
 } from './access-control';
-import { groupQuadOf } from '../core/types/enums';
+import { groupScopeOf } from '../core/types/enums';
 import {
   LINK_CUTOFF_DAYS, addDays, brisbaneToday, dedupeKey, defaultService, effectiveCheckState, effectiveMembers, lastMeetingDate, meetsWeekday,
   noteRoom, pickList, matchFold, leaderFitsPerson, genderFits, serviceDay, isConsentStep, isStepZero, peopleFlowName, consentStepAllowed, consentFriday,
@@ -566,9 +566,8 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
 
   /** T6: the "I am" leader is a leader of this group in Elvanto (matched to the roster by name, as on the door). */
   async function leadsGroup(c: Ctx, g: LinkGroupRow, leaderId: string | null): Promise<boolean> {
-    const leaders = await c.leaders();
-    const l = leaderId ? leaders.find((x) => x.id === leaderId) : undefined;
-    const pid = l ? rosterPersonMatcher(await c.roster(), leaders)(l) : null;
+    const l = await scopedLeader(c, leaderId); // only a leader this login may act as (review 21 Nov)
+    const pid = l ? rosterPersonMatcher(await c.roster(), await c.leaders())(l) : null;
     return !!pid && g.members.some((m) => m.leader && m.personId === pid);
   }
   const memberRows = (groupId: string, personId?: string) => d.link.listActions({ groupId, types: MEMBER_TYPES, personId });
@@ -1176,14 +1175,16 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const withBy = (x: LinkLastReport): LinkLastReport => ({ ...x, by: byId.get(x.reportId)?.leaderName ?? null, at: byId.get(x.reportId)?.createdAt ?? null });
       let myPid: string | null = null;
       if (lid) {
-        const ls = await c.leaders(), me = ls.find((x) => x.id === lid);
-        myPid = me ? rosterPersonMatcher(await c.roster(), ls)(me) : null;
+        const me = await scopedLeader(c, lid); // only a leader this login may act as (review 21 Nov)
+        myPid = me ? rosterPersonMatcher(await c.roster(), await c.leaders())(me) : null;
       }
       // T8 + R2 (2026-10-17): grade 6..12, girls then boys, then Mon..Sun (no day last), then name; no grade last.
       // A Junior group sorts after grade 9, a Senior one after grade 12 (2026-10-24).
       const rank = (g: LinkGroupRow) => {
-        const wd = meetsWeekday(g.meets || ''), q = g.grade == null ? groupQuadOf(g.name) : null;
-        return [g.grade ?? (q ? (q.endsWith('79') ? 9.5 : 12.5) : 99), g.gender === 'female' ? 0 : g.gender === 'male' ? 1 : 2, wd < 0 ? 7 : (wd + 6) % 7] as const;
+        // A Junior-only name after grade 9, a Senior-only one after 12; a name spanning both bands last (as no grade).
+        const wd = meetsWeekday(g.meets || ''), qs = g.grade == null ? groupScopeOf(g.name).quads : [];
+        const band = qs.length && qs.every((q) => q.endsWith('79')) ? 9.5 : qs.length && qs.every((q) => q.endsWith('1012')) ? 12.5 : 99;
+        return [g.grade ?? band, g.gender === 'female' ? 0 : g.gender === 'male' ? 1 : 2, wd < 0 ? 7 : (wd + 6) % 7] as const;
       };
       const order = (a: LinkGroupRow, b: LinkGroupRow) => {
         const x = rank(a), y = rank(b);

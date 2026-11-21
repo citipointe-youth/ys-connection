@@ -168,6 +168,16 @@ describe('T5 GET /link/lifegroups/:groupId/members', () => {
     expect((await h.svc.groupMembers(QUAD_B, G9F, { leaderId: L_MAX })).members.map((m) => m.personId)).toEqual([P_MAX]);
     await expect(h.svc.groupMembers(QUAD_B, G9F, {})).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
+  // Review 21 Nov (critical): the "I am" must be a leader this login may act as (leaderInScope), or any login could name a
+  // girls leader and open her groups.
+  it('an "I am" outside the login\'s scope unlocks nothing: list, members, report', async () => {
+    const h = await setup(); // Dana (female, grade 9) leads Grade 9 Girls; QUAD_B is Senior Guys
+    expect((await h.svc.lifegroups(QUAD_B, { leaderId: L_DANA })).groups).toEqual([]);
+    await expect(h.svc.groupMembers(QUAD_B, G9F, { leaderId: L_DANA })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    const rep = { kind: 'action', id: nid(), type: 'submitReport', leaderId: L_DANA,
+      payload: { groupId: G9F, date: '2026-10-13', attendees: [], serviceTimeId: null, didNotMeet: true, guests: 0, notesPrivate: false }, note: null };
+    expect(await one(h, QUAD_B, rep)).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST', message: expect.stringMatching(/Who are you/) });
+  });
 });
 
 describe('T6 GET /link/youth (picker)', () => {

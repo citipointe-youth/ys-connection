@@ -156,8 +156,13 @@ describe('lifegroup reminder sweep', () => {
 
   // 2026-11-21 (Tom): a group's own leader always sees it, so its reminder reaches them whatever their login's scope.
   it("a group outside the login's scope still reminds its own leader", async () => {
-    const r = await rig({ groups: [grp({ grade: 11, name: 'Grade 11 Boys' })] });
+    const r = await rig({ groups: [grp({ grade: 11, name: 'Grade 11 Boys' })], leaders: [{ id: L1, fullName: 'Ari Leaderson', gender: 'male', grades: [8], active: true }] });
     expect(await r.go()).toMatchObject({ hidden: 0, sent: 1 });
+  });
+  // Review 21 Nov: a device subscribed as a leader its login may not act as gets no reminder for a group outside its scope.
+  it('an out-of-scope leader on the subscription: hidden', async () => {
+    const r = await rig({ groups: [grp({ grade: 11, name: 'Grade 11 Boys' })], leaders: [{ id: L1, fullName: 'Ari Leaderson', gender: 'female', grades: [8], active: true }] });
+    expect(await r.go()).toMatchObject({ hidden: 1, sent: 0 });
   });
 
   it('lgremOn=false is skipped', async () => {
