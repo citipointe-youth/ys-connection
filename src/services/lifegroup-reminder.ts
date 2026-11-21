@@ -90,7 +90,7 @@ export function makeLifegroupKind(deps: {
           const leaderId = leaderOf.get(pid);
           if (!leaderId) { unlinked++; continue; }
           const mine = subs.filter((s) => s.leaderId === leaderId);
-          const ok = mine.filter((s) => { const a = toActor(s.user); return canOpen(a) && groupVisible(a, g, ctx.structure); });
+          const ok = mine.filter((s) => { const a = toActor(s.user); return canOpen(a) && groupVisible(a, g, ctx.structure, pid); });
           hidden += mine.length - ok.length;
           if (ok.length) items.push({ key: `${g.groupId}:${d}${nudge ? ':n2' : ''}`, leaderId, subs: ok, payload });
         }

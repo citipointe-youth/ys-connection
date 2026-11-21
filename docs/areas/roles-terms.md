@@ -25,6 +25,17 @@ senior = 10 to gradeMax. `GET /settings` returns it as `gradeBands: { junior, se
 (r27, additive). `computeQuad()`, `quadGradesOf()` and the SPA buckets all read it. Grade labels on
 screen use `structure.gradeLabel` (`_gradeWord()`), never a hard-coded "Yr".
 
+**Who sees a lifegroup (2026-11-21, Tom, year-end rename): its Elvanto name only**, never its members' grades
+(`groupScopeOf(name)` in `enums.ts`; `lifegroupNameVisible` in `access-control.ts` for stats, `groupVisible` in
+`link.service.ts` for the link screens and reminders):
+- "Grade 9", "Grade 9-10", "Grades 11 & 12" -> those grades; Girls / Guys / Boys -> that gender, else both.
+- Otherwise Junior / Senior / both / neither (= both bands) x Girls / Guys|Boys / neither (= both genders) -> quads.
+  So "Senior Wednesday Mt Gravatt Lifegroup" = both senior quads; "Youth Lifegroup" = all four; "Junior & Senior Girls" = both girl quads.
+- A group's own leaders (leader in the pushed members, matched to the "I am" leader) always see it and get its
+  reminder, whatever their login. Member lists show names + grades only outside the login's scope (no student link).
+- The group import stamps the Elvanto group id by name only when no other group has that name (`groupIdsByName`);
+  Reconcile matches by that id. Rename + import within one push (~15 min) gives "no id" rows until the next import.
+
 **One name per quad in the SPA (impeccable review 2026-10-24):** `quadLabel()` always returns Junior/Senior Girls/Guys (`SIMPLE_QUAD_LABELS`) on every screen (header badge, Home cards, Connection Audit, pickers), the same names as the quad logins, Notices and Lifegroups; Flows keeps its ruled "Jr/Sr Guys/Girls" pills. `QUAD_LABELS` ("Girls Yr 7–9") stays only for the server mirror (`quadLabelFor`) and the Simple-logins display-name switch.
 
 ### Term model (this-term vs previous-term)

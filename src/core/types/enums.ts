@@ -55,12 +55,23 @@ export function computeQuad(grade: number | null, gender: string): Quad | null {
 // A lifegroup named for a leader quad with no "Grade N" ("... Junior Girls Wednesday Lifegroup",
 // "... Senior Guys Thursday Mt Gravatt Lifegroup"): its quad, else null. A "Grade N" name never has one.
 export function groupQuadOf(name: string): Quad | null {
-  if (/\bGrade\s+\d+\b/i.test(name)) return null;
-  const female = /\bgirls?\b/i.test(name);
-  if (!female && !/\b(?:boys?|guys?)\b/i.test(name)) return null;
-  if (/\bjunior\b/i.test(name)) return female ? 'g79' : 'b79';
-  if (/\bsenior\b/i.test(name)) return female ? 'g1012' : 'b1012';
-  return null;
+  const { quads } = groupScopeOf(name);
+  return quads.length === 1 ? quads[0]! : null;
+}
+
+/**
+ * 2026-11-21 (Tom, year-end rename): who a lifegroup is for, from its name only. "Grade 9", "Grade 9-10", "Grades 11 & 12"
+ * -> those grades; else Junior / Senior / both / neither (= both bands) x Girls / Guys|Boys / neither (= both genders) -> quads.
+ */
+export function groupScopeOf(name: string): { grades: number[]; genders: ('female' | 'male')[]; quads: Quad[] } {
+  const female = /\bgirls?\b/i.test(name), male = /\b(?:boys?|guys?)\b/i.test(name);
+  const genders: ('female' | 'male')[] = female === male ? ['female', 'male'] : female ? ['female'] : ['male'];
+  // ponytail: "Grade 7 and 12" reads as the range 7..12; list each grade if a group ever skips one
+  const gm = name.match(/\bGrades?\s+(\d+)(?:\s*(?:-|–|&|,|and|to)\s*(\d+))?/i);
+  if (gm) { const lo = +gm[1]!; return { grades: range(lo, Math.max(lo, +(gm[2] ?? lo))), genders, quads: [] }; }
+  const jr = /\bjunior\b/i.test(name), sr = /\bsenior\b/i.test(name);
+  const bands = [...(jr || !sr ? ['79'] : []), ...(sr || !jr ? ['1012'] : [])];
+  return { grades: [], genders, quads: bands.flatMap((b) => genders.map((g) => `${g === 'female' ? 'g' : 'b'}${b}` as Quad)) };
 }
 
 // Role hierarchy:

@@ -18,7 +18,7 @@ import type {
 import type { Actor } from '../core/entities/user';
 import type { Student } from '../core/entities/student';
 import type { AppSettings } from '../core/entities/settings';
-import { computeQuad, groupQuadOf, type Quad } from '../core/types/enums';
+import { computeQuad, groupQuadOf, groupScopeOf, type Quad } from '../core/types/enums';
 import { BadRequestError } from '../core/errors/app-error';
 import { computeStatus } from './atrisk.service';
 import { computeStudentAggregates, emptyStudentAggregate, type AggregateResult } from './aggregates';
@@ -197,14 +197,17 @@ function parseDob(raw: string | null | undefined, dateOrder: 'DMY' | 'MDY'): str
   return null;
 }
 
+/** 2026-11-21: an import's group name -> its Elvanto group id, only for a name no other group shares (else no id: Reconcile lists it). */
+export function groupIdsByName(groups: { name: string; groupId: string }[]): Map<string, string> {
+  const m = new Map<string, string>(), dup = new Set<string>();
+  for (const g of groups) { const k = g.name.trim().toLowerCase(); if (m.has(k)) dup.add(k); m.set(k, g.groupId); }
+  for (const k of dup) m.delete(k);
+  return m;
+}
+
 export function parseGroupName(name: string): { grade: number | null; gender: 'male' | 'female' | null; quad: Quad | null } {
-  const gradeMatch = name.match(/\bGrade\s+(\d+)\b/i);
-  const grade = gradeMatch ? parseInt(gradeMatch[1]!, 10) : null;
-  let gender: 'male' | 'female' | null = null;
-  if (/\bboys?\b/i.test(name)) gender = 'male';
-  else if (/\bgirls?\b/i.test(name)) gender = 'female';
-  const quad = groupQuadOf(name); // Junior/Senior name, no grade: grade stays null
-  return { grade, gender: quad ? quadGenderOf(quad) : gender, quad };
+  const s = groupScopeOf(name); // who sees it: groupVisible (link.service) reads the whole scope from the name
+  return { grade: s.grades[0] ?? null, gender: s.genders.length === 1 ? s.genders[0]! : null, quad: groupQuadOf(name) };
 }
 
 // Apply a recomputed term split to every student. Both import paths call this

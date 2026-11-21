@@ -1,4 +1,4 @@
-import { assertCan, canAccessQuadGroup, canAccessGrade, canAccessGender, canAccessStudent, quadGenderOf, quadGradesOf, actorGrades } from './access-control';
+import { assertCan, lifegroupNameVisible, canAccessQuadGroup, canAccessGrade, canAccessGender, canAccessStudent, quadGenderOf, quadGradesOf, actorGrades } from './access-control';
 import type {
   IStudentRepository,
   ILifegroupRepository,
@@ -140,11 +140,7 @@ export function makeLifegroupStatsService(
       const lifegroupVisible = (lgId: string): boolean => {
         const lg = lifegroupById.get(lgId);
         if (!lg) return false;
-        if (lg.grade == null && lg.quad) return canAccessQuadGroup(actor, lg.quad, structure);
-        if (!canAccessGrade(actor, lg.grade, structure)) return false;
-        // Gender-scope for grade AND quad logins (admin/oversight see all).
-        if (lg.gender && !canAccessGender(actor, lg.gender, structure)) return false;
-        return true;
+        return lifegroupNameVisible(actor, lg.fullName, structure); // the link screens' rule (groupScopeOf)
       };
       const studentVisible = (sid: string): boolean => {
         const s = studentById.get(sid);

@@ -35,7 +35,7 @@ import type { ErrorLogService } from './error-log.service';
 import type { ILinkIntakeRepository } from '../repositories/interfaces/link-intake.repository';
 import { checkIntakeItem, consentsGate, intakeGate, isIntakeType } from './link-intake.service';
 import {
-  can, canAccessGender, canAccessGrade, canAccessQuadGroup, canAccessStudent, canEditGroupMembers, genderScopeOf, isAdminRole, leaderInScope, modeAllows, type StructureScope,
+  can, canAccessGender, canAccessGrade, canAccessQuadGroup, lifegroupNameVisible, canAccessStudent, canEditGroupMembers, genderScopeOf, isAdminRole, leaderInScope, modeAllows, type StructureScope,
 } from './access-control';
 import { groupQuadOf } from '../core/types/enums';
 import {
@@ -296,11 +296,10 @@ function stable(v: unknown): string {
 /** Local midnight of a date, as an instant. */
 const brisbaneStart = (ymd: string, tz: string) => new Date(instantOf(ymd, '00:00', tz)).toISOString();
 
-export function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope): boolean {
-  const q = g.grade == null ? groupQuadOf(g.name) : null; // Junior/Senior-named group
-  if (q) return canAccessQuadGroup(a, q, s);
-  if (g.grade == null) return isAdminRole(a);
-  return canAccessGrade(a, g.grade, s) && (g.gender ? canAccessGender(a, g.gender, s) : true);
+/** 2026-11-21: who sees a group comes from its name (groupScopeOf); its own leaders (pid = the "I am" leader) always see it. */
+export function groupVisible(a: Actor, g: LinkGroupRow, s: StructureScope, pid?: string | null): boolean {
+  if (pid && g.members.some((m) => m.leader && m.personId === pid)) return true;
+  return lifegroupNameVisible(a, g.name, s);
 }
 /**
  * T4: a flow row is seen by its own grade/gender first, then the roster's (no grade = admin/oversight only, through
@@ -679,7 +678,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const g = (await c.groups()).find((x) => x.groupId === rp.groupId);
       if (!g) throw new BadRequestError('This group is not in the list. Reload.');
       Object.assign(tgt, { kind: 'group', id: g.groupId, name: g.name });
-      if (!groupVisible(c.actor, g, c.structure)) throw new ForbiddenError('This group is not one of yours.');
+      if (!groupVisible(c.actor, g, c.structure) && !(await leadsGroup(c, g, it.leaderId ?? null))) throw new ForbiddenError('This group is not one of yours.');
       // The 8-week window is for a new report only; an edit keeps its own (older) report's date.
       if (rp.date > c.today || (it.type === 'submitReport' && rp.date < addDays(c.today, -REPORT_SUBMIT_DAYS))) {
         throw new BadRequestError('The date must be in the last 8 weeks.');
@@ -712,7 +711,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const r = roster.find((x) => x.personId === mp.personId);
       Object.assign(tgt, { kind: 'person', id: mp.personId,
         name: r ? fullName(r) : g.members.find((m) => m.personId === mp.personId)?.name ?? null });
-      if (!groupVisible(c.actor, g, c.structure)) throw new ForbiddenError('This group is not one of yours.');
+      if (!groupVisible(c.actor, g, c.structure) && !(await leadsGroup(c, g, it.leaderId ?? null))) throw new ForbiddenError('This group is not one of yours.');
       if (!canEditGroupMembers(c.actor, await leadsGroup(c, g, me.id))) {
         throw new ForbiddenError('Only a leader of this group can change who is in it.');
       }
@@ -1190,7 +1189,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
         const x = rank(a), y = rank(b);
         return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || a.name.localeCompare(b.name);
       };
-      return { groups: groups.filter((g) => groupVisible(actor, g, c.structure)).sort(order).map((g) => {
+      return { groups: groups.filter((g) => groupVisible(actor, g, c.structure, myPid)).sort(order).map((g) => {
         const o = open.find((r) => (r.payload as { groupId?: string }).groupId === g.groupId);
         const last0 = lastReportOf(g, sent, gAt), last = last0 && withBy(last0);
         // The last report (an app overlay included) leads the history; an edit replaces its own entry.
@@ -1289,7 +1288,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const f = z.object({ leaderId: Uuid.optional() }).parse(q ?? {});
       const g = (await c.groups()).find((x) => x.groupId === groupId);
       if (!g) throw new NotFoundError('This group is not in the list. Reload.');
-      if (!groupVisible(actor, g, c.structure)) throw new ForbiddenError('This group is not one of yours.');
+      if (!groupVisible(actor, g, c.structure) && !(await leadsGroup(c, g, f.leaderId ?? null))) throw new ForbiddenError('This group is not one of yours.');
       const [roster, rows, mirrors, students, me] = await Promise.all([c.roster(), memberRows(g.groupId), c.mirror(),
         d.students.findAll(), resolveLeader(c, f.leaderId, false)]);
       const byPerson = new Map(roster.map((r) => [r.personId, r]));

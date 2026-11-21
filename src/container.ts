@@ -85,7 +85,7 @@ import { makeConnectionService, type ConnectionService } from './services/connec
 import { makeFollowupService, type FollowupService } from './services/followup.service';
 import { makeOverviewService, type OverviewService } from './services/overview.service';
 import { makeAtRiskService, type AtRiskService } from './services/atrisk.service';
-import { makeImportService, type ImportService } from './services/import.service';
+import { makeImportService, groupIdsByName, type ImportService } from './services/import.service';
 import { makeSettingsService, type SettingsService } from './services/settings.service';
 import { makeAccountService, type AccountService } from './services/account.service';
 import { makeAdminService, type AdminService } from './services/admin.service';
@@ -305,7 +305,7 @@ export async function buildContainer(): Promise<Container> {
     newYouth: { sendBusConsent: (actor, input) => newYouth.sendBusConsent(actor, input) } });
   const importService = makeImportService(students, serviceSessions, serviceAttendance, imports, settings, lifegroups, lifegroupWeeks, lifegroupAttendance, leaders, useSupabase ? sql : null,
     (kind) => afterImport(kind),
-    async () => new Map((await link.groups()).map((g) => [g.name.trim().toLowerCase(), g.groupId])));
+    async () => groupIdsByName(await link.groups()));
   const settingsSvc = makeSettingsService(settings, audit, users, () => intake.off());
   const account = makeAccountService(users, settings);
   const admin = makeAdminService(

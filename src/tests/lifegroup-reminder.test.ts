@@ -154,9 +154,10 @@ describe('lifegroup reminder sweep', () => {
     expect(await r.go()).toMatchObject({ unlinked: 1, sent: 0 });
   });
 
-  it('group not visible to the login -> hidden 1', async () => {
-    const r = await rig({ groups: [grp({ grade: 11, name: 'Year 11 Boys' })] });
-    expect(await r.go()).toMatchObject({ hidden: 1, sent: 0 });
+  // 2026-11-21 (Tom): a group's own leader always sees it, so its reminder reaches them whatever their login's scope.
+  it("a group outside the login's scope still reminds its own leader", async () => {
+    const r = await rig({ groups: [grp({ grade: 11, name: 'Grade 11 Boys' })] });
+    expect(await r.go()).toMatchObject({ hidden: 0, sent: 1 });
   });
 
   it('lgremOn=false is skipped', async () => {

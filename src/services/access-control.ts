@@ -1,5 +1,5 @@
 import type { Actor } from '../core/entities/user';
-import { gradeBands, type UserRole } from '../core/types/enums';
+import { gradeBands, groupScopeOf, type UserRole } from '../core/types/enums';
 import { ForbiddenError } from '../core/errors/app-error';
 import type { MinistryConfig, NewYouthMode } from '../core/ministry-config';
 
@@ -387,6 +387,15 @@ export function canAccessQuadGroup(actor: Actor, quad: string, structure?: Struc
   if (actor.role === 'admin' || actor.role === 'oversight') return true;
   return quadGradesOf(quad, structure).some((g) => canAccessGrade(actor, g, structure))
     && canAccessGender(actor, quadGenderOf(quad) ?? '', structure);
+}
+
+/** 2026-11-21: may this login see a lifegroup with this name (groupScopeOf: its grades, else its quads)? */
+export function lifegroupNameVisible(actor: Actor, name: string, structure?: StructureScope): boolean {
+  if (actor.role === 'admin' || actor.role === 'oversight') return true;
+  const sc = groupScopeOf(name);
+  if (sc.grades.length) return sc.grades.some((g) => canAccessGrade(actor, g, structure))
+    && (sc.genders.length > 1 || canAccessGender(actor, sc.genders[0]!, structure));
+  return sc.quads.some((q) => canAccessQuadGroup(actor, q, structure));
 }
 
 /** Combined grade + gender access — the canonical student-visibility check. */

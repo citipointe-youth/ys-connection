@@ -1111,13 +1111,15 @@ describe('D4 batch and the action log', () => {
 
 // =====================================================================================================================
 describe('D5 lifegroups and flows', () => {
-  it('scope: grade sees its grade+gender, quad its bracket+gender, ungraded for oversight/admin, junior leader none', async () => {
+  // 2026-11-21 (Tom): a name with no grade, band or gender ("Connect group") is mixed across all four quads, so every
+  // grade and quad login sees it (was oversight/admin only).
+  it('scope: grade sees its grade+gender, quad its bracket+gender, a mixed name everyone, junior leader none', async () => {
     const h = await setup();
     const ids = async (a: Actor) => (await h.svc.lifegroups(a)).groups.map((g) => g.groupId);
-    expect(await ids(GRADE)).toEqual([G9F]);
-    expect(await ids(GRADE2)).toEqual([]);
-    expect(await ids(QUAD)).toEqual([G9F]);
-    expect(await ids(QUAD_B)).toEqual([G10M]);
+    expect(await ids(GRADE)).toEqual([G9F, GX]);
+    expect(await ids(GRADE2)).toEqual([GX]);
+    expect(await ids(QUAD)).toEqual([G9F, GX]);
+    expect(await ids(QUAD_B)).toEqual([G10M, GX]);
     expect((await ids(OVERSIGHT)).sort()).toEqual([G9F, G10M, GX].sort());
     expect(await ids(LEADER)).toEqual([]);
   });

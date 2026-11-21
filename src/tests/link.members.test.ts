@@ -156,6 +156,18 @@ describe('T5 GET /link/lifegroups/:groupId/members', () => {
     await expect(h.svc.groupMembers(QUAD_B, G9F, {})).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(h.svc.groupMembers(ADMIN, u(999), {})).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
+  // 2026-11-21 (Tom): a group's own leader sees it on any login (a guys co-leader of a girls group on the guys login).
+  it("the group's own leader as \"I am\" sees an out-of-scope group: list and members; another leader still 403", async () => {
+    const h = await setup();
+    const P_MAX = u(988), meta = { takenAt: '2026-10-16T09:00:00.000Z', consoleId: CONSOLE };
+    await h.link.replaceMirror('roster', [{ personId: P_MAX, firstName: 'Max', lastName: 'Male', gender: 'male', grade: null, kind: 'leader' }] as never, meta);
+    await h.link.replaceMirror('groups', [{ groupId: G9F, name: 'Grade 9 Girls', meets: 'Tue 6:30 PM', thisWeek: 'none', lastReport: null,
+      history: [], members: [{ personId: P_MAX, name: 'Max Male', leader: true }], ...parseGroupName('Grade 9 Girls') }] as never, meta);
+    expect((await h.svc.lifegroups(QUAD_B, { leaderId: L_MAX })).groups.map((g) => g.groupId)).toEqual([G9F]);
+    expect((await h.svc.lifegroups(QUAD_B)).groups).toEqual([]);
+    expect((await h.svc.groupMembers(QUAD_B, G9F, { leaderId: L_MAX })).members.map((m) => m.personId)).toEqual([P_MAX]);
+    await expect(h.svc.groupMembers(QUAD_B, G9F, {})).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
 });
 
 describe('T6 GET /link/youth (picker)', () => {
