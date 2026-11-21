@@ -202,18 +202,18 @@ describe('Refresh clears', () => {
       const __snap = ${JSON.stringify({ live: true, kinds })};
       const API = { fresh: (u) => Promise.resolve(u.includes('snapshot') ? __snap : { dates: [] }) };
       const _linkOn = () => false; const _ikModuleOn = () => true; const _intakeOn = () => true; const _hubSnapApply = () => true; const _ikLkWarm = () => [];
-      const _usLoad = () => Promise.resolve(); const _ikDraw = () => {}; const _ikSchedule = () => {};
+      const _usLoad = () => Promise.resolve(); const _ikDraw = () => {}; const _ikSchedule = () => {}; const _lkTime = () => '7:52pm';
       const toast = (m) => globalThis.__toasts.push(m);`, ['_hubLoad', '_ik']);
     (globalThis as any).__toasts = toasts;
     await F2._hubLoad(true);
     return { I: F2._ik(), toasts, ask };
   };
   const at = (ms: number) => ({ rows: [], total: 0, takenAt: new Date(ms).toISOString() });
-  it('the asked lists newer, other and an unreadable list null: clears with "Checked just now."', async () => {
+  it('the asked lists newer, other and an unreadable list null: clears with "Updated <time>" (F5)', async () => {
     const now = Date.now();
     const r = await run({ unlinked: null, mismatches: at(now), forms: at(now), other: null });
     expect(r.I.hubAsk).toBe(0);
-    expect(r.toasts).toEqual(['Checked just now.']);
+    expect(r.I.hubMsg).toMatch(/^Updated /);
   });
   it('an old other list never holds it open', async () => {
     const now = Date.now();

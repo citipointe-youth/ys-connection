@@ -131,6 +131,6 @@ describe('Refresh asks only the week on screen', () => {
     expect(I.hubWeek).toEqual({ x: 1, y: 3 });
     await p;
     expect(asks(calls)).toHaveLength(4);
-    expect(HTML).toContain("'Refreshing...' + (I.hubWeek && I.hubWeek.y > 1 ? ' (week ' + I.hubWeek.x + ' of ' + I.hubWeek.y + ')' : '')");
+    expect(HTML).toContain("'Updating…' + (I.hubWeek && I.hubWeek.y > 1 ? ' (week ' + I.hubWeek.x + ' of ' + I.hubWeek.y + ')' : '')");
   });
 });

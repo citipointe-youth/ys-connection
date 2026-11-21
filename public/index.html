@@ -14973,9 +14973,11 @@ async function _hubLoad(quiet) {
     for (const k of Object.keys(I.decl || {})) { const [m, d, key] = k.split('|'), rs = (I.hub.lists[m + '|' + d] || {}).rows, x = rs && rs.find((y) => y.key === key); if (!x || !!x.declined === I.decl[k]) delete I.decl[k]; } // the console's push now says it
     if (fl) { LINK.flows = fl.rows || []; LINK.fSteps = fl.steps || []; } // the step sheet (Remove, Mark consent) reads LINK.flows
     // Only the lists Refresh asked for count; an unreadable one (null) never holds it open, but one of them must be newer.
-    const asked = IK_LK_KINDS.map((k) => snap && snap.kinds && snap.kinds[k]);
-    if (I.hubAsk && asked.some(Boolean) && asked.every((k) => !k || Date.parse(k.takenAt) >= I.hubAsk)) { I.hubAsk = 0; toast('Checked just now.'); }
-    if (I.hubAsk && Date.now() - I.hubAsk > 180e3) { I.hubAsk = 0; toast("The console hasn't answered yet. Try again later."); }
+    // F5 (2026-11-21): the plan dates it asked for count too, and a non-live snapshot's lookups do not (they reload on their own).
+    const asked = (snap && snap.live ? IK_LK_KINDS.map((k) => snap.kinds && snap.kinds[k]) : [])
+      .concat((I.hubAskDates || []).map((k) => I.hub.lists[k] || null));
+    if (I.hubAsk && asked.some(Boolean) && asked.every((k) => !k || Date.parse(k.takenAt) >= I.hubAsk)) { I.hubAsk = 0; I.hubMsg = 'Updated ' + _lkTime(new Date().toISOString()); }
+    if (I.hubAsk && Date.now() - I.hubAsk > 120e3) { I.hubAsk = 0; I.hubMsg = "Console didn't answer"; }
     I.err = null;
     _ikFixRestore(); // S-1: once per intake state (the old Tidy up screens ran it)
     if (!_hubSnapApply(snap) && (!quiet || !I.lkPre)) _ikLkWarm(_ikSt()); // ponytail: an older console warms page 1 only (25 forms); rev 19 has them all
@@ -14998,12 +15000,12 @@ function _hubCheckedAt() {
 async function _hubRefresh() {
   const I = _ik();
   if (I.hubAsk) return;
-  I.hubAsk = Date.now(); _ikDraw();
+  I.hubAsk = Date.now(); I.hubMsg = ''; I.hubAskDates = []; _ikDraw();
   // Only the week on screen (Current / Last; All = every week), one week at a time, newest first.
   const h = I.hub || {}, wk = _hubWk(), today = _siteDay(Date.now()), byWeek = new Map();
   for (const k of Object.keys(h.lists || {}).sort((a, b) => b.split('|')[1].localeCompare(a.split('|')[1]))) {
     const [m, d] = k.split('|');
-    if ((m === 'intake' || m === 'consent') && _hubInWeek(d, wk, today)) { const w = _lkWeekStart(d); if (!byWeek.has(w)) byWeek.set(w, []); byWeek.get(w).push([m, d]); }
+    if ((m === 'intake' || m === 'consent') && _hubInWeek(d, wk, today)) { const w = _lkWeekStart(d); if (!byWeek.has(w)) byWeek.set(w, []); byWeek.get(w).push([m, d]); I.hubAskDates.push(k); }
   }
   const weeks = [...byWeek.values()], forms = API.post('/link/consents/refresh', {}).catch(() => null);
   for (let i = 0; i < weeks.length; i++) {
@@ -15014,7 +15016,7 @@ async function _hubRefresh() {
   await forms;
   I.hubWeek = null;
   if (_ik() !== I) return;
-  if (!(h.snap && h.snap.live)) { for (const k of ['unlinked', 'mismatches', 'forms']) _ikLkGo(k, 1, ''); I.hubAsk = 0; }
+  if (!(h.snap && h.snap.live)) for (const k of ['unlinked', 'mismatches', 'forms']) _ikLkGo(k, 1, ''); // F5: the ask stays open; _ikSchedule polls 5 s
   _hubLoad(true);
 }
 function _hubQ(v) { const I = _ik(); I.hubQ = v; const el = document.getElementById('hub-res'); if (el) { el.innerHTML = _hubBodyHtml(); _usPaint(); } }
@@ -15259,7 +15261,7 @@ function _hubPage() {
   const I = _ik(), st = _ikSt(), at = _hubCheckedAt();
   if (!I.hub) return I.err ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div><button type="button" class="btn btn-secondary btn-sm" onclick="_hubLoad(false)">Try again</button>` : progBar('Loading');
   return `<div class="sbar"><input id="hub-q" type="search" maxlength="60" placeholder="Search a name or consent form" aria-label="Search a name or consent form" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(I.hubQ || '')}" oninput="_hubQ(this.value)"></div>`
-    + `<div class="ik-stl">${at ? `<span class="lk-d">Checked ${esc(_lkSeen(at))} ·</span>` : ''}<button type="button" class="ik-lnk"${I.hubAsk ? ' disabled' : ''} onclick="_hubRefresh()">${I.hubAsk ? 'Refreshing...' + (I.hubWeek && I.hubWeek.y > 1 ? ' (week ' + I.hubWeek.x + ' of ' + I.hubWeek.y + ')' : '') : 'Refresh'}</button></div>`
+    + `<div class="ik-stl">${at ? `<span class="lk-d">Checked ${esc(_lkSeen(at))} ·</span>` : ''}<button type="button" class="ik-lnk"${I.hubAsk ? ' disabled' : ''} onclick="_hubRefresh()">${I.hubAsk ? 'Updating…' + (I.hubWeek && I.hubWeek.y > 1 ? ' (week ' + I.hubWeek.x + ' of ' + I.hubWeek.y + ')' : '') : 'Refresh'}</button>${!I.hubAsk && I.hubMsg ? `<span class="lk-d" role="status"> · ${esc(I.hubMsg)}</span>` : ''}</div>`
     + `<div class="tbbar" role="group" aria-label="Show">${[['cur', 'Current week'], ['last', 'Last week'], ['all', 'All']].map(([k, l]) => `<button type="button" class="tbbtn ${_hubWk() === k ? 'on' : ''}" aria-pressed="${_hubWk() === k}" onclick="_hubSetWk('${k}')">${esc(l)}</button>`).join('')}</div>`
     + _ikBanner(st, null) + (I.err ? `<div class="lk-alert warn">${icS('info')}<div>${esc(I.err)}</div></div>` : '')
     + `<div id="hub-res">${_hubBodyHtml()}</div>` + (_ikModuleOn() ? _ikConsentHelp() : ''); // the help is the intake consent rules
