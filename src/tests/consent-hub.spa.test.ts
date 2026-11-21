@@ -409,8 +409,24 @@ describe('late-text hold: the app and the console agree which consent week it is
     const fam = M.fams[0];
     expect(fam.kids.map((c: any) => c.stage)).toEqual(['done', 'consent']);
     expect(fam.kids[1].next).toBeNull();
-    expect(fam.kids[1].reasons).toEqual([['hold', 'Parent texted late (14/11/2026)? Check in Elvanto']]);
+    // 21 Nov (Tom): waiting for its own Friday is not "needs action"
+    expect(fam.kids[1].reasons).toEqual([['waiting', 'Parent texted late (14/11/2026)? Check in Elvanto']]);
+    expect(fam.needs).toBe(false);
     expect(fam.stage).toBe('consent');
+  });
+  it('once that Friday has passed and the console still holds it, it needs action again', () => {
+    const fam = F._hubModel(src(), cut('2026-11-20') + 1, cut, {}, {}).fams[0];
+    expect(fam.kids[1].reasons).toEqual([['hold', 'Parent texted late (14/11/2026)? Check in Elvanto']]);
+    expect(fam.needs).toBe(true);
+  });
+  it('a Done child is never "needs action" because of an old intake hold (Kaity Gray, 21 Nov)', () => {
+    const s = { lists: {
+      'intake|2026-11-13': { date: '2026-11-13', rows: [irow({ n: 1, status: 'needs-you', reason: 'Same person?', personId: P(1) })] },
+      'consent|2026-11-20': { date: '2026-11-20', rows: [crow({ status: 'done', outcome: 'Contact allowed' })] },
+    }, flows: [], mis: [] };
+    const fam = F._hubModel(s, NOW, cut, {}, {}).fams[0];
+    expect(fam.kids[0].stage).toBe('done');
+    expect(fam.needs).toBe(false);
   });
   it('even once Friday has passed, a row the console still holds has no live Mark consent', () => {
     const M = F._hubModel(src(), cut('2026-11-20') + 1, cut, {}, {});

@@ -14944,10 +14944,15 @@ function _hubFamilies(src) {
 function _hubModel(src, now, cut, st, fixes) {
   const { fams, loose, declined } = _hubFamilies(src), known = Array.isArray(src && src.flows), order = HUB_STAGES.map((s) => s[0]);
   for (const f of fams) {
-    for (const c of f.kids) { c.stage = _hubStage(c, now, cut, known); c.reasons = _hubReasons(c, st, fixes); c.next = _hubNext(c); }
+    for (const c of f.kids) {
+      c.stage = _hubStage(c, now, cut, known); c.next = _hubNext(c);
+      // 21 Nov (Tom): a late parent text waits for its own Friday (_hubFriday) - "waiting", not needs action, until that cut-off
+      const fri = _hubFriday(c);
+      c.reasons = _hubReasons(c, st, fixes).map((r) => r[0] === 'hold' && r[1].startsWith('Parent texted late (') && fri && now < cut(fri) ? ['waiting', r[1]] : r);
+    }
     f.title = _ikAnd(f.kids.map((c) => c.name));
     f.stage = f.kids.map((c) => c.stage).sort((a, b) => order.indexOf(a) - order.indexOf(b))[0];
-    f.needs = f.kids.some((c) => c.reasons.some((r) => r[0] !== 'waiting'));
+    f.needs = f.kids.some((c) => c.stage !== 'done' && c.reasons.some((r) => r[0] !== 'waiting')); // a Done child's old intake hold is history
     f.date = f.kids.flatMap((c) => [c.intake && c.intake.date, c.consent && c.consent.date, c.flow && c.flow.due]).filter(Boolean).sort().pop() || '';
   }
   return { fams: fams.sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' })), loose,
