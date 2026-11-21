@@ -14952,7 +14952,8 @@ function _hubModel(src, now, cut, st, fixes) {
     }
     f.title = _ikAnd(f.kids.map((c) => c.name));
     f.stage = f.kids.map((c) => c.stage).sort((a, b) => order.indexOf(a) - order.indexOf(b))[0];
-    f.needs = f.kids.some((c) => c.stage !== 'done' && c.reasons.some((r) => r[0] !== 'waiting')); // a Done child's old intake hold is history
+    // a Done child's old hold is history; a refused or unclear save still needs a look
+    f.needs = f.kids.some((c) => c.reasons.some((r) => r[0] !== 'waiting' && (c.stage !== 'done' || r[0] === 'refused' || r[0] === 'unclear')));
     f.date = f.kids.flatMap((c) => [c.intake && c.intake.date, c.consent && c.consent.date, c.flow && c.flow.due]).filter(Boolean).sort().pop() || '';
   }
   return { fams: fams.sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' })), loose,

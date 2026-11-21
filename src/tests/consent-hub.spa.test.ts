@@ -428,6 +428,16 @@ describe('late-text hold: the app and the console agree which consent week it is
     expect(fam.kids[0].stage).toBe('done');
     expect(fam.needs).toBe(false);
   });
+  it('...but a Done child with a refused save still needs action (review)', () => {
+    const s = { lists: {
+      'intake|2026-11-13': { date: '2026-11-13', rows: [irow({ n: 1, status: 'done', personId: P(1), actions: [{ id: 'a1', type: 'intakeSave', status: 'refused', reason: 'x' }] })] },
+      'consent|2026-11-20': { date: '2026-11-20', rows: [crow({ status: 'done', outcome: 'Contact allowed' })] },
+    }, flows: [], mis: [] };
+    const fam = F._hubModel(s, NOW, cut, {}, {}).fams[0];
+    expect(fam.kids[0].stage).toBe('done');
+    expect(fam.kids[0].reasons.some((r: any) => r[0] === 'refused')).toBe(true);
+    expect(fam.needs).toBe(true);
+  });
   it('even once Friday has passed, a row the console still holds has no live Mark consent', () => {
     const M = F._hubModel(src(), cut('2026-11-20') + 1, cut, {}, {});
     expect(M.fams[0].kids[1].stage).toBe('decided');
