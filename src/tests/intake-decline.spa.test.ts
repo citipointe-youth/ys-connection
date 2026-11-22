@@ -7,7 +7,7 @@ const STAGES = HTML.match(/^const HUB_STAGES = .*$/m)![0];
 const NAMES = ['esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubTextNext', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText',
   '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_icJs', '_hubDeclBtn', '_hubDeclHtml', '_hubDeclToggle', '_hubMarkRow', '_hubSaveTag', '_hubBodyHtml', '_hubBulkRows', '_hubBulkHtml',
-  '_hubBulkBtn', '_hubTextAll', '_ikReadyRows', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays', '_hubSendHtml', '_hubRefresh', '_ikQSlot', '_ikQRow'];
+  '_hubBulkBtn', '_hubTextAll', '_ikReadyRows', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays', '_hubSendHtml', '_hubRefresh', '_ikQSlot', '_ikQRow', '_ikClDecl', '_ikClDeclBtn'];
 const P = (n: number) => `9e000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const row = (o: any = {}) => ({ key: P(1), status: 'ready', title: 'Ava Sample', reason: '', outcome: '', hasText: false, personId: P(1), family: null, actions: [], declined: false, ...o });
 
@@ -23,7 +23,7 @@ function env(I: any, o: { post?: (b: any) => any; fresh?: any } = {}) {
     const _ikOutcome = (rs, id) => (rs || []).find((r) => r.id === id) || null;
     const _ikPost = (items) => { __d.calls.posts.push({ p: '/link/batch', items }); return Promise.resolve(__d.post ? __d.post(items) : items.map((i) => ({ kind: 'action', id: i.id, outcome: 'saved' }))); };
     const API = { post: (p, b) => { __d.calls.posts.push({ p, b }); return Promise.resolve({}); } };`,
-  ['_hubFamilies', '_hubModel', '_hubFamRow', '_hubDeclBtn', '_hubDeclHtml', '_hubBodyHtml', '_hubMarkRow', '_hubRefresh', '_hubReasons', '_ikQSlot', '_ik', '_hubM']);
+  ['_hubFamilies', '_hubModel', '_hubFamRow', '_hubDeclBtn', '_hubDeclHtml', '_hubBodyHtml', '_hubMarkRow', '_hubRefresh', '_hubReasons', '_ikQSlot', '_ik', '_hubM', '_ikClDeclBtn', '_ikLk']);
   return { F, calls, I: F._ik() };
 }
 const hub = (rows: any[], extra: any = {}) => ({ hub: { lists: { 'intake|2026-10-16': { date: '2026-10-16', rows } }, flows: [] }, hubQ: '', fixes: {}, ...extra });
@@ -132,5 +132,32 @@ describe('Refresh asks only the week on screen', () => {
     await p;
     expect(asks(calls)).toHaveLength(4);
     expect(HTML).toContain("'Updating…' + (I.hubWeek && I.hubWeek.y > 1 ? ' (week ' + I.hubWeek.x + ' of ' + I.hubWeek.y + ')' : '')");
+  });
+});
+
+describe('22 Nov: Decline an unmatched consent form', () => {
+  const form = (o: any = {}) => ({ subId: P(7), name: 'Sample, Zed', submitted: '2026-10-20', status: 'pending', linked: null, declined: false, ...o });
+  const withForms = (fs: any[]) => { const r = env(hub([])); r.F._ikLk('unlinked').res = { rows: fs }; return r; };
+  it('the button shows only for a console that sends declined, an unlinked form with a date, nothing on the way', () => {
+    const { F } = env({});
+    expect(F._ikClDeclBtn(form(), false, null)).toContain(`_hubMarkRow(&quot;form&quot;,&quot;2026-10-20&quot;,&quot;${P(7)}&quot;,&quot;decline&quot;)`);
+    const { declined: _d, ...old } = form();
+    expect(F._ikClDeclBtn(old, false, null)).toBe('');
+    expect(F._ikClDeclBtn(form({ submitted: null }), false, null)).toBe('');
+    expect(F._ikClDeclBtn(form(), true, null)).toBe('');
+    expect(F._ikClDeclBtn(form(), false, { personId: P(1) })).toBe('');
+  });
+  it('decline posts intakeMark mode form; the form leaves Needs action and sits under Declined with Undo', async () => {
+    const { F, calls, I } = withForms([form()]);
+    await F._hubMarkRow('form', '2026-10-20', P(7), 'decline');
+    expect(calls.posts[0].items[0]).toMatchObject({ type: 'intakeMark', payload: { mode: 'form', date: '2026-10-20', row: P(7), mark: 'decline' } });
+    expect(F._hubM().declined).toEqual([{ mode: 'form', date: '2026-10-20', row: { key: P(7), title: 'Zed Sample' } }]);
+    I.hubDeclView = true;
+    expect(F._hubBodyHtml()).toContain('Consent form filled in 2026-10-20');
+  });
+  it('the console flag declined:true alone also declines it', () => {
+    const { F } = withForms([form({ declined: true })]);
+    expect(F._hubM().declined).toHaveLength(1);
+    expect(F._hubBodyHtml()).toContain('Declined (1)');
   });
 });

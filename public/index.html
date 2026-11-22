@@ -14977,7 +14977,9 @@ function _ikReload() { const I = _ik(); if (I.key && !String(I.key).startsWith('
 function _hubRows(kind) { const x = _ikLk(kind); return x.res && !x.resQ ? x.res.rows || [] : null; }
 function _hubM() {
   const I = _ik(), h = I.hub || {};
-  return _hubModel({ lists: h.lists || {}, flows: h.flows || null, mis: _hubRows('mismatches') }, Date.now(), (y) => _siteInstant(y, _consentCutoff()), _ikSt(), I.fixes || {});
+  const M = _hubModel({ lists: h.lists || {}, flows: h.flows || null, mis: _hubRows('mismatches') }, Date.now(), (y) => _siteInstant(y, _consentCutoff()), _ikSt(), I.fixes || {});
+  for (const f of _hubRows('unlinked') || []) if (f && f.submitted && _ikClDecl(f)) M.declined.push({ mode: 'form', date: f.submitted, row: { key: f.subId, title: _ikFormName(f.name) } });
+  return M;
 }
 // Rev 19: the console's standing copy, shown at once. false = no copy from a rev 19 console: the caller warms the on-demand lookups.
 function _hubSnapApply(snap) {
@@ -15004,7 +15006,7 @@ async function _hubLoad(quiet) {
     const got = _intakeOn(I.head) ? await Promise.all(want.map(([m, d]) => get('/link/intake?mode=' + m + '&date=' + encodeURIComponent(d)).catch(() => null))) : [];
     if (_ik() !== I || I.gen !== gen) return;
     I.hub = { lists: Object.fromEntries(want.map(([m, d], i) => [m + '|' + d, got[i]]).filter(([, l]) => l)), flows: fl ? fl.rows || [] : null, snap, at: Date.now() };
-    for (const k of Object.keys(I.decl || {})) { const [m, d, key] = k.split('|'), rs = (I.hub.lists[m + '|' + d] || {}).rows, x = rs && rs.find((y) => y.key === key); if (!x || !!x.declined === I.decl[k]) delete I.decl[k]; } // the console's push now says it
+    for (const k of Object.keys(I.decl || {})) { const [m, d, key] = k.split('|'); if (m === 'form') continue; const rs = (I.hub.lists[m + '|' + d] || {}).rows, x = rs && rs.find((y) => y.key === key); if (!x || !!x.declined === I.decl[k]) delete I.decl[k]; } // the console's push now says it
     if (fl) { LINK.flows = fl.rows || []; LINK.fSteps = fl.steps || []; } // the step sheet (Remove, Mark consent) reads LINK.flows
     // Only the lists Refresh asked for count; an unreadable one (null) never holds it open, but one of them must be newer.
     // F5 (2026-11-21): the plan dates it asked for count too, and a non-live snapshot's lookups do not (they reload on their own).
@@ -15015,6 +15017,8 @@ async function _hubLoad(quiet) {
     I.err = null;
     _ikFixRestore(); // S-1: once per intake state (the old Tidy up screens ran it)
     if (!_hubSnapApply(snap) && (!quiet || !I.lkPre)) _ikLkWarm(_ikSt()); // ponytail: an older console warms page 1 only (25 forms); rev 19 has them all
+    const unr = _hubRows('unlinked'); // a form Decline / Undo: kept until the unlinked rows say it (the snapshot re-reads ~2 min after)
+    if (unr) for (const k of Object.keys(I.decl || {})) { const [m, , key] = k.split('|'), x = m === 'form' && unr.find((y) => y.subId === key); if (m === 'form' && (!x || !!x.declined === I.decl[k])) delete I.decl[k]; }
   } catch (e) { if (_ik() === I && I.gen === gen) I.err = e.message || 'Could not load ' + _hubTitle() + '.'; }
   if (_ik() !== I || I.gen !== gen) return;
   if (!quiet) _usLoad().then(() => { if (_ik() === I) _ikDraw(); });
@@ -15085,7 +15089,7 @@ function _hubDeclBtn(c, many) {
 function _hubDeclHtml(M) {
   return M.declined.map((x) => `<div class="li lk-row rc"><div class="rc-top"><div class="lk-nm">${esc(x.row.title)}</div><span class="lk-tag">${esc('Declined')}</span>`
     + `<button type="button" class="btn btn-secondary btn-sm" onclick="_hubMarkRow(${_icJs(x.mode)},${_icJs(x.date)},${_icJs(x.row.key)},'undo')">Undo</button></div>`
-    + `<div class="lk-d">${esc((x.mode === 'consent' ? 'Consent ' : 'Intake ') + _lkDay(x.date))}</div></div>`).join('') || '<div class="lk-hint">Nothing declined.</div>';
+    + `<div class="lk-d">${esc((x.mode === 'form' ? 'Consent form filled in ' : x.mode === 'consent' ? 'Consent ' : 'Intake ') + _lkDay(x.date))}</div></div>`).join('') || '<div class="lk-hint">Nothing declined.</div>';
 }
 async function _hubMarkRow(mode, date, key, mark) {
   const I = _ik(), k = mode + '|' + date + '|' + key;
@@ -15161,9 +15165,9 @@ function _hubBodyHtml() {
   }
   const wk = _hubWk(), today = _siteDay(Date.now()), inWk = (d) => _hubInWeek(d, wk, today), fams = M.fams.filter((f) => inWk(f.date));
   const mis = _hubRows('mismatches') || [], need = fams.filter((f) => f.needs), loose = M.loose.filter((i) => inWk(mis[i] && mis[i].submitted));
-  const unl = (_hubRows('unlinked') || []).map((f, i) => [f, i]).filter(([f]) => inWk(f && f.submitted)); // keep each form's own index
+  const unl = (_hubRows('unlinked') || []).map((f, i) => [f, i]).filter(([f]) => inWk(f && f.submitted) && !_ikClDecl(f)); // keep each form's own index
   const n = need.length + unl.length + loose.length + ((typeof _usRows !== 'undefined' && _usRows) || []).length;
-  const old = _hubAddDays(today, -28), open = I.hubOpen || {}, tx = _hubBulkBtn({ ...M, fams }, 'text', _hubTextAll, wk);
+  const old = _hubAddDays(today, -28), open = I.hubOpen || {}, tx = _hubBulkBtn({ ...M, fams }, 'text', _hubTextAll, wk) + _hubBulkBtn({ ...M, fams }, 'approve', (k) => 'Approve all ' + k + (k === 1 ? ' form' : ' forms'), wk);
   return (I.hubDeclChip || '') + _hubSendHtml() + (tx ? `<div class="strip">${tx}</div>` : '') + `<details class="lk-done"${open.need ? ' open' : ''} ontoggle="_hubToggle('need', this.open)"><summary>${esc('Needs action (' + n + ')')} ${icS('chevd')}</summary>` + need.map(row).join('') + unl.map(([f, i]) => _ikClRow(f, i, '', st)).join('')
     + loose.map((i) => _ikMisRow(mis[i], i, '', st)).join('') + '<div id="unsent-list"></div>' + (n ? '' : '<div class="lk-hint">Nothing needs you.</div>') + '</details>'
     + HUB_STAGES.map(([k, label]) => {
@@ -15178,7 +15182,8 @@ function _hubBulkRows(M, kind) {
     const ir = c.intake && c.intake.row, cr = c.consent && c.consent.row;
     if (kind === 'save' && c.stage === 'elvanto' && ir && _ikReadyRows({ rows: [ir] }).length) out.push(['intake', c.intake]);
     if (kind === 'text' && c.stage === 'elvanto' && _hubTextNext(ir) && !(ir.actions || []).some(_ikOpenAct)) out.push(['intake', c.intake]);
-    if (kind === 'consent' && c.stage === 'decided' && cr && !_hubStray(cr) && _ikReadyRows({ rows: [cr] }).length) out.push(['consent', c.consent]); // a stray approve: its own button only
+    if (kind === 'consent' && c.stage === 'decided' && cr && !_hubStray(cr) && _ikReadyRows({ rows: [cr] }).length) out.push(['consent', c.consent]); // a stray approve: Approve all, not Save all
+    if (kind === 'approve' && c.stage === 'decided' && _hubStray(cr) && _ikReadyRows({ rows: [cr] }).length) out.push(['consent', c.consent]); // 22 Nov (Tom): forms the console matched to one student
   }
   return out;
 }
@@ -15190,7 +15195,7 @@ function _hubTextAll(n) { return 'Text all ' + n + (n === 1 ? ' parent' : ' pare
 function _hubBulkHtml(stage, M) {
   const b = (kind, label) => _hubBulkBtn(M, kind, label);
   const h = stage === 'elvanto' ? b('save', (n) => 'Save all ' + n) + b('text', _hubTextAll)
-    : stage === 'decided' ? b('consent', (n) => 'Save all ' + n) : '';
+    : stage === 'decided' ? b('consent', (n) => 'Save all ' + n) + b('approve', (n) => 'Approve all ' + n) : '';
   return h ? `<div class="strip">${h}</div>` : '';
 }
 // One confirm for the group: each row's own detail is read (the step keys go verbatim, as Save all), blocked ones are named and skipped.
@@ -15205,7 +15210,7 @@ async function _hubBulkOpen(kind, wk, cw) {
   if (_ik() !== I) return;
   I.saBusy = false;
   if (!_still(h)) { _ikDraw(); return; }
-  const type = kind === 'text' ? 'intakeText' : kind === 'consent' ? 'consentSave' : 'intakeSave', items = [], skipped = [];
+  const type = kind === 'text' ? 'intakeText' : kind === 'consent' || kind === 'approve' ? 'consentSave' : 'intakeSave', items = [], skipped = [];
   xs.forEach(([m, x], i) => {
     const det = dets[i], list = (I.hub.lists || {})[m + '|' + x.date];
     if (!det) { skipped.push(x.row.title); return; }
@@ -15216,6 +15221,7 @@ async function _hubBulkOpen(kind, wk, cw) {
       return;
     }
     const r = _ikSaveAllItems([det], x.date, type, list, st);
+    if (kind === 'approve') r.items.forEach((it) => { it.outcome = 'Approve to profile'; });
     items.push(...r.items); skipped.push(...r.skipped);
   });
   _ikDraw();
@@ -15223,7 +15229,7 @@ async function _hubBulkOpen(kind, wk, cw) {
   I.sa = { type, items };
   if (cw && cw.auto) { _ikSaveAllGo(); return; } // the "This week" Run already listed and confirmed these (R4)
   const n = items.length;
-  const title = type === 'intakeText' ? `Text ${n} parent${n === 1 ? '' : 's'}?` : type === 'consentSave' ? `Save ${n} consent${n === 1 ? '' : 's'} to Elvanto?` : `Save ${n} famil${n === 1 ? 'y' : 'ies'} to Elvanto?`;
+  const title = type === 'intakeText' ? `Text ${n} parent${n === 1 ? '' : 's'}?` : kind === 'approve' ? `Approve ${n} form${n === 1 ? '' : 's'} to profiles?` : type === 'consentSave' ? `Save ${n} consent${n === 1 ? '' : 's'} to Elvanto?` : `Save ${n} famil${n === 1 ? 'y' : 'ies'} to Elvanto?`;
   modal(`<div class="mo-title">${esc(title)}</div>`
     + (type === 'consentSave' ? _ikSaveAllGroups(items) : items.map((it) => `<div class="ik-step"><span class="ik-dot"></span><span>${esc(it.title)}</span></div>`).join(''))
     + (type === 'intakeText' ? `<div class="ik-line">${esc("Elvanto sends each consent text. They can't be recalled.")}</div>` : '')
@@ -15474,7 +15480,8 @@ function _ikSaveAllItems(dets, date, type, list, st) {
 function _ikSaveAllGroups(items) {
   const DO = { 'Contact allowed': ['', 'approve the form, then complete New People step 0 (leaders can then contact them)'],
     'No contact': ['ik-chg-dnc', 'approve the form, then remove them from New People (DO NOT CONTACT)'],
-    'No reply: assume consent': ['', 'mark consent not received, then complete New People step 0'] };
+    'No reply: assume consent': ['', 'mark consent not received, then complete New People step 0'],
+    'Approve to profile': ['', "approve each form to that student's profile in Elvanto"] };
   const groups = new Map();
   for (const it of items) { const k = it.outcome || 'Other'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it.title); }
   return [...groups].map(([k, names]) => {
@@ -15813,8 +15820,16 @@ function _ikClRow(f, i, grey, st) {
     + ((f.names || []).length ? '<div class="lk-d">' + esc('Parent: ' + f.names.map((x) => tidyName(x)).join(', ')) + '</div>' : '')
     + _ikFormLines(f).map((t) => '<div class="ik-ict">' + esc(t) + '</div>').join('')
     + (multi ? _ikClMultiLines(multi, st) : '')
-    + (ft ? '<div class="lk-st ' + ft[0] + '" role="status">' + esc(ft[1]) + '</div>' : '') + act + '</div>';
+    + (ft ? '<div class="lk-st ' + ft[0] + '" role="status">' + esc(ft[1]) + '</div>' : '') + act + _ikClDeclBtn(f, open, now || (multi && multi.ids.length)) + '</div>';
 }
+// 22 Nov 2026 (Tom): Decline an unmatched form (never attended, out of date). Only a console that sends declined (it keeps the mark)
+// and only an unlinked form with a fill-in day (the mark's date); it then sits under the Declined chip with Undo.
+function _ikClDeclBtn(f, busy, linked) {
+  if (busy || linked || !f || !('declined' in f) || !f.submitted) return '';
+  return '<div class="lk-mt"><button type="button" class="btn btn-secondary btn-sm" onclick="_hubMarkRow(' + _icJs('form') + ',' + _icJs(f.submitted) + ',' + _icJs(f.subId) + ',' + _icJs('decline') + ')">Decline</button></div>';
+}
+// Declined now: this phone's tap (I.decl) until the console's push says the same, else the console's flag.
+function _ikClDecl(f) { const v = (_ik().decl || {})['form|' + f.submitted + '|' + f.subId]; return v !== undefined ? v : !!f.declined; }
 // ── L2 (round 2026-10-21): a form naming several children ("Jamie, Riley & Morgan Sample") ──
 // Operator ruling: suggest, one tap. The form's typed student name (formName, LINK_REV 15) splits on "," "&" "and" (whole word,
 // any case). A part of one word borrows the surname of the last part; a part with its own surname keeps it. -> the full names,

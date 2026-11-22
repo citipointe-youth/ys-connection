@@ -98,7 +98,7 @@ describe('search per child', () => {
 // Task 10 adds its bulk helpers to LANDING_NAMES (ruling R5).
 const LANDING_NAMES = ['_hubSendHtml', 'esc', '_hubFold', '_hubAddDays', '_hubFriday', '_hubStage', '_hubStray', '_hubTextNext', '_hubReasons', '_hubNext', '_hubFamilies', '_hubModel', '_hubSearch',
   '_ikAct', '_ikOpenAct', '_ikChip', '_ikReasons', '_ikAnd', '_ikFormName', 'tidyName', '_ikClSplit', '_ikFixText',
-  '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_icJs', '_hubDeclBtn', '_hubDeclHtml', '_hubSaveTag', '_hubBodyHtml', '_hubBulkRows', '_hubBulkHtml', '_hubBulkBtn', '_hubTextAll', '_ikReadyRows', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays'];
+  '_hubRows', '_hubM', '_hubSnapApply', '_hubChip', '_hubFamRow', '_icJs', '_hubDeclBtn', '_hubDeclHtml', '_hubSaveTag', '_hubBodyHtml', '_hubBulkRows', '_hubBulkHtml', '_hubBulkBtn', '_hubTextAll', '_ikReadyRows', '_hubWk', '_hubInWeek', '_lkWeekStart', '_lkAddDays', '_ikClDecl'];
 describe('landing', () => {
   const env = (I: any) => loadFns(LANDING_NAMES,
     `${STAGES}\nconst IK_FIX_REASON = {}; const __I = ${JSON.stringify(I)}; const _ik = () => __I; const _ikSt = () => ({});
@@ -242,6 +242,10 @@ describe('bulk buttons', () => {
     expect(B._hubBulkRows(M, 'save').map((x: any) => x[1].row.key)).toEqual(['a']);
     expect(B._hubBulkRows(M, 'text').map((x: any) => x[1].row.key)).toEqual(['b', 'r']);
     expect(B._hubBulkRows(M, 'consent').map((x: any) => x[1].row.key)).toEqual(['p']);
+  });
+  it('22 Nov: Approve all takes only the stray forms (matched to one student); Record consent shows it beside Save all', () => {
+    expect(B._hubBulkRows(M, 'approve').map((x: any) => x[1].row.key)).toEqual(['s']);
+    expect(B._hubBulkHtml('decided', M)).toContain('Approve all 1');
   });
   it('the Add to Elvanto group shows both buttons; Record consent shows Save all; the others none', () => {
     const h = B._hubBulkHtml('elvanto', M).replace(/<[^>]*>/g, '|');

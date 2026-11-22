@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { loadIndexHtml, extractFn, SITE_TIME_SRC } from './helpers/extract-fn';
 
 const FNS = ['esc', 'tidyName', '_ikAnd', '_ikFormName', '_ikFormChip', '_ikFormLines', '_ikFormRowEnd', '_ikDmy', 'fmtDay',
-  '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClPick', '_ikClUnlink', '_ikClGo',
+  '_ikClCap', '_ikClNow', '_ikClText', '_ikClRow', '_ikClDeclBtn', '_ikClPick', '_ikClUnlink', '_ikClGo',
   '_ikClSplit', '_ikClSuggest', '_ikClRoster', '_ikClMulti', '_ikClBusy', '_ikClToLink', '_ikClWho', '_ikClMultiLines', '_ikClMultiAct', '_ikClAllOpen', '_ikClAllGo'];
 const HTML = loadIndexHtml();
 const BODY = SITE_TIME_SRC + '\n' + FNS.map((n) => extractFn(HTML, n)).join('\n');

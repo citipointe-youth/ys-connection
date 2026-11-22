@@ -29,8 +29,9 @@ const REFRESH_BACK_DAYS = 56;                  // a Refresh may ask for a date u
 const NEAR_PURGE_DAYS = REFRESH_BACK_DAYS - 14;  // F4 (2026-11-21): an unprocessed row this old is listed as near the clear-out
 const INTAKE: readonly string[] = INTAKE_TYPES;
 export const isIntakeType = (t: ActionType) => INTAKE.includes(t);
-const modeOf = (t: ActionType, p?: Record<string, unknown>): IntakeMode =>
-  (t === 'intakeMark' ? (p as { mode: IntakeMode }).mode : t === 'consentSave' ? 'consent' : 'intake');
+// A form mark ('form': an unmatched consent form) is in no plan list, so it never matches an intake/consent mode.
+const modeOf = (t: ActionType, p?: Record<string, unknown>): IntakeMode | 'form' =>
+  (t === 'intakeMark' ? (p as { mode: IntakeMode | 'form' }).mode : t === 'consentSave' ? 'consent' : 'intake');
 
 const Ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const Mode = z.enum(['intake', 'consent']);
@@ -56,6 +57,7 @@ export async function checkIntakeItem(repo: ILinkIntakeRepository, type: ActionT
   note: string | null, now: Date): Promise<void> {
   const mode = modeOf(type, p);
   const date = p.date as string;
+  if (mode === 'form') return; // an unmatched consent form's Decline / Undo: ids only, the console keeps the mark (nothing in a plan to check)
   const d = (await repo.dates(mode)).find((x) => x.date === date && x.takenAt);
   if (!d) throw new BadRequestError('This date is not in the plan. Refresh.');
   if (type === 'intakeAnswer') {

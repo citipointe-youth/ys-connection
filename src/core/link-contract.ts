@@ -179,7 +179,9 @@ export const PAYLOAD_SCHEMAS = {
   // Rev 22: give the row to assignTo in Elvanto (admin/oversight; one of the step's admins). Never an unassign: Nobody stays YS-only.
   reassignStep: z.object({ rowId: Uuid, flowId: Uuid, stepId: Uuid, personId: Uuid.nullable(), assignTo: Uuid }).strict(),
   // Rev 24: decline (or undo declining) one intake/consent plan row; ids and words only, no note.
-  intakeMark: z.object({ mode: z.enum(['intake', 'consent']), date: Ymd, row: Uuid, mark: z.enum(['decline', 'undo']) }).strict(),
+  // 22 Nov 2026 (Tom): mode 'form' = an unmatched consent form (row = its subId, date = the day it was filled in); the console flags
+  // it declined on its unlinked rows. A console without it refuses bad-answer and never sends declined, so the app hides the button.
+  intakeMark: z.object({ mode: z.enum(['intake', 'consent', 'form']), date: Ymd, row: Uuid, mark: z.enum(['decline', 'undo']) }).strict(),
 } satisfies Record<(typeof ACTION_TYPES)[number], z.ZodTypeAny>;
 
 // ---- POST /sync/claim (spec 3.2)
@@ -351,7 +353,8 @@ export const ConsentUnlinkedRow = ConsentFormRow.omit({ personId: true }).extend
   linked: z.object({ personId: Uuid, name: Cut(120) }).strict().nullable(),
   // Rev 15 (L2): formName = the form's own first + last name fields ("Jamie, Riley & Morgan Sample"); linkedIds = every linked
   // person when the console linked 2+ (linked then names the first and linked.name lists them all).
-  formName: Cut(120).optional(), linkedIds: z.array(Uuid).min(2).max(10).optional() }).strict();
+  formName: Cut(120).optional(), linkedIds: z.array(Uuid).min(2).max(10).optional(),
+  declined: z.boolean().optional() }).strict(); // 22 Nov 2026: the admin's Decline (intakeMark mode 'form'); sent by a console that has it
 // Rev 8 (Consents Other): a step-0 student in no pushed consent week. date = the earliest sign a parent was texted (Parent Consent
 // step 1 Complete): a confirmed console send ('console text') or a parent note naming the student ('parent note'); null = none, and
 // why says so. The row itself is never an input to a consent save or check; R8 (rev 10): the same date reaches the app as the

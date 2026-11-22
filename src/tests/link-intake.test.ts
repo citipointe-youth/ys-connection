@@ -603,6 +603,11 @@ describe('rev 24: intakeMark (Decline / Undo) and declined plan rows', () => {
     expect((await one(h, act('intakeMark', markP()))).outcome).toBe('saved');
     expect((await one(h, act('intakeMark', markP({ mode: 'consent', row: P_STU })))).outcome).toBe('saved');
   });
+  it('22 Nov: mode form (an unmatched consent form) needs no plan date or row', async () => {
+    const h = await setup();
+    expect((await one(h, act('intakeMark', markP({ mode: 'form', date: '2026-08-14', row: u(9) })))).outcome).toBe('saved');
+    expect(await one(h, act('intakeMark', markP({ mode: 'nope' })))).toMatchObject({ outcome: 'refused' });
+  });
   it('a pending mark is cancelled by the Off save like the other intake rows', async () => {
     const h = await setup();
     const r = await one(h, act('intakeMark', markP()));
