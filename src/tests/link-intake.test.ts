@@ -607,6 +607,7 @@ describe('rev 24: intakeMark (Decline / Undo) and declined plan rows', () => {
     const h = await setup();
     expect((await one(h, act('intakeMark', markP({ mode: 'form', date: '2026-08-14', row: u(9) })))).outcome).toBe('saved');
     expect(await one(h, act('intakeMark', markP({ mode: 'nope' })))).toMatchObject({ outcome: 'refused' });
+    expect(await one(h, act('intakeMark', markP({ mode: 'form', date: '2026-08-14', row: u(9) }), 'a note'))).toMatchObject({ outcome: 'refused', code: 'BAD_REQUEST' });
   });
   it('a pending mark is cancelled by the Off save like the other intake rows', async () => {
     const h = await setup();

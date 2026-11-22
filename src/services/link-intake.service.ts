@@ -57,7 +57,7 @@ export async function checkIntakeItem(repo: ILinkIntakeRepository, type: ActionT
   note: string | null, now: Date): Promise<void> {
   const mode = modeOf(type, p);
   const date = p.date as string;
-  if (mode === 'form') return; // an unmatched consent form's Decline / Undo: ids only, the console keeps the mark (nothing in a plan to check)
+  if (mode === 'form') { if (note !== null) throw new BadRequestError('A note can only go on an answer.'); return; } // an unmatched consent form's Decline / Undo: ids only, the console keeps the mark (nothing in a plan to check)
   const d = (await repo.dates(mode)).find((x) => x.date === date && x.takenAt);
   if (!d) throw new BadRequestError('This date is not in the plan. Refresh.');
   if (type === 'intakeAnswer') {
