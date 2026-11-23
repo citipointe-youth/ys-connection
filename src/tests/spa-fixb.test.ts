@@ -101,15 +101,15 @@ describe('R16 R17 R18', () => {
     expect(h).toContain('ik-dot');
     expect(h).not.toContain('lk-box');
   });
-  it('Undo keep drops that one keep and sends the answer set again', () => {
+  it('Undo keep sends that one keep as \'\' (the console clears it) and sends the answer set again (Y2-10)', () => {
     const I: any = { det: { row: { key: 'k' } }, keepMem: { k: { parentPhone: '1' } } };
     const a: any = { keeps: { s: { parentPhone: '1', parentName: 'J' } } };
     (globalThis as any).__c = { I, a, sent: [] as any[] };
-    const f = loadFns(['_ikUnkeep'], `const _ik = () => __c.I; const _ikAns = () => __c.a; const _ikStudentSub = () => 's';
+    const f = loadFns(['_ikUnkeep', '_ikUnkeepField'], `const _ik = () => __c.I; const _ikAns = () => __c.a; const _ikStudentSub = () => 's';
       const _ikForm = () => ({ issues: [{ keep: { field: 'parentPhone', value: '1' } }] }); const _ikAnswerSend = (u) => __c.sent.push(u);`);
     f._ikUnkeep(0, 0);
-    expect(a.keeps.s).toEqual({ parentName: 'J' });
-    expect(I.keepMem.k).toEqual({});
+    expect(a.keeps.s).toEqual({ parentPhone: '', parentName: 'J' });
+    expect(I.keepMem.k).toEqual({ parentPhone: '' });
     expect(C().sent).toEqual([false]);
   });
 });

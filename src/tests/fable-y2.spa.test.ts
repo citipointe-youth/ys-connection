@@ -98,7 +98,7 @@ describe('Y2-4 Sign out asks first', () => {
     const env: Record<string, any> = {
       asked, posts, S: { user: { id: 'u1' }, page: 'home' }, _logoutBusy: false, rendered: 0,
       _setupDirty: () => !!o.dirty && env._setupDraft !== null, _setupDraft: 1, _setupClean: 1,
-      _lkAsk: (text: string, _y: string, _n: string, title?: string) => { asked.push(title || text.slice(0, 20)); if (!held[title || '']) held[title || ''] = later(); return (o.answers && (title || '') in o.answers) ? Promise.resolve(o.answers[title || '']) : held[title || ''].p; },
+      _lkAsk: (text: string, _y: string, _n: string, title?: string) => { asked.push(title || text.slice(0, 20)); if (!held[title || '']) held[title || ''] = later(); return (o.answers && (title || '') in o.answers) ? Promise.resolve(o.answers[title || '']) : held[title || '']!.p; },
       _lkQGet: () => queue, _lkSay: (a: string) => a, _lkActions: () => 'x', _lkUnsaved: () => 'y', _lkDrain: async () => { queue = []; }, _lkFlush: async () => {},
       _lkKey: () => 'k', _ikQLogout: async () => 0, _icLogout: async () => 0, _logoutLostText: () => '', _lkClear: () => {}, navReset: () => {},
       API: { token: 't', post: async (p: string) => { posts.push(p); if (o.logoutFails) throw new Error('dead token'); }, setToken: () => {} },
@@ -134,7 +134,7 @@ describe('Y2-4 Sign out asks first', () => {
   it('with unsent items only the existing unsent question is asked, never a second', async () => {
     const { env, fns } = outEnv({ queue: [{ kind: 'action' }], answers: { '': true } });
     await fns.doLogout();
-    expect(env.asked.filter((t) => t === 'Sign out?')).toEqual([]);
+    expect(env.asked.filter((t: string) => t === 'Sign out?')).toEqual([]);
     expect(env.posts).toEqual(['/auth/logout']);
   });
   it('after the Youth Setup guard\'s Discard there is no second question', async () => {

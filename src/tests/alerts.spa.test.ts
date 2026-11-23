@@ -146,7 +146,7 @@ describe('alerts: Settings parent off (I1)', () => {
   it('turning Lifegroup report off saves reminders off, birthdays kept', () => {
     const p = patch({ modules: { notices: 'on', birthdayAlerts: 'on', lifegroupReminders: 'on', lifegroupReport: 'off' } });
     expect(p.ministryConfig.modules).toMatchObject({ birthdayAlerts: 'on', lifegroupReminders: 'off' });
-    const inherit = patch({ modules: { notices: 'on', lifegroupReminders: 'on', newYouthForms: 'admin' } }); // follows New person
+    const inherit = patch({ modules: { notices: 'on', lifegroupReminders: 'on', newYouthForms: 'admin', lifegroupReport: 'admin' } }); // the server sends each screen resolved from New person (Y3-5)
     expect(inherit.ministryConfig.modules.lifegroupReminders).toBe('on');
   });
 });
