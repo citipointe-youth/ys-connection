@@ -520,3 +520,21 @@ describe('Y2-4 a sign-out question replaced by another sheet cannot leave the si
     expect(await b).toBe(true);
   });
 });
+
+// ── Gate fix: the title never clips beside the pill; the Undo toast is opaque with a 44px button ──
+describe('Gate: .lk-ph title, pill and toast CSS', () => {
+  // A pin: the layout itself was checked in a real browser at 360 and 320 (Lifegroup report with the 2-line "Sent. Waiting for Elvanto." pill).
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  it('the title is the fixed item (no ellipsis) and the pill shrinks and wraps', () => {
+    const h1 = /\.lk-ph h1\{([^}]*)\}/.exec(css)![1]!, pill = /\.lk-ph \.lk-pill\{([^}]*)\}/.exec(css)![1]!;
+    expect(h1).toContain('flex:none');
+    expect(h1).not.toMatch(/ellipsis|overflow/);
+    expect(pill).toContain('flex:0 1 auto');
+    expect(pill).toContain('min-width:0');
+  });
+  it('toasts have an opaque background; the Undo button is 44px', () => {
+    expect(/\n\.lk-toast\{position:fixed[^}]*\}/.exec(css)![0]).toMatch(/background:#111827/);
+    expect(/\n#toast\{position:fixed[^}]*\}/.exec(css)![0]).toMatch(/background:#111827/);
+    expect(css).toMatch(/\.lk-toast \.btn\{[^}]*min-height:44px/);
+  });
+});
