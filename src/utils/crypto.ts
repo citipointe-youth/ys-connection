@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 
-const BCRYPT_ROUNDS = 12;
+const BCRYPT_ROUNDS = process.env['VITEST'] ? 4 : 12;
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
