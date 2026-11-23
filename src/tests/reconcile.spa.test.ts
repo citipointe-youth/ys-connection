@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { loadFns } from './helpers/extract-fn';
 const html = readFileSync('public/index.html', 'utf8');
 describe('Who? sheet', () => {
   it('defines elWho, reads the admin endpoint and escapes every name', () => {
@@ -26,5 +27,22 @@ describe('r21 L6b (T9) Who? > Send again', () => {
     const fn = html.slice(html.indexOf('async function elResend('), html.indexOf('// end elResend'));
     expect(fn).toContain("dataset.armed !== '1'");
     expect(fn).toContain("API.post('/admin/reconcile/resend', _elRs[i])");
+  });
+});
+describe('elWho runs', () => {
+  it('elWho escapes a hostile name', async () => {
+    let shown = '';
+    const { elWho } = loadFns(['elWho', 'esc'], `
+      var _elRs = [];
+      function _elRsBtn() { return ''; }
+      function fmtDay() { return ''; }
+      function toast() {}
+      function modal(h) { globalThis.__shown = h; }
+      const API = { fresh: async () => ({ checkins: [{ name: '<img src=x onerror=1>', date: '2026-01-01' }], unmatched: [], lifegroups: [], members: [], noId: [] }) };
+    `);
+    await elWho('recon-checkins');
+    shown = (globalThis as any).__shown;
+    expect(shown).toContain('&lt;img');
+    expect(shown).not.toContain('<img');
   });
 });
