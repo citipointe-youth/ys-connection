@@ -468,3 +468,55 @@ describe('C1-3 the leader line for a refused saved-before', () => {
     expect(f._lkStatusText({ status: 'refused', type: 'completeStep', reason: 'saved-before' })).toBe('Saved before but not showing in Elvanto. Check in Elvanto.');
   });
 });
+
+// ── Review R1 / low note: door rows keep long names and refusal lines; a replaced sign-out question cannot stick ──
+describe('Review R1 door rows are not clipped to one ellipsized line', () => {
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  // CSS cannot run here: measure.js ('Y2-1.nameCut', 'Y2-1.refusalWrap', 'Y2-6.dncChip') measures it in a real browser. This pins the scoping.
+  it('.lk-st and .lk-nm are not clipped globally (flow rows keep the Do Not Contact chip, refusals wrap)', () => {
+    expect(css).not.toMatch(/\n\.lk-st\{[^}]*(nowrap|ellipsis)/);
+    expect(css).not.toMatch(/\n\.lk-row \.lk-nm\{/);
+  });
+  it('the clipping rules are scoped to the door list (#lk-list); error lines are left to wrap', () => {
+    expect(css).toMatch(/#lk-list \.lk-row \.lk-nm\{[^}]*-webkit-line-clamp:2/);
+    expect(css).toMatch(/#lk-list \.lk-row \.lk-st:not\(\.bad\)\{[^}]*nowrap/);
+    expect(css).toMatch(/#lk-list \.lk-row:has\(\.lk-st\) \.lk-nm\{[^}]*nowrap/);
+    expect(css).toMatch(/#lk-list \.lk-row:has\(\.btn\+\.btn\) \.lk-chip\{display:none\}/);
+  });
+});
+
+describe('Y2-4 a sign-out question replaced by another sheet cannot leave the sign-out stuck', () => {
+  it('modal() answers a replaced _lkAsk question No; the next sign-out asks again', async () => {
+    const posts: string[] = [];
+    const mkEl = (): any => ({ addEventListener: () => {}, querySelector: () => mkEl(), setAttribute: () => {}, focus: () => {}, id: '', style: {} });
+    const root: any = { innerHTML: '', querySelector: () => mkEl(), _ask: false };
+    const env: Record<string, any> = {
+      posts, root, LINK: { ask: null }, S: { user: { id: 'u1' }, page: 'home' }, _logoutBusy: false, esc: (x: any) => String(x),
+      document: { getElementById: (id: string) => (id === 'modal-root' ? root : null), activeElement: null, body: {} }, _moFitViewport: () => {}, _moDismiss: () => {}, _inFlight: new Set(),
+      _setupDirty: () => false, _lkQGet: () => [], _lkKey: () => 'k', _ikQLogout: async () => 0, _icLogout: async () => 0, _logoutLostText: () => '', _lkClear: () => {}, navReset: () => {},
+      API: { token: 't', post: async (p: string) => { posts.push(p); }, setToken: () => {} }, render: () => {}, localStorage: { removeItem: () => {} }, sessionStorage: { removeItem: () => {} },
+      _busLogoutReset: () => {}, nyReset: () => {}, _icClearLocal: () => {}, toast: () => {}, _vgReset: () => {}, _arFilter: {}, _bdayFilter: {}, _prayerFilter: {},
+    };
+    const f = withStubs(['doLogout', '_setupLeaveAsk', '_lkLogoutGuard', '_lkAsk', '_lkAnswer', 'modal', 'closeModal'], env);
+    const p = f.doLogout(); await tick();
+    expect(root.innerHTML).toContain('Sign out?');
+    f.modal('<div class="mo-title">Something else</div>'); // a timer-driven prompt replaces the question
+    await p;
+    expect(env._logoutBusy).toBe(false);
+    expect(posts).toEqual([]);
+    const q = f.doLogout(); await tick();
+    expect(root.innerHTML).toContain('Sign out?');
+    f._lkAnswer(true); await q;
+    expect(posts).toEqual(['/auth/logout']);
+  });
+  it('a second _lkAsk replaces the first: the first is answered No', async () => {
+    const mkEl = (): any => ({ addEventListener: () => {}, querySelector: () => mkEl(), setAttribute: () => {}, focus: () => {}, id: '', style: {} });
+    const root: any = { innerHTML: '', querySelector: () => mkEl(), _ask: false };
+    const env: Record<string, any> = { root, LINK: { ask: null }, esc: (x: any) => String(x), document: { getElementById: (id: string) => (id === 'modal-root' ? root : null), activeElement: null }, _moFitViewport: () => {}, _moDismiss: () => {}, _inFlight: new Set() };
+    const f = withStubs(['_lkAsk', '_lkAnswer', 'modal', 'closeModal'], env);
+    const a = f._lkAsk('one', 'Yes', 'No', 'One?'); const b = f._lkAsk('two', 'Yes', 'No', 'Two?');
+    expect(await a).toBe(false);
+    f._lkAnswer(true);
+    expect(await b).toBe(true);
+  });
+});

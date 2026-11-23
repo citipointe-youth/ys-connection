@@ -791,8 +791,12 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-chip.lead{background:var(--paper-dark);color:var(--ink)}
 .lk-grow{flex:1;min-width:0}
 .lk-nm{font-weight:600;font-size:15px;flex:1;min-width:0}
-.lk-st{font-size:12px;margin-top:2px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.lk-row .lk-nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lk-st{font-size:12px;margin-top:2px;font-weight:500}
+/* Y2-1, door rows only (#lk-list): the name may take two lines when idle; a status line stays one line unless it is an error, and then the name drops to one line so a tap never changes the row height */
+#lk-list .lk-row .lk-nm{white-space:normal;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
+#lk-list .lk-row .lk-st:not(.bad){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lk-list .lk-row:has(.lk-st) .lk-nm{display:block;white-space:nowrap;text-overflow:ellipsis}
+#lk-list .lk-row:has(.btn+.btn) .lk-chip{display:none}
 .lk-st .ic-s{width:12px;height:12px;vertical-align:-2px}
 .lk-st.grey{color:var(--ink-faint)}.lk-st.wait{color:#92400e}.lk-st.ok{color:#047857}.lk-st.bad{color:#b91c1c}.lk-st.prac{color:var(--ink-mid)}
 .lk-done{margin-top:6px}
@@ -1706,6 +1710,7 @@ function modal(html, onClose, opts) {
   // screen readers stay in the sheet), Esc closes (keydown below), and closeModal gives focus back to the opener.
   // A sheet replaced by another sheet keeps the first opener.
   if (!r.innerHTML) { const a = document.activeElement; r._opener = a && a !== document.body ? a : null; }
+  if (r._ask) { r._ask = false; const p = typeof LINK !== 'undefined' && LINK ? LINK.ask : null; if (p) { LINK.ask = null; p(false); } } // a _lkAsk question replaced by another sheet is answered No: its caller (doLogout) must not hang
   r.innerHTML = `<div class="mo ${opts.overlayClass||''}" id="mo-overlay"><div class="mo-box ${opts.boxClass||''}" role="dialog" aria-modal="true" tabindex="-1"><div class="mo-handle"></div>${html}</div></div>`;
   r._onClose = onClose;
   r._typed = false; r._armed = 0;
@@ -1743,7 +1748,7 @@ function _moFitViewport() {
 }
 if (window.visualViewport) { window.visualViewport.addEventListener('resize', _moFitViewport); window.visualViewport.addEventListener('scroll', _moFitViewport); }
 function closeModal() {
-  const r = document.getElementById('modal-root'); if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null;
+  const r = document.getElementById('modal-root'); r._ask = false; if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null;
   // F-52: the tap that closed the sheet must not land on the page underneath (iOS ghost click).
   const app = document.getElementById('app');
   if (app) app.inert = false;
@@ -8554,7 +8559,7 @@ function _setupNoticesHtml(md, style) {
   if (style !== 'junior-senior') return '';
   md = md || {};
   // Leader alerts (2026-11-06): two more switches under Notices, greyed with a reason while what they need is off (the server resolves them off too).
-  const lgr = md.lifegroupReport != null ? md.lifegroupReport : md.newYouthForms, lgrOn = lgr === 'on' || lgr === 'admin' || lgr === true;
+  const lgr = md.lifegroupReport, lgrOn = lgr === 'on' || lgr === 'admin' || lgr === true;
   const alertSwitch = (k, label, tip, why) => `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:${why ? 'default' : 'pointer'}"><input type="checkbox" id="setup-${k}" ${!why && md[k] === 'on' ? 'checked' : ''} ${why ? 'disabled' : ''} onchange="_setupSet('modules.${k}', this.checked ? 'on' : 'off')"> <span>${label} ${helpTip(tip)}${why ? `<span class="help-text" style="display:block;margin:0">${why}</span>` : ''}</span></label>`;
   return `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="setup-notices" ${md.notices === 'on' ? 'checked' : ''} onchange="_setupSet('modules.notices', this.checked ? 'on' : 'off')"> <span>Notices ${helpTip("Admin and oversight send a message to the four Junior/Senior logins (Junior or Senior, Guys or Girls). Shows under More and on Home for 24 hours. Off by default. Notices already sent are kept.")}</span></label>`
     + alertSwitch('birthdayAlerts', 'Birthday alerts', "A phone alert at 8 am when a student a leader is connected to has a birthday. Each leader picks it on their phone under More, Notices. Off by default.", md.notices === 'on' ? '' : 'Needs Notices. Turn Notices on first.')
@@ -11742,11 +11747,14 @@ async function _lkLogoutGuard() {
 }
 function _lkAsk(text, yes, no, title) {
   return new Promise((res) => {
+    if (LINK.ask) { const p = LINK.ask; LINK.ask = null; p(false); } // a question replaced by another counts as No
     LINK.ask = res;
+    const root = document.getElementById('modal-root'); root._ask = false;
     modal(`<div class="mo-title">${esc(title || 'Not sent yet')}</div><p style="margin-bottom:14px">${esc(text)}</p>
       <button type="button" class="btn btn-primary btn-full" onclick="_lkAnswer(true)">${esc(yes)}</button>
       <button type="button" class="btn btn-secondary btn-full" style="margin-top:8px" onclick="_lkAnswer(false)">${esc(no)}</button>`,
     () => { const f = LINK.ask; LINK.ask = null; if (f) f(false); });
+    root._ask = true; // modal() answers No for this question if another sheet replaces it (modal never calls the old onClose)
   });
 }
 function _lkAnswer(v) { const f = LINK.ask; LINK.ask = null; closeModal(); if (f) f(v); }
