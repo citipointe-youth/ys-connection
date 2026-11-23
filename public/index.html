@@ -6428,6 +6428,7 @@ async function unassignSD(sid, lid) {
 // T5 (2026-10-13): opts.two = the 2-column layout (attendance | leaders + phones) used from the lifegroup members list.
 async function showStudentDetail(id, opts) {
   const two = !!(opts && opts.two);
+  const h = _here(), n = (showStudentDetail.n = (showStudentDetail.n || 0) + 1); // Y1-9: only the latest call on this screen opens its sheet
   let s, myAllocs, allLeaders = [];
   try {
     [s, myAllocs, allLeaders] = await Promise.all([
@@ -6436,6 +6437,7 @@ async function showStudentDetail(id, opts) {
       API.get('/leaders').catch(() => []),
     ]);
   } catch { toast('Failed to load'); return; }
+  if (n !== showStudentDetail.n || !_still(h)) return;
   _sdStudent = s; _sdLeaders = allLeaders; _sdAssigned = new Set(myAllocs.map(a => a.leaderId));
   const canEdit = ['grade', 'quad', 'oversight', 'admin'].includes(S.user.role);
   const pct = svcPct(s);
@@ -7274,11 +7276,13 @@ async function previewServiceImport(filename, rows) {
   // (Cache.get) returns null once expired AND is wiped by Cache.clear() after every
   // import, so relying on it made a re-upload show everyone as "new" with 0 updates.
   // Fetch fresh (falling back to the last-known list, then empty) before counting.
+  const h = _here(), n = (previewServiceImport.n = (previewServiceImport.n || 0) + 1); // Y1-9
   let studentList = Cache.get('/students');
   if (!studentList) {
     try { studentList = await API.get('/students'); }
     catch { studentList = Cache.getStale('/students'); }
   }
+  if (n !== previewServiceImport.n || !_still(h)) return;
   const existing = new Set((studentList || []).map(s => `${(s.firstName||'').trim().toLowerCase()} ${(s.lastName||'').trim().toLowerCase()}`));
   // BRK-24: count what the server will do: same-name rows are one student, and it skips a row with no last name, no gender column or a grade out of range.
   let nu = 0; const grades = new Set(); let unknownGrade = 0, skipped = 0; const seen = new Set();

@@ -206,3 +206,76 @@ describe('Y1-8 saving a message template drops the cached follow-up', () => {
     expect(fn.Cache.getStale('/connections/leader/L2/followup')).not.toBeNull(); // only this leader's
   });
 });
+
+// ── Y1-9: late sheets ──
+// Runs the real function with every global it does not name in `env` answered by a stub that returns ''.
+function withStubs(name: string, env: Record<string, any>) {
+  const g = new Proxy(env, {
+    has: (t, k) => typeof k === 'string' && (k in t || (k !== name && !(k in globalThis))),
+    get: (t, k) => (typeof k !== 'string' ? undefined : k in t ? t[k] : () => ''),
+  });
+  return new Function('__g', `with (__g) { ${extractFn(html, name)}\nreturn ${name}; }`)(g);
+}
+const later = () => { let go!: (v?: any) => void; const p = new Promise<any>((r) => { go = r; }); return { p, go }; };
+
+describe('Y1-9 a late student profile or import preview', () => {
+  const studentEnv = () => {
+    const modals: string[] = [], gate: Record<string, ReturnType<typeof later>> = {};
+    const st = { still: true };
+    const env: Record<string, any> = {
+      S: { user: { role: 'admin' } }, modals, st,
+      API: { get: (u: string) => { (gate[u] ||= later()); return gate[u]!.p; } },
+      modal: (h: string) => modals.push(h),
+      esc: (x: any) => String(x == null ? '' : x),
+      _here: () => ({}), _still: () => st.still,
+      toast: () => {},
+    };
+    return { env, gate, modals, st, fn: withStubs('showStudentDetail', env) };
+  };
+  const reply = (gate: any, id: string, first: string) => {
+    gate['/students/' + id].go({ id, firstName: first, lastName: 'Sample', svcAttended: 0, svcTotal: 0, grpAttended: 0, grpTotal: 0 });
+    gate['/connections/student/' + id].go([]);
+    gate['/leaders'].go([]);
+  };
+  it('showStudentDetail: replies in reverse order -> one sheet, for the second student', async () => {
+    const { fn, gate, modals } = studentEnv();
+    const a = fn('A'), b = fn('B');
+    reply(gate, 'B', 'Bee'); await b;
+    reply(gate, 'A', 'Aye'); await a;
+    expect(modals.length).toBe(1);
+    expect(modals[0]).toContain('Bee');
+  });
+  it('showStudentDetail: a page change during the await -> no sheet', async () => {
+    const { fn, gate, modals, st } = studentEnv();
+    const a = fn('A');
+    st.still = false;
+    reply(gate, 'A', 'Aye'); await a;
+    expect(modals.length).toBe(0);
+  });
+  const importEnv = () => {
+    const modals: string[] = [], gates: Array<ReturnType<typeof later>> = [];
+    const st = { still: true };
+    const env: Record<string, any> = {
+      modals, st, Cache: { get: () => null, getStale: () => null },
+      API: { get: () => { const d = later(); gates.push(d); return d.p; } },
+      modal: (h: string) => modals.push(h), esc: (x: any) => String(x == null ? '' : x),
+      _gradeList: () => [7, 8, 9, 10, 11, 12], _gradeWord: () => 'Grade', _here: () => ({}), _still: () => st.still, window: {},
+    };
+    return { gates, modals, st, fn: withStubs('previewServiceImport', env) };
+  };
+  const rows = [{ first_name: 'A', last_name: 'Sample', gender: 'M', grade: '8' }];
+  it('previewServiceImport: replies in reverse order -> one sheet, for the second file', async () => {
+    const { fn, gates, modals } = importEnv();
+    const a = fn('first.csv', rows), b = fn('second.csv', rows);
+    gates[1]!.go([]); await b;
+    gates[0]!.go([]); await a;
+    expect(modals.length).toBe(1);
+    expect(modals[0]).toContain('second.csv');
+  });
+  it('previewServiceImport: a page change during the await -> no sheet', async () => {
+    const { fn, gates, modals, st } = importEnv();
+    const a = fn('first.csv', rows);
+    st.still = false; gates[0]!.go([]); await a;
+    expect(modals.length).toBe(0);
+  });
+});
