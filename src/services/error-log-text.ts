@@ -111,7 +111,7 @@ export const TEXT: Record<string, Entry> = {
   'leader-member': ['fyi', 'The app tried to remove a leader from a group', 'Nothing to do; leaders are removed in Elvanto.'],
   'needs-you': ['later', 'An intake step is waiting for you', 'Open More > New youth & consent for that date and finish it.'],
   'plan-changed': ['fyi', 'An intake plan changed before it was saved', 'Nothing to do; the next refresh redoes it.'],
-  'saved-before': ['fyi', 'An intake answer was already saved', 'Nothing to do.'],
+  'saved-before': ['later', 'A save was confirmed before but Elvanto does not show it', 'Check it in Elvanto.'],
   'chain-not-done': ['fyi', 'An intake step ran before the one before it finished', 'Nothing to do; the chain retries.'],
   'bad-answer': ['fyi', "An intake answer didn't fit the Elvanto field", `Nothing to do if rare. If it repeats, the console's answer mapping needs fixing.${TELL}`],
   // 6.4 Connection Audit (spec 2026-10-22 §7; category audit, setCount). Route = the source code, shown by its screen name.

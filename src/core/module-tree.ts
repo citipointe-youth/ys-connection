@@ -29,6 +29,9 @@ export const MODULE_TREE: readonly ModuleNode[] = [
   { key: 'camp', label: 'Camp' },
 ];
 
+/** Y3-5: the three link screens, each its own module mode. resolveModules always fills them, so readers need no fallback. */
+export const LINK_FEATURES = ['checkin', 'lifegroupReport', 'flows'] as const;
+
 type Vals = Record<string, unknown>;
 const isOn = (v: unknown) => v === true || v === 'on' || v === 'admin';
 const offOf = (v: unknown) => (typeof v === 'boolean' ? false : 'off');

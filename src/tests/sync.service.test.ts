@@ -103,6 +103,17 @@ describe('sync.service version gate', () => {
 // ---------------- C1: claim ----------------
 
 describe('sync.service claim', () => {
+  it('rev 26: a tolerant claim (unknown type, completeStep missing) answers linkRev 26, leases no completeStep, stores no unknown key', async () => {
+    const { svc, link } = await setup();
+    for (const r of claimRes.rows) await link.insertAction(rowFromFixture(r));
+    expect(claimRes.rows.some((r: any) => r.type === 'completeStep')).toBe(true); // one is pending
+    const reply = ClaimResponse.parse(await svc.claim({ ...fx('claim-request-rev26.json'), max: 20 }));
+    expect(reply.linkRev).toBe(26);
+    expect(reply.rows.map((r) => r.type).sort()).toEqual(['editReport', 'submitReport']); // checkIn/checkOut/firstTimerCheckIn are off
+    const stored = (await link.listConsoles())[0]!.capabilities;
+    expect(stored).not.toHaveProperty('futureType');
+    expect(stored).not.toHaveProperty('completeStep');
+  });
   it('leases one row per type; reply parses; raw note; by.login = users.email; by.leaderName = snapshot', async () => {
     const { svc, link } = await setup();
     for (const r of claimRes.rows) await link.insertAction(rowFromFixture(r));
@@ -422,7 +433,7 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     }
     expect(await link.listConsoles()).toEqual([]);
     const ok = await svc.claim(claimReq);
-    expect(ClaimResponse.parse(ok).linkRev).toBe(25);
+    expect(ClaimResponse.parse(ok).linkRev).toBe(26);
     expect((await link.listConsoles())[0]!.linkRev).toBe(12);
   });
   it('X1 (rev 14): the claim reply carries site from ministryConfig (structure + elvanto prefixes); a rev 12 console still claims', async () => {
@@ -436,11 +447,12 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     expect(ClaimResponse.parse(await svc.claim(claimReq)).site).toEqual({ timeZone: 'Australia/Sydney', serviceDay: 3, consentCutoff: '17:30',
       peopleFlowPrefix: 'North - Youth - New People', consentFlowPrefix: 'North - Youth - Parent Consent' });
   });
-  it('rev 17: the claim reply carries modules mirroring config (legacy config inherits newYouthForms; connectionAudit false)', async () => {
+  it('rev 17: the claim reply carries modules mirroring config (resolved link screens; connectionAudit false)', async () => {
     const { svc, settings } = await setup();
     const cfg = (await settings.getSettings()).ministryConfig;
-    const { checkin, lifegroupReport, flows, ...legacy } = cfg.modules as any; // a config stored before the T10 split
-    await settings.updateSettings({ ministryConfig: { ...cfg, modules: { ...legacy, newYouthForms: 'admin', intakeAdmin: 'on', lifegroups: false, connectionAudit: false } } } as any);
+    // Y3-5: stored settings are always resolved (resolveModules fills the three link screens), so the fixture carries them.
+    await settings.updateSettings({ ministryConfig: { ...cfg, modules: { ...cfg.modules, checkin: 'admin', lifegroupReport: 'admin', flows: 'admin',
+      newYouthForms: 'admin', intakeAdmin: 'on', lifegroups: false, connectionAudit: false } } } as any);
     expect(ClaimResponse.parse(await svc.claim(claimReq)).modules).toEqual({ checkin: 'admin', lifegroupReport: 'admin', flows: 'admin', newYouthForms: 'admin',
       intakeAdmin: 'on', lifegroups: false, connectionAudit: false });
   });
@@ -458,7 +470,7 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     const cfg = (await settings.getSettings()).ministryConfig;
     await settings.updateSettings({ ministryConfig: { ...cfg, modules: MinistryConfigSchema.parse({ modules: LIVE_MODULES }).modules } } as any);
     const reply = await svc.claim(claimReq);
-    expect(reply.linkRev).toBe(25);
+    expect(reply.linkRev).toBe(26);
     expect(reply.modules).toEqual({ checkin: 'admin', lifegroupReport: 'admin', flows: 'admin', newYouthForms: 'on', intakeAdmin: 'on', lifegroups: true, connectionAudit: true });
     expect(validModules(ClaimResponse.parse(reply).modules)).toEqual(reply.modules);
   });

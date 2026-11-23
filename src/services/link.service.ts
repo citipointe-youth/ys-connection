@@ -29,6 +29,7 @@ import {
 import { dncFullyOn } from './dnc';
 import { makeStudentService } from './student.service';
 import { gradeRange, hiddenStepsOf } from '../core/ministry-config';
+import { LINK_FEATURES } from '../core/module-tree';
 import { createLogger } from '../utils/logger';
 import { isDbError } from '../utils/transient-db';
 import type { ErrorLogService } from './error-log.service';
@@ -341,15 +342,12 @@ export function personVisible(a: Actor, r: LinkRosterRow, s: StructureScope): bo
   return isAdminRole(a) || (canAccessGrade(a, r.grade, s) && (r.gender ? canAccessGender(a, r.gender, s) : genderScopeOf(a, s) == null));
 }
 /** T10: the three link screens, each its own module mode (ministryConfig.modules). */
-type Feature = 'checkin' | 'lifegroupReport' | 'flows';
-const FEATURES: Feature[] = ['checkin', 'lifegroupReport', 'flows'];
+type Feature = (typeof LINK_FEATURES)[number];
 const FEATURE_OF: Partial<Record<ActionType, Feature>> = { checkIn: 'checkin', checkOut: 'checkin', firstTimerCheckIn: 'checkin',
   submitReport: 'lifegroupReport', editReport: 'lifegroupReport', completeStep: 'flows',
   addGroupMember: 'lifegroupReport', removeGroupMember: 'lifegroupReport', removeFromFlowStep: 'flows',
   doorSearch: 'checkin', reassignStep: 'flows' }; // rev 22: Reassign in Elvanto. rev 20: any login the door is on for, never admin-only. The intake types: module Intakes; the consent types: the Consents hub (X19, rev 6)
-/** `?? newYouthForms`: a json-mode settings file stored before T10 is never re-parsed. */
-const usable = (a: Actor, s: AppSettings, f: Feature) =>
-  can(a, 'link:use') && modeAllows(a, s.ministryConfig.modules[f] ?? s.ministryConfig.modules.newYouthForms);
+const usable = (a: Actor, s: AppSettings, f: Feature) => can(a, 'link:use') && modeAllows(a, s.ministryConfig.modules[f]);
 
 const refused = (id: string, kind: ItemKind, e: AppError): ItemResult => ({ id, kind, outcome: 'refused',
   code: e.code, message: e.message, ...(typeof e.extra?.reason === 'string' ? { reason: e.extra.reason } : {}) });
@@ -456,7 +454,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       return settings;
     }
     if (need === 'any' && admin) return settings;
-    if (!(need === 'any' ? FEATURES : need).some((f) => usable(actor, settings, f))) throw new ModuleDisabledError('Elvanto link');
+    if (!(need === 'any' ? LINK_FEATURES : need).some((f) => usable(actor, settings, f))) throw new ModuleDisabledError('Elvanto link');
     return settings;
   }
 
@@ -998,7 +996,7 @@ export function makeLinkService(d: LinkServiceDeps): LinkService {
       const t = clock().getTime();
       // Y6c: the DNC state is for admin/oversight only, and only once a link screen is on (one roster read, in parallel).
       const mods = settings.ministryConfig.modules;
-      const boss = isAdminRole(actor) && FEATURES.some((f) => (mods[f] ?? mods.newYouthForms) !== 'off');
+      const boss = isAdminRole(actor) && LINK_FEATURES.some((f) => mods[f] !== 'off');
       const [consoles, mirrors, roster] = await Promise.all([d.link.listConsoles(), d.link.mirrorState(), boss ? d.link.roster() : null]);
       const n = newest(consoles);
       const console = n

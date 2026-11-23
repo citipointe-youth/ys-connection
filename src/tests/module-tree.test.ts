@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MinistryConfigSchema } from '../core/ministry-config';
-import { MODULE_TREE, resolveModules, moduleProblems, consentsHubOn, alertModuleOn } from '../core/module-tree';
+import { LINK_FEATURES, MODULE_TREE, resolveModules, moduleProblems, consentsHubOn, alertModuleOn } from '../core/module-tree';
 import { makeSettingsService } from '../services/settings.service';
 import { InMemorySettingsRepository, InMemoryAuditRepository, InMemoryUserRepository } from '../repositories/in-memory';
 import type { Actor } from '../core/entities/user';
@@ -51,6 +51,16 @@ describe('MC2: one case per resolver rule', () => {
   it('nothing else moves: Prayer, Notices, Digest, Camp, core settings', () => {
     const m = mods({ ...LIVE, liveLink: false, busMinistry: false });
     expect(m).toMatchObject({ prayers: true, notices: 'off', digest: true, camp: true, lifegroups: true, exportGuides: 'elvanto' });
+  });
+});
+
+describe('Y3-5: LINK_FEATURES, the one list of link screens', () => {
+  it('is the three link screens, and resolveModules always fills them (so no reader needs a newYouthForms fallback)', () => {
+    expect(LINK_FEATURES).toEqual(['checkin', 'lifegroupReport', 'flows']);
+    for (const m of [{}, { newYouthForms: 'admin' }, { newYouthForms: true }, { liveLink: false }] as const) {
+      const r = resolveModules(RAW.parse(m)) as Record<string, unknown>;
+      for (const f of LINK_FEATURES) expect(r[f], `${JSON.stringify(m)} ${f}`).toMatch(/^(off|admin|on)$/);
+    }
   });
 });
 

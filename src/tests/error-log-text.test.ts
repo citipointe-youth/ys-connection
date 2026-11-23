@@ -19,6 +19,10 @@ describe('error-log-text', () => {
     }
   });
 
+  it('C1-3: saved-before tells the admin to check it in Elvanto (it is not a success)', () => {
+    expect(TEXT['saved-before']).toEqual(['later', 'A save was confirmed before but Elvanto does not show it', 'Check it in Elvanto.']);
+  });
+
   it('every console refusal reason has its own text (no fallback for a known reason)', () => {
     for (const r of REASONS) if (!NON_REFUSALS.has(r)) expect(TEXT[r], r).toBeDefined();
   });

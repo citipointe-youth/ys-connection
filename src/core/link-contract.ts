@@ -46,7 +46,10 @@ export const LINK_CONTRACT_VERSION = 1;
 // doesn't show now); intakeSave/consentSave may carry resend: true ("Check and save again": the console re-reads, then sends once, for
 // the idempotent writers only); POST /sync/alerts may carry due (the Fri 19:45 / 06:30 prompts). MIN_CONSOLE_REV stays 12: an older
 // console sends none of them, an older app strips stuck (its rows are strict: the console only sends it to a rev 25 app).
-export const LINK_REV = 25;
+// Rev 26 (2026-11-24, item 3.6): the claim reads capabilities tolerantly. An unknown type name is dropped before anything is stored
+// or served; every key is optional and a missing type means off; a known key still needs a valid value; at most 64 keys. So a
+// console older or newer than the app can claim and is leased only the types both know. MIN_CONSOLE_REV stays 12.
+export const LINK_REV = 26;
 /** Rev 25 R3b: the console writers safe to repeat ("Check and save again"); never complete (a second text), note or approveNew.
  *  The SPA's IK_IDEMPOTENT and the console's sent-log IDEMPOTENT are byte-equal copies (spike/verify-ys-link-contract.js). */
 export const IDEMPOTENT_ACTIONS = ['approve', 'unarchive', 'category', 'familyLink', 'setField', 'formFix', 'consentFix', 'consentNotReceived', 'removeFromStep', 'locDemo', 'youthDemo', 'inactivate'] as const;
@@ -186,18 +189,15 @@ export const PAYLOAD_SCHEMAS = {
 
 // ---- POST /sync/claim (spec 3.2)
 const Cap = z.enum(CAPABILITIES);
+// Rev 26: the tolerant reader. Any object of at most 64 keys; only the known action types are kept (own keys only, so __proto__ and
+// constructor never pass), each still a valid Cap. Every key is optional: a missing type means off.
+const Capabilities = z.record(z.unknown()).refine((o) => Object.keys(o).length <= 64, 'at most 64 capability keys')
+  .transform((o) => Object.fromEntries(ACTION_TYPES.filter((t) => Object.hasOwn(o, t)).map((t) => [t, o[t]])))
+  .pipe(z.record(z.enum(ACTION_TYPES), Cap));
 export const ClaimRequest = z.object({
   contractVersion: Version, consoleId: Uuid, consoleLabel: Text(60), consoleVersion: Text(60),
   inWindow: z.boolean(), pollSeconds: z.number().int().min(10).max(3600),
-  // X18: the two member types are optional (a console before LINK_REV 3 sends neither); missing = the console cannot do it.
-  capabilities: z.object({ checkIn: Cap, checkOut: Cap, submitReport: Cap, editReport: Cap, completeStep: Cap, firstTimerCheckIn: Cap,
-    addGroupMember: Cap.optional(), removeGroupMember: Cap.optional(),
-    // X19: the intake types, sent only when the app's linkRev >= 4 (an older app 400s on unknown keys).
-    intakeAnswer: Cap.optional(), intakeSave: Cap.optional(), consentSave: Cap.optional(), intakeText: Cap.optional(),
-    // Rev 6: sent only when the app's linkRev >= 6.
-    removeFromFlowStep: Cap.optional(), consentLookup: Cap.optional(), consentFix: Cap.optional(), consentLink: Cap.optional(),
-    recheck: Cap.optional(), busConsentCheck: Cap.optional(), doorSearch: Cap.optional(), reassignStep: Cap.optional(),
-    intakeMark: Cap.optional() }).strict(), // rev 15 (L7); rev 18; rev 20; rev 22; rev 24
+  capabilities: Capabilities,
   max: z.number().int().min(0).max(20).default(3),
   leaseSeconds: z.number().int().min(30).max(600).default(180),
   linkRev: LinkRev,
