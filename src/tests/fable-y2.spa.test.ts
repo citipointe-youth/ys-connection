@@ -347,3 +347,43 @@ describe('Y2-9 My Connections paints from the last-known list first', () => {
     expect(Object.keys(h.env.gate).sort()).toEqual(['/prayers', SUM].sort());
   });
 });
+
+// ── Y2-10: a kept intake field keeps its row and can be un-kept ──
+describe('Y2-10 Undo keep for every kept field', () => {
+  const mk = (kept: string[], mem: Record<string, string> = {}) => {
+    const detail: any = { kept, forms: { student: { subId: 'S1', issues: [], values: { first: 'Ava' } } } };
+    const I: any = { det: { row: { key: 'K1' }, detail }, keepMem: { K1: mem }, ans: {} };
+    const sent: any[] = [];
+    const env: Record<string, any> = {
+      I, sent, detail, _ik: () => I, esc: (x: any) => String(x), _ikFieldLabel: (k: string) => k, _ikVal: (f: any, k: string) => (f && f.values && f.values[k]) || '',
+      _ikAnswerSend: () => { const body = env.fns._ikAnswerBody('2026-11-24', 'K1', detail, env.fns._ikAns(), false); sent.push(body); },
+      IK_FIX: ['first', 'last', 'birthday', 'mobile', 'parentName', 'parentPhone'],
+    };
+    env.fns = withStubs(['_ikCompareHtml', '_ikUnkeepAt', '_ikUnkeepField', '_ikUnkeep', '_ikAns', '_ikSeed', '_ikForm', '_ikStudentSub', '_ikAnswerBody'], env);
+    return env;
+  };
+  it('a kept field with no issue carrying keep renders the kept line and the Undo button', () => {
+    const e = mk(['parentPhone']);
+    const h = e.fns._ikCompareHtml(e.detail, e.fns._ikAns());
+    expect(h).toContain("Kept as is. The parent text goes to the parent form's mobile.");
+    expect(h).toMatch(/<button[^>]*onclick="_ikUnkeepAt\(0\)">Undo keep<\/button>/);
+  });
+  it('a kept field that is not the parent phone says only "Kept as is."', () => {
+    const e = mk(['parentName']);
+    const h = e.fns._ikCompareHtml(e.detail, e.fns._ikAns());
+    expect(h).toContain('Kept as is.');
+    expect(h).not.toContain('The parent text goes');
+    expect(h).toContain('Undo keep');
+  });
+  it('tapping Undo keep sends an answer whose note has keeps[sub].parentPhone === ""', () => {
+    const e = mk(['parentPhone']);
+    e.fns._ikUnkeepAt(0);
+    expect(e.sent).toHaveLength(1);
+    expect(JSON.parse(e.sent[0].note).keeps).toEqual({ S1: { parentPhone: '' } });
+  });
+  it('once un-kept (answer pending) the row is not shown again', () => {
+    const e = mk(['parentPhone']);
+    e.fns._ikUnkeepAt(0);
+    expect(e.fns._ikCompareHtml(e.detail, e.fns._ikAns())).not.toContain('Undo keep');
+  });
+});

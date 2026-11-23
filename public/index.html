@@ -14606,9 +14606,17 @@ function _ikKeep(fi, ii) {
 function _ikUnkeep(fi, ii) {
   const I = _ik(), f = _ikForm(fi), is = f && (f.issues || [])[ii], sk = _ikStudentSub();
   if (!is || !is.keep || !sk) return;
-  const a = _ikAns(), key = I.det.row.key;
-  if (a.keeps[sk]) delete a.keeps[sk][is.keep.field];
-  if (I.keepMem[key]) delete I.keepMem[key][is.keep.field];
+  _ikUnkeepField(sk, is.keep.field);
+}
+// Y2-10: a keep is cleared by sending the field as '' (the console keeps the earlier answers; deleting it from the set did nothing).
+function _ikUnkeepAt(ki) {
+  const d = _ik().det && _ik().det.detail, sk = _ikStudentSub(), f = d && (d.kept || [])[ki];
+  if (f && sk) _ikUnkeepField(sk, f);
+}
+function _ikUnkeepField(sk, field) {
+  const I = _ik(), a = _ikAns(), key = I.det.row.key;
+  a.keeps[sk] = a.keeps[sk] || {}; a.keeps[sk][field] = '';
+  I.keepMem[key] = I.keepMem[key] || {}; I.keepMem[key][field] = '';
   _ikAnswerSend(false);
 }
 function _ikFieldLabel(k) {
@@ -14793,11 +14801,14 @@ function _ikCompareHtml(d, a, keepsOut) {
     }).join('');
     return `<tr${diff ? ' class="ik-diff"' : ''}><th scope="row">${esc(_ikFieldLabel(k))}${diff ? '<span class="ik-dflag">Differs</span>' : ''}</th>${td}</tr>`;
   }).join('');
+  // Y2-10: once the console holds a field as kept, the push no longer carries the issue, so its row (and its Undo) comes from d.kept
+  // itself, label only (fi -1, ii = the index in d.kept). A field this phone has just un-kept ('') has no row until the push says so.
+  keptAll.forEach((f, ki) => { if (!seen[f] && mine[f] !== '') { seen[f] = 1; keepRows.push([{ keep: { field: f, value: '' } }, -1, ki]); } });
   const keeps = keepRows.map(([x, fi, ii]) => {
-    const phone = x.keep.field === 'parentPhone', kept = mine[x.keep.field] === x.keep.value || keptAll.includes(x.keep.field);
+    const phone = x.keep.field === 'parentPhone', kept = mine[x.keep.field] !== '' && (mine[x.keep.field] === x.keep.value || keptAll.includes(x.keep.field));
     const inner = kept
       ? `<div class="ik-line">${phone ? "Kept as is. The parent text goes to the parent form's mobile." : 'Kept as is.'}</div>`
-        + (mine[x.keep.field] === x.keep.value ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikUnkeep(${fi},${ii})">Undo keep</button>` : '')
+        + `<button type="button" class="btn btn-secondary btn-sm" onclick="${fi < 0 ? `_ikUnkeepAt(${ii})` : `_ikUnkeep(${fi},${ii})`}">Undo keep</button>`
       : `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikKeep(${fi},${ii})">Keep as is</button>` // F-41: short, so it fits at 360 px
         + (phone ? `<div class="ik-line">The text goes to the parent form's mobile.</div>` : '');
     if (keepsOut) { keepsOut.push(inner); return ''; }
