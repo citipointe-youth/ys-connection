@@ -111,7 +111,8 @@ describe('F-07 SW update reload deferral', () => {
     expect(h.reloads.length).toBe(1);
   });
   it('the controllerchange listener goes through _swOnUpdate', () => {
-    expect(html).toMatch(/addEventListener\('controllerchange', \(\) => \{\s*if \(!_swHadController\) return;\s*_swOnUpdate\(\);/);
+    expect(html).toContain("addEventListener('controllerchange', _swControllerChange)");
+    expect(extractFn(html, '_swControllerChange')).toMatch(/if \(!_swHadController\) return;[\s\S]*_swOnUpdate/);
     expect(html).toContain("document.addEventListener('visibilitychange', _swOnHidden)");
   });
 });

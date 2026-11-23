@@ -18151,6 +18151,19 @@ boot();
 // Busy = a New person send, an open sheet, a half-typed New person form, an open/unsent intake answer
 // or taps still in the link queue. Busy -> one "Update ready" button, and a reload on the next hide once idle.
 let _swReloading = false, _swWaiting = false;
+// Y1-2: this page's build; the same value as public/sw.js CACHE (a test fails the ship when they differ).
+const BUILD = 'ysc-v185';
+// A higher cache number than BUILD means a newer build took over, so this page is old. No ysc- name (storage cleared) = not stale: never a reload loop.
+function _swStale(keys) {
+  const n = (k) => { const m = /^ysc-v(\d+)$/.exec(k); return m ? Number(m[1]) : 0; };
+  return Math.max(0, ...(keys || []).map(n)) > n(BUILD);
+}
+const _swHadController = 'serviceWorker' in navigator && !!navigator.serviceWorker.controller;
+// controllerchange also fires when a new worker claims a page that was already loaded from the new build: that page asks nothing.
+function _swControllerChange() {
+  if (!_swHadController) return;
+  caches.keys().then((ks) => { if (_swStale(ks)) _swOnUpdate(); }, _swOnUpdate);
+}
 // F1 (round 2026-10-22, CY-E2): unsaved typing on ANY screen holds the reload until it is saved or left: a lifegroup report or
 // kept draft with changes (its ticks redraw, so only LINK.rf knows), or a field that differs from what the screen drew (searches aside).
 function _swTyped() {
@@ -18196,15 +18209,11 @@ function _swOnUpdate() {
 }
 function _swOnHidden() { if (_swWaiting && document.visibilityState === 'hidden' && _swIdle()) _swReload(); }
 if ('serviceWorker' in navigator) {
-  const _swHadController = !!navigator.serviceWorker.controller;
   // Tapped alert with the app already open (sw.js notificationclick posts {type: 'push-nav', screen, ...params}).
   navigator.serviceWorker.addEventListener('message', (e) => {
     if (e.data && e.data.type === 'push-nav' && S.user) _navRoute(e.data);
   });
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!_swHadController) return;
-    _swOnUpdate();
-  });
+  navigator.serviceWorker.addEventListener('controllerchange', _swControllerChange);
   document.addEventListener('visibilitychange', _swOnHidden);
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(reg => {
