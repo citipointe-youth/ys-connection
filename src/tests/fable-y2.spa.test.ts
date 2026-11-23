@@ -443,3 +443,28 @@ describe('Y2-11 grade filter saves are chained per leader', () => {
     } finally { vi.useRealTimers(); }
   });
 });
+
+// ── Y2 (Y3-5, C1-3): SPA halves of two server items ──
+describe('Y3-5 the dead newYouthForms fallback is gone from the SPA', () => {
+  const run = (modules: Record<string, any>) => {
+    const env: Record<string, any> = { S: { settings: { ministryConfig: { modules } } } };
+    return withStubs(['_setupModuleMode', '_linkModeOf', '_nyModeOf'], env);
+  };
+  it.each([['off', 'off'], ['admin', 'admin'], ['on', 'on']])('each screen reads its own mode: %s -> %s', (mode, want) => {
+    const f = run({ checkin: mode, lifegroupReport: 'off', flows: 'on', newYouthForms: 'admin' });
+    expect(f._linkModeOf('checkin')).toBe(want);
+    expect(f._setupModuleMode({ checkin: mode, newYouthForms: 'admin' }, 'checkin')).toBe(want);
+  });
+  it('a missing key is off, not newYouthForms', () => {
+    const f = run({ newYouthForms: 'on' });
+    expect(f._linkModeOf('flows')).toBe('off');
+    expect(f._setupModuleMode({ newYouthForms: 'on' }, 'lifegroupReport')).toBe('off');
+  });
+});
+
+describe('C1-3 the leader line for a refused saved-before', () => {
+  it('_lkStatusText says to check in Elvanto', () => {
+    const f = withStubs(['_lkStatusText'], { LK_OFFLINE_MS: 900000 });
+    expect(f._lkStatusText({ status: 'refused', type: 'completeStep', reason: 'saved-before' })).toBe('Saved before but not showing in Elvanto. Check in Elvanto.');
+  });
+});

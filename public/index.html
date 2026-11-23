@@ -8814,7 +8814,7 @@ const _SETUP_ELVANTO = [
   ['lifegroupReport', 'Lifegroup report', 'Send the weekly lifegroup attendance report to Elvanto.'],
   ['flows', 'Flow steps', 'See and complete the Elvanto flow steps for students.'],
 ];
-function _setupModuleMode(md, k) { return _nyModeOf(md[k] != null ? md[k] : md.newYouthForms); }
+function _setupModuleMode(md, k) { return _nyModeOf(md[k]); } // the server always sends each screen's own mode (resolveModules); no fallback
 // Modular setup: the switchboard keys (default on). The server refuses a save that leaves a module on without what it needs.
 const _SETUP_SWITCHES = [
   ['liveLink', 'Live Elvanto link', 'The console reads and writes Elvanto for the app. Flows, Lifegroups, Check-in, New person and the Public consent form need it.'],
@@ -11241,7 +11241,7 @@ const LK_GROUP_TYPES = ['submitReport', 'editReport', 'addGroupMember', 'removeG
 // A stored config without the key inherits the New person value (same rule as the server).
 function _linkModeOf(feature) {
   const m = ((S.settings && S.settings.ministryConfig) || {}).modules || {};
-  return _nyModeOf(m[feature] != null ? m[feature] : m.newYouthForms);
+  return _nyModeOf(m[feature]); // each screen's own mode (the server resolves all three); no newYouthForms fallback
 }
 // _linkOn('checkin' | 'lifegroupReport' | 'flows'): that feature is usable by this login (admin = admin login only).
 // No argument: any of the three is usable. The admin page is separate: _linkAdminOn.
@@ -11313,6 +11313,7 @@ function _lkStatusText(row, lastSeen) {
     'stale': 'Someone else changed this after your tap. Reload.',
     'group-unknown': "This group isn't in Elvanto any more. Reload.",
     'leader-member': 'Remove a leader in Elvanto.',
+    'saved-before': 'Saved before but not showing in Elvanto. Check in Elvanto.',
   };
   switch (row.status) {
     case 'queued': return 'Waiting to send.';
