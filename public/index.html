@@ -167,6 +167,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
    .btn-ghost is for icon-only buttons; a worded action is primary or secondary. */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;min-height:44px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;border:none;white-space:nowrap}
 .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+a.btn{text-decoration:none}
 .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-dark);transform:translateY(-1px)}.btn-primary:active{transform:translateY(0)}
 .btn-secondary{background:var(--paper-dark);color:var(--ink)}.btn-secondary:hover{background:#d1d5db}
 .btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:#dc2626}
@@ -797,6 +798,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-done{margin-top:6px}
 .lk-done summary{list-style:none;cursor:pointer;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;min-height:40px;box-sizing:border-box}
 .lk-done summary::-webkit-details-marker{display:none}
+.lk-done summary .ic-s:last-child{transition:transform .15s}.lk-done[open]>summary .ic-s:last-child{transform:rotate(180deg)}
 .lk-done-h{background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between;align-items:center;margin-bottom:6px;min-height:40px;box-sizing:border-box}
 .lk-asof{font-weight:400;font-size:12px}.lk-done-h .chip{gap:4px}
 .lk-hint{font-size:12px;color:var(--ink-mid);text-align:center;margin:12px 4px}
@@ -840,13 +842,13 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .lk-mt{margin-top:10px}
 .lk-right{text-align:right;margin-top:4px}
 .lk-chk{display:flex;align-items:center;gap:8px;font-size:15px;margin:4px 0 14px;cursor:pointer;min-height:40px}
-.lk-chk input{width:20px;height:20px}
+.lk-chk input{width:20px;height:20px;flex:none}
 .lk-hlg{margin-bottom:var(--s2);border-left:5px solid var(--accent)}.lk-hlg.done{border-left-color:var(--success);background:var(--success-light)}
 .lk-sentc{border-left:5px solid var(--success);background:var(--success-light)}
 .lk-rh{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-bottom:var(--s3)}
 .lk-rg{font-family:var(--font-display);font-weight:700;font-size:var(--t-h2);min-width:0}
 .lk-wkc{display:flex;align-items:center;gap:var(--s1);flex:none}
-.lk-ar{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--paper-card);color:var(--ink);padding:0;display:inline-flex;align-items:center;justify-content:center}
+.lk-ar{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--paper-card);color:var(--ink);padding:0;display:inline-flex;align-items:center;justify-content:center}
 .lk-ar:disabled{opacity:.35}.lk-ar .ic-s{width:14px;height:14px}
 .lk-dchip{position:relative;display:inline-flex;align-items:center;min-height:32px;background:var(--chip);color:var(--accent-dark);font-weight:700;font-size:var(--t-sm);border-radius:999px;padding:0 var(--s3);overflow:hidden;white-space:nowrap}
 .lk-dchip input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
@@ -884,6 +886,7 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .fc.lk-ff-mix.on{background:var(--mix-dark);border-color:var(--mix-dark);color:#fff}
 .fc.lk-ff-boy.on{background:var(--boy-dark);border-color:var(--boy-dark);color:#fff}.fc.lk-ff-girl.on{background:var(--girl-dark);border-color:var(--girl-dark);color:#fff}
 .lk-ff2{display:flex;gap:8px;margin-bottom:10px;align-items:center}.lk-ff2 .fs{flex:2 1 0;min-width:0;min-height:44px}.lk-ff2 .fi{flex:4.5 1 0;min-width:0;min-height:44px}.lk-ff2 .lk-mine{flex:0 0 auto;display:flex;align-items:center;gap:4px;min-height:44px;font-size:13px;cursor:pointer}.lk-ff2 .lk-mine input{width:20px;height:20px}
+@media(max-width:479px){.lk-ff2{flex-wrap:wrap}.lk-ff2 .fs{flex:1 1 140px}.lk-ff2 .fi{flex:1 0 100%}}
 .lk-ff{flex-wrap:nowrap}.lk-ff .fc{min-height:36px;flex:1 1 0;padding:6px 2px;font-size:13px;white-space:nowrap;text-align:center}
 .lk-cf{gap:4px}.lk-cf .fc{font-size:12px;padding:6px 0;min-width:0} /* six chips fit a 375px phone */
 @media(pointer:coarse){.lk-ff .fc{min-height:44px}} /* impeccable 2026-10-24 #7: back to the I1 44px chip ruling (36px above won on order) */
@@ -924,9 +927,9 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .ik-warn .ic-s,.ik-line .ic-s{width:12px;height:12px;vertical-align:-2px}
 .lk-tag.ik-ok{color:#047857;border-color:#a7f3d0}.lk-tag.ik-bad{color:#b91c1c;border-color:#fecaca}.lk-tag.ik-wait{color:#b45309;border-color:#fde68a}.lk-tag.ik-prac{color:var(--ink-mid);border-color:var(--line)}
 /* Consents run 2026-10-17 (R1): a smaller page title, the status line with its Refresh link */
-.ik-ph{margin-bottom:8px}.ik-ph h1{font-size:18px}
+.ik-ph{margin-bottom:8px}.ik-ph h1{font-size:22px}
 .ik-stl{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:-8px 0 10px}
-.ik-lnk{background:none;border:0;padding:0 4px;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer;min-height:32px}
+.ik-lnk{background:none;border:0;padding:0 4px;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer;min-height:44px}
 .ik-chg-dnc{color:#b91c1c;font-weight:700}.ik-ict{font-size:11px;font-weight:700;color:#b91c1c}
 /* UI standard (E): a Mismatches field as two columns, Form | Profile; an empty side reads "blank" in muted italics. */
 .ik-mis{font-size:13px;margin-top:var(--s2)}.ik-mis b{display:block;font-weight:600;margin-bottom:2px}
@@ -4430,7 +4433,7 @@ async function _renderHomeInner(stale, fromCache) {
     // here — leaving just Birthdays, which then gets the full-width single column.
     const qa = _homeTiles(u);
     if (qa.length) {
-      body += `<div class="qa-grid" style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : '1fr 1fr'};gap:6px;margin-bottom:10px">`;
+      body += `<div class="qa-grid" style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : 'repeat(2,minmax(0,1fr))'};gap:6px;margin-bottom:10px">`;
       for (const x of qa) {
         const warn = x.id === 'at-risk' && stats.atRiskTotal > 0;
         const wide = x.wide ? ';grid-column:1/-1' : '';
@@ -4573,7 +4576,7 @@ async function renderLeaderHome() {
   // The base list, so Prayers stays a plain button here even when the nav shows More.
   const acts = _navItemsBase().filter(i => i.id !== 'home' && (i.id !== 'prayers' || _prayersOn()));
   if (acts.length) {
-    body += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">`;
+    body += `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:16px">`;
     for (const a of acts) body += `<button class="btn btn-secondary" style="justify-content:flex-start" onclick="go('${a.id}')">${icS(a.ic)} ${esc(a.label)}</button>`;
     body += `</div>`;
   }
