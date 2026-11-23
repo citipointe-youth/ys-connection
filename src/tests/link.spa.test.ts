@@ -53,7 +53,7 @@ function makeEnv(e: Partial<Env> = {}) {
     const _LK_RC = {}; // L7
     const navPush = () => {};
     const S = { user: { id: 'u1', role: ${JSON.stringify(env.role ?? 'grade')} }, page: 'home',
-      settings: { ministryConfig: { modules: Object.assign({ newYouthForms: ${JSON.stringify(env.mode ?? 'on')} }, ${JSON.stringify(env.modules ?? {})}) } } };
+      settings: { ministryConfig: { modules: Object.assign({ newYouthForms: ${JSON.stringify(env.mode ?? 'on')}, checkin: ${JSON.stringify(env.mode ?? 'on')}, lifegroupReport: ${JSON.stringify(env.mode ?? 'on')}, flows: ${JSON.stringify(env.mode ?? 'on')} }, ${JSON.stringify(env.modules ?? {})}) } } }; // the server resolves all three screens from the New person mode (Y3-5): the SPA no longer falls back
     let LINK = _lkFresh();
     ${LK_DOOR_TYPES_SRC}
     const localStorage = __ls;
