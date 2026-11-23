@@ -146,3 +146,44 @@ describe('Y3-1: a junior login gets no address from the drop-off and vehicle wri
     suburbOnlyShape(await w2.svc.setDropped(jr(), w2.b.id, { dropped: true }));
   });
 });
+
+// Y3-1b: nothing a junior can send blanks a stored end address.
+describe("a junior's save cannot blank a stored end address", () => {
+  const ADDR = '12 Driver St, Testville QLD';
+  async function setup() {
+    const w = await world();
+    const fleet = await w.svc.saveVehicle(w.admin, { name: 'Tom car', seats: 5, endsAt: 'address', endsAddress: ADDR, endsPlaceId: 'fake:drv' });
+    const rv = (await w.svc.getRun(w.admin)).vehicles.find((x) => x.vehicleId === fleet.id)!;
+    const echo = (await w.svc.getRun(jr())).fleet.find((x) => x.id === fleet.id)!; // the redacted row the SPA would send back
+    const stillThere = async () => {
+      const g = await w.svc.getRun(w.admin);
+      const f = g.fleet.find((x) => x.id === fleet.id)!, r = g.vehicles.find((x) => x.id === rv.id)!;
+      expect([f.endsAddress, f.endsPlaceId, r.endsAddress, r.endsPlaceId]).toEqual([ADDR, 'fake:drv', ADDR, 'fake:drv']);
+    };
+    return { ...w, fleet, rv, echo, stillThere };
+  }
+  const row = (e: { id: string; name: string; seats: number; endsAt: 'address' }, archived = false) =>
+    ({ id: e.id, name: e.name, seats: e.seats, endsAt: e.endsAt, endsAddress: null, endsPlaceId: null, archived });
+
+  it('(A) echoing its redacted fleet row is refused and nothing changes', async () => {
+    const w = await setup();
+    await expect(w.svc.saveVehicle(jr(), row(w.echo as never))).rejects.toMatchObject({ statusCode: 400 });
+    await w.stillThere();
+  });
+  it('(B) the same with archived is refused and nothing changes', async () => {
+    const w = await setup();
+    await expect(w.svc.saveVehicle(jr(), row(w.echo as never, true))).rejects.toMatchObject({ statusCode: 400 });
+    await w.stillThere();
+  });
+  it('(C) a run-car patch that nulls the address of a car ending at an address is refused', async () => {
+    const w = await setup();
+    await expect(w.svc.updateRunVehicle(jr(), w.rv.id, { endsAddress: null, endsPlaceId: null })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(w.svc.updateRunVehicle(w.admin, w.rv.id, { endsPlaceId: null })).rejects.toMatchObject({ statusCode: 400 });
+    await w.stillThere();
+  });
+  it('(D) pin: a patch with no address keys still works on a car whose stored address is already blank', async () => {
+    const w = await setup();
+    await w.bus.saveRunVehicle({ ...(await w.bus.listRunVehicles((await w.svc.getRun(w.admin)).run.id)).find((x) => x.id === w.rv.id)!, endsAddress: null, endsPlaceId: null });
+    await expect(w.svc.updateRunVehicle(jr(), w.rv.id, { running: false })).resolves.toBeTruthy();
+  });
+});

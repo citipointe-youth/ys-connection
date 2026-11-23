@@ -1110,6 +1110,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const rv = (await bus.listRunVehicles(run.id)).find((x) => x.id === id);
       if (!rv) throw new NotFoundError('Car not found');
       if (isBus(rv) && ((v.endsAt && v.endsAt !== 'address') || v.endsPlaceId === null)) throw new BadRequestError(BUS_NEEDS_DROP); // L6
+      // Y3-1b: a hand-made patch must not blank the address of a car that still ends at one (looks at the patch's own nulls only).
+      if ((v.endsAddress === null || v.endsPlaceId === null) && (v.endsAt ?? rv.endsAt) === 'address') throw new BadRequestError('Pick the address from the suggestions list');
       await saveRV({ ...rv, ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== undefined)) } as BusRunVehicle);
       if (v.running === false) {
         for (const r of (await bus.listRunRiders(run.id)).filter((r) => r.runVehicleId === id))
