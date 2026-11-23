@@ -769,6 +769,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-pill.ok{background:var(--success-light);color:#047857}
 .lk-pill.bad{background:var(--danger-light);color:#b91c1c;cursor:pointer;min-height:40px;padding:8px 14px}
 .lk-pill.fade{animation:lkfade 3s forwards}
+.lk-ph{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px}.lk-ph h1{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lk-ph .lk-pill{margin:0;flex:none}
 @keyframes lkfade{0%,60%{opacity:1}100%{opacity:0}}
 .lk-alert{padding:10px 12px;border-radius:var(--radius-sm);font-size:13px;margin-bottom:10px;display:flex;gap:8px;align-items:flex-start;line-height:1.35}
 .lk-alert.practice{background:var(--paper-dark);color:#334155}
@@ -789,7 +790,8 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-chip.lead{background:var(--paper-dark);color:var(--ink)}
 .lk-grow{flex:1;min-width:0}
 .lk-nm{font-weight:600;font-size:15px;flex:1;min-width:0}
-.lk-st{font-size:12px;margin-top:2px;font-weight:500}
+.lk-st{font-size:12px;margin-top:2px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lk-row .lk-nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lk-st .ic-s{width:12px;height:12px;vertical-align:-2px}
 .lk-st.grey{color:var(--ink-faint)}.lk-st.wait{color:#92400e}.lk-st.ok{color:#047857}.lk-st.bad{color:#b91c1c}.lk-st.prac{color:var(--ink-mid)}
 .lk-done{margin-top:6px}
@@ -817,7 +819,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-tag{color:var(--accent);background:#fff;border:1px solid #c7c7f5;padding:1px 7px;flex:none}
 .lk-toast{position:fixed;bottom:calc(var(--nav-h) + var(--s3) + var(--safe-b));left:50%;transform:translateX(-50%);background:rgba(17,24,39,.92);color:#fff;padding:6px 6px 6px 16px;border-radius:20px;font-size:14px;font-weight:500;display:none;align-items:center;gap:10px;z-index:301;max-width:calc(100vw - 32px)}
 .lk-toast.show{display:flex}.lk-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lk-toast .btn{background:#fff;color:#111827;flex:none}
+.lk-toast{pointer-events:none}.lk-toast .btn{background:#fff;color:#111827;flex:none;pointer-events:auto}
 @media(min-width:768px){.lk-toast{bottom:24px}}
 body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} /* F-26: an error stays readable above the Undo toast */
 .lk-tag.amber{color:#92400e;background:var(--warn-light);border-color:var(--warn);margin-left:6px}
@@ -11789,8 +11791,9 @@ try {
 function _lkRefreshView() {
   try {
     if (!_lkOnPage()) return;
-    const top = document.getElementById('lk-top');
-    if (top) top.innerHTML = _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : S.page === 'link-groups' ? LK_GROUP_TYPES : S.page === 'link-flows' ? _lkFlowTypes() : []);
+    const top = document.getElementById('lk-top'), ph = document.getElementById('lk-pill'); // Y2-1: the pill lives at the right of the title row, out of the flow
+    if (ph) ph.innerHTML = _lkPill();
+    if (top) top.innerHTML = (S.page === 'link-admin' ? _lkPill() : '') + _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : S.page === 'link-groups' ? LK_GROUP_TYPES : S.page === 'link-flows' ? _lkFlowTypes() : []);
     const list = document.getElementById('lk-list');
     if (list && S.page === 'link-checkin') { list.innerHTML = _lkListHtml(); }
     const gl = document.getElementById('lk-glist');
@@ -11808,7 +11811,9 @@ function _lkRefreshView() {
     if (S.page === 'link-checkin') _lkCiPoll(); // Plan F: every door repaint (re)arms the result poll
   } catch (e) {}
 }
-function _lkTop(types) { return _lkPill() + _lkBanner(types); }
+function _lkTop(types) { return _lkBanner(types); }
+// Y2-1: the three link screens' title row; the pill is drawn in its host so a first tap never moves the list below.
+function _lkPh(title) { return `<div class="ph lk-ph"><h1>${esc(title)}</h1><span id="lk-pill">${_lkPill()}</span></div>`; }
 // ── Pages ──
 async function renderLink(p) {
   const role = S.user.role;
@@ -11913,7 +11918,7 @@ function _lkCiPoll() {
 async function renderLinkCheckin() {
   _lkDayCheck();
   if (!LINK.services) {
-    setApp(shell(`<div class="ph"><h1>Check-in</h1></div><div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>`));
+    setApp(shell(`${_lkPh('Check-in')}<div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>`));
     try { _lkTakeServices(await API.fresh('/link/checkin')); LINK.loadErr = null; } catch (e) { LINK.loadErr = _lkSay(e.message || 'Could not load the services.', "Couldn't load. Try again."); }
     if (S.page !== 'link-checkin') return;
     if (!LINK.services) {
@@ -11936,7 +11941,7 @@ async function renderLinkCheckin() {
 function _lkPaintDoor() {
   const s = _lkSvc();
   // T7: the search bar is the screen. Nothing is listed until someone types; the leaders button sits at the bottom.
-  setApp(shell(`<div class="ph"><h1>Check-in</h1></div>
+  setApp(shell(`${_lkPh('Check-in')}
     <div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>
     ${s || (LINK.services || []).length ? `<div class="card lk-svc"><div class="lk-svc-t">${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}${s ? _lkNotToday(s) : ''}</div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_lkPickService()">${s ? 'Change' : 'Pick'}</button></div>` : ''}
@@ -12582,7 +12587,7 @@ function _lkPaintGroups() {
   const body = !g ? `<div id="lk-glist">${_lkGroupsHtml()}</div>`
     : ''
       + (LINK.rf ? _lkFormHtml() : `<div id="lk-gpage">${_lkGroupHtml(g)}</div>`);
-  setApp(shell(`<div class="ph"><h1>Lifegroup report</h1></div><div id="lk-top">${_lkTop(LK_GROUP_TYPES)}</div>${body}`));
+  setApp(shell(`${_lkPh('Lifegroup report')}<div id="lk-top">${_lkTop(LK_GROUP_TYPES)}</div>${body}`));
 }
 async function _lkLoadGroups(quiet) {
   try {
@@ -13542,7 +13547,7 @@ async function _lkFlowsReload() {
   LINK.fRel = 0; _lkRefreshView();
 }
 function _lkPaintFlows() {
-  setApp(shell(`<div class="ph"><h1>Flow steps</h1></div>${_lkFlowsStl()}<div id="lk-top">${_lkTop(_lkFlowTypes())}</div><div id="lk-flist">${_lkFlowsHtml()}</div>`));
+  setApp(shell(`${_lkPh('Flow steps')}${_lkFlowsStl()}<div id="lk-top">${_lkTop(_lkFlowTypes())}</div><div id="lk-flist">${_lkFlowsHtml()}</div>`));
 }
 function _lkFlowTypes() { return _lkBoss() ? LK_FLOW_TYPES : ['completeStep']; }
 async function _lkLoadFlows(quiet) {
@@ -13901,7 +13906,7 @@ async function _lkAdmLoadLog() {
 async function renderLinkAdmin() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
   LINK.adm.lErr = null; // Y1: LINK.adm survives navigation; Activity opens collapsed, and a failed load is retried on the next open
-  setApp(shell(`<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>${_adminTabsHtml('link')}<div id="lk-top">${_lkTop([])}</div>${_lkAdminHtml()}`));
+  setApp(shell(`<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>${_adminTabsHtml('link')}<div id="lk-top">${_lkPill()}${_lkTop([])}</div>${_lkAdminHtml()}`));
   _lkAdmLoadActs(); _lkAdmLoadRoster();
   _attnLoad();
 }
