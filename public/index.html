@@ -323,7 +323,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .al-warn{background:var(--warn-light);color:#92400e}
 
 /* Login */
-.login-pg{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:linear-gradient(150deg,var(--accent) 0%,var(--navy) 130%)}
+.login-pg{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:linear-gradient(150deg,var(--accent) 0%,var(--navy) 130%)}
 .login-card{background:#fff;border-radius:var(--radius);padding:28px;width:100%;max-width:380px;box-shadow:0 20px 40px rgba(0,0,0,.2)}
 .login-logo{text-align:center;margin-bottom:20px}
 .login-logo .icon{display:flex;justify-content:center;margin-bottom:8px;color:var(--navy)}
@@ -18113,6 +18113,7 @@ function _onSignalBack() {
 window.addEventListener('online', _onSignalBack);
 document.addEventListener('visibilitychange', _onSignalBack);
 async function boot() {
+  _reloadViewportFix(); // Y1-4: first, so the nav correction is never seen
   let token = null;
   try { token = localStorage.getItem('yap_token'); } catch (e) {} // F-33
   let meDown = false;
@@ -18139,7 +18140,6 @@ async function boot() {
   let nav = null;
   try { const q = new URLSearchParams(location.search); if (S.user && q.has('nav')) nav = q; } catch {}
   render();
-  _reloadViewportFix();
   if (typeof _quadIamPrompt === 'function') _quadIamPrompt();
   if (nav) _navRoute(nav);
   if (S.user) _pushLeaderSync(); // once per boot: a pick changed while offline (or before alerts carried it) reaches the server

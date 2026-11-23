@@ -53,5 +53,12 @@ describe('_reloadViewportFix (iOS home-screen reload gap)', () => {
   it('runs from boot()', () => {
     expect(extractFn(loadIndexHtml(), 'boot')).toContain('_reloadViewportFix()');
   });
+
+  it('runs before the first render, once', () => {
+    const boot = extractFn(loadIndexHtml(), 'boot');
+    expect(boot.split('_reloadViewportFix()').length - 1).toBe(1);
+    expect(boot.indexOf('_reloadViewportFix()')).toBeGreaterThan(-1);
+    expect(boot.indexOf('_reloadViewportFix()')).toBeLessThan(boot.indexOf('render()'));
+  });
 });
 
