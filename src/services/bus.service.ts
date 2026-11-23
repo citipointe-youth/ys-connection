@@ -578,9 +578,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     const n = input.newAddress!;
     // Task 2 (owner): a brand-new address must come from a real suggestion, every time.
     assertRealPlaceId(n.placeId, true);
-    // Task 3 (owner): default a blank label to the street part, not the suburb, so it's useful
-    // when offered back for future selection (e.g. "3 Lindsay Court", not "Carina").
-    const label = n.label.trim() || streetOf(n.address);
+    // Y3-2: a blank label stays blank; addrOut sends `street` and the SPA shows it for a blank label.
+    const label = n.label.trim();
     return bus.saveAddress({ id: generateId(), studentId: owner.studentId ?? null, guestId: owner.guestId ?? null,
       label, address: n.address, placeId: n.placeId, lastUsedAt: nowIso(), createdAt: nowIso() });
   }
@@ -987,7 +986,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const cv = await consentCtx(ctx, c);
       const addrsOf = async (who: { studentId: string } | { guestId: string }) =>
         full ? (await bus.listAddresses(who)).map(addrOut) : [];
-      // Task 3 (owner): `street` is always the decrypted address's street part — a display
+      // Y3-2: `street` is always the decrypted address's street part — a display
       // fallback for an address saved before the default-label fix, when `label` is still blank.
       const studentHits = await Promise.all(pool.slice(0, 15).map(async (s): Promise<BusSearchHit> => ({
         kind: 'student', id: s.id, name: `${s.firstName} ${s.lastName}`, grade: s.grade, gender: genderOf(s.gender), addresses: await addrsOf({ studentId: s.id }),

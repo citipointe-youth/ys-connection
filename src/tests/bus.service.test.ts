@@ -583,14 +583,16 @@ describe('Task 2: new-address paths reject a missing placeId', () => {
   });
 });
 
-// Task 3 (owner): a blank label defaults to the street part (not the suburb) of the address, so
-// it's useful when the address is later offered back for selection.
-describe('Task 3: default label is the street part', () => {
-  it('a new address saved with a blank label gets the street part as its label', async () => {
+// Y3-2: a blank label is stored blank (the street used to be copied into it, unencrypted, beside the
+// student id); the address view still carries the street, which the SPA shows for a blank label.
+describe('Y3-2: a blank address label stays blank', () => {
+  it('a new address saved with a blank label is stored with label "" and still shows its street', async () => {
     const { svc, ctx } = await setup();
     const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { address: '24 Wynnum Rd, Carina QLD 4152, Australia', placeId: 'fake:1' } });
     const hits = await svc.search(ctx('grade'), 'tran');
-    expect(hits[0]!.addresses.find((a) => a.id === r.addressId)!.label).toBe('24 Wynnum Rd');
+    const hit = hits[0]!.addresses.find((a) => a.id === r.addressId)!;
+    expect(hit.label).toBe('');
+    expect(hit.street).toBe('24 Wynnum Rd');
   });
   it('an explicit label is kept as-is, not overridden by the street default', async () => {
     const { svc, ctx } = await setup();
@@ -660,7 +662,7 @@ describe('riderAddresses — the edit sheet loads by rider, not by name search',
     const r = await svc.addRider(ctx('grade'), { studentId: 's1', newAddress: { label: '', address: '3 Lindsay Ct, Cornubia QLD 4130, Australia', placeId: 'fake:3-lindsay-ct-cornubia-qld-' } });
     const addrs = await svc.riderAddresses(ctx('grade'), r.id);
     expect(addrs.map((a) => a.street)).toEqual(['3 Lindsay Ct', '24 Wynnum Rd']);
-    expect(addrs[0]!.label).toBe('3 Lindsay Ct');
+    expect(addrs[0]!.label).toBe(''); // Y3-2: stays blank; `street` carries the line
   });
 });
 
