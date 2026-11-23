@@ -81,7 +81,7 @@ describe('Check and save again', () => {
 
 describe('rev 25 contract', () => {
   it('LINK_REV 25; rows may name stuck keys; saves may carry resend: true only', () => {
-    expect(C.LINK_REV).toBe(25);
+    expect(C.LINK_REV).toBe(26);
     expect(C.PAYLOAD_SCHEMAS.intakeSave.safeParse({ date: '2026-11-20', row: P(1), confirmed: ['k'], one: false, resend: false }).success).toBe(false);
     expect(C.IntakeRow.shape.stuck).toBeTruthy();
     expect(C.ConsentRow.shape.stuck).toBeTruthy();
