@@ -131,7 +131,7 @@ describe('Y1-2 BUILD and the service worker CACHE', () => {
     expect(fns._swStale(['other'])).toBe(false);
   });
   it('controllerchange: the page already has the new build -> no update', async () => {
-    const h = swHarness({ keys: () => Promise.resolve([BUILD_LINE![1]]) });
+    const h = swHarness({ keys: () => Promise.resolve([BUILD_LINE![1]!]) });
     h.fns._swControllerChange(); await tick();
     expect(h.updates.length).toBe(0);
   });

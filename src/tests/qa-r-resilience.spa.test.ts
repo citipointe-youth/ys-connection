@@ -127,7 +127,8 @@ describe('QA 1: sign-in prefetch', () => {
     const { _prefetch, API } = loadFns(['_prefetch'], `
       var S = { user: { role: '${role}' } };
       const _prayersOn = () => false;
-      const API = { batch: (p) => { API.seen = p; } };`, ['_prefetch', 'API']);
+      const _noticesOn = () => false; let _prefetchP = null;
+      const API = { batch: (p) => { API.seen = p; return Promise.resolve(); } };`, ['_prefetch', 'API']);
     _prefetch();
     return API.seen as string[];
   };
