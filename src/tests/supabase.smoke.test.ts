@@ -45,7 +45,7 @@ describe.skipIf(!URL_)('real-database smoke (CI Postgres only, never prod)', () 
     const ids = [(await c.repos.students.findAll())[0]!.id, (await c.repos.leaders.findAll())[0]!.id];
     const out = new Set<string>();
     for (const rt of buildRoutes(c.services)) {
-      if (rt.method !== 'GET') continue;
+      if (rt.method !== 'GET' || rt.cron || rt.sync) continue; // token-gated routes answer 503 by design while their secret is unset
       if (!rt.path.includes(':')) { out.add(rt.path); continue; }
       for (const id of rt.path.includes(':year') ? ['2026'] : ids) out.add(rt.path.replace(/:[A-Za-z]+/g, id));
     }
