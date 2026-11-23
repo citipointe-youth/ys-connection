@@ -163,3 +163,31 @@ describe('Y2-4 Sign out asks first', () => {
     held['Sign out?']!.go(false); await q;
   });
 });
+
+// ── Y2-3: the typed name is selected after a check-in ──
+describe('Y2-3 search text selected', () => {
+  const run = (active: 'box' | 'other') => {
+    const calls: any[][] = [];
+    const box: any = { value: 'mia', setSelectionRange: (...a: any[]) => calls.push(a) };
+    const env: Record<string, any> = {
+      LINK: { svc: 's1', refusals: {}, doorAt: 0, doorHeld: null }, _lkSvc: () => ({ serviceId: 'sv' }), _lkSending: () => false,
+      _lkQGet: () => [], _lkQueuedIdx: () => -1, _lkUuid: () => 'u1', _lkPush: () => {}, _lkTapToast: () => {}, getMyLeaderId: () => 'L1', _lkRefreshView: () => {},
+      document: { getElementById: (id: string) => (id === 'lk-search' ? box : null), activeElement: active === 'box' ? box : {} },
+    };
+    const fns = withStubs(['_lkCheck', '_lkSelSearch'], env);
+    fns._lkCheck('p1', 'checkIn');
+    return calls;
+  };
+  it('the box is the active element: its whole value is selected', () => { expect(run('box')).toEqual([[0, 3]]); });
+  it('another element is active: nothing is called on the box', () => { expect(run('other')).toEqual([]); });
+  it('the box selects its whole value when it gets focus', () => {
+    let shell = '';
+    const env: Record<string, any> = { LINK: { services: [1], svc: 's1', q: { search: 'mia' } }, esc: (x: any) => String(x), _lkSvc: () => ({}), setApp: (h: string) => { shell = h; }, shell: (h: string) => h, _lkPh: () => '', _lkTop: () => '', _lkListHtml: () => '' };
+    withStubs(['_lkPaintDoor'], env)._lkPaintDoor();
+    const m = /id="lk-search"[^>]*onfocus="([^"]+)"/.exec(shell);
+    expect(m).not.toBeNull();
+    const calls: any[][] = [], el: any = { value: 'mia', setSelectionRange: (...a: any[]) => calls.push(a) };
+    new Function('el', `(function(){ ${m![1]} }).call(el)`)(el);
+    expect(calls).toEqual([[0, 3]]);
+  });
+});

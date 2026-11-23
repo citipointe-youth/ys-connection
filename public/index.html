@@ -11956,7 +11956,7 @@ function _lkPaintDoor() {
     ${s || (LINK.services || []).length ? `<div class="card lk-svc"><div class="lk-svc-t">${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}${s ? _lkNotToday(s) : ''}</div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_lkPickService()">${s ? 'Change' : 'Pick'}</button></div>` : ''}
     ${_lkNoTonight()}
-    ${s ? `<div class="lk-sticky"><div class="sbar"><input class="lk-big" id="lk-search" type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)"></div></div>
+    ${s ? `<div class="lk-sticky"><div class="sbar"><input class="lk-big" id="lk-search" type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)" onfocus="this.setSelectionRange(0,this.value.length)"></div></div>
       <div id="lk-list">${_lkListHtml()}</div>
       ${!_lkCapOff('checkIn') ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkOpenLeaders()">${icS('check')} Check in leaders</button>` : ''}` : ''}`));
 }
@@ -12069,7 +12069,13 @@ function _lkCheck(pid, type) {
     const id = _lkUuid();
     _lkPush({ kind: 'action', id, type, payload, note: null, leaderId: getMyLeaderId() || null }, true);
     _lkTapToast(svc, pid, type, id);
+    _lkSelSearch();
   } catch (e) {}
+}
+// Y2-3: the typed name is selected after a tap, so the next key replaces it. Only while the box still has focus: never focused by code (no keyboard pop).
+function _lkSelSearch() {
+  const el = document.getElementById('lk-search');
+  if (el && document.activeElement === el) { try { el.setSelectionRange(0, el.value.length); } catch (e) {} }
 }
 // B10 / T-33: every check-in tap shows who was ticked for 5 s, with an Undo (a quick second tap on the next row is
 // easy to miss). The toast's Undo goes through _lkUndo, so a queued item is removed here. Impeccable review
