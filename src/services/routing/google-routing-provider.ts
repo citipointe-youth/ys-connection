@@ -67,7 +67,7 @@ export class GoogleRoutingProvider implements RoutingProvider {
     catch { throw new RoutingError(signal.aborted ? `Google ${what} timed out` : `Google ${what} unreachable`); }
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      console.error(`[routing] ${what} ${res.status}: ${body.slice(0, 300).split(this.cfg.apiKey).join('***')}`);
+      console.error(`[routing] ${what} ${res.status}: ${body.slice(0, 300).split(this.cfg.apiKey).join('***').replace(/placeId \\?"[^"\\]+/g,'placeId "***')}`); // Y3-3: the rider's place id stays out of the log
       // Task 4: pull the placeId out of the FULL body (not the 300-char log slice, which can
       // truncate the (long, base64) placeId before its closing quote) — never log the address
       // itself, just the opaque id, which withBadPlaceIdRetry() may resolve via Place Details.
