@@ -173,6 +173,21 @@ describe('GoogleRoutingProvider', () => {
       expect(matrixCalls).toBe(2); // first attempt (400) + the retry
     });
   });
+  // Y3-3: Google's error body names the rider's place id; it must not reach the server log, but the retry needs it.
+  it('masks the place id in the logged error line; the RoutingError still carries it', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const id = 'ChIJfakeFAKE123';
+    const { fn } = stubFetch({
+      'https://oauth2.googleapis.com/token': () => json({ access_token: 'tok', expires_in: 3600 }),
+      'https://places.googleapis.com/v1/places/': () => json({}),
+      'https://routeoptimization.googleapis.com/': () => new Response(JSON.stringify({ error: { message: `No LatLng location for placeId "${id}"` } }), { status: 400 }),
+    });
+    await expect(new GoogleRoutingProvider(cfg, fn).solve(problem, sig())).rejects.toMatchObject({ name: 'RoutingError', badPlaceId: id });
+    const logged = JSON.stringify(err.mock.calls);
+    expect(logged).toContain('[routing]');
+    expect(logged).not.toContain(id);
+    err.mockRestore();
+  });
   it('a failed map call never echoes the key', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { fn } = stubFetch({ 'https://maps.googleapis.com/': () => new Response(`The provided API key ${KEY} is invalid`, { status: 403 }) });
