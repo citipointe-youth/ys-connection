@@ -1,5 +1,5 @@
 // Consent hub cache (LINK_REV 19, 2026-10-23): the console pushes each consent list whole (consentSnapshot); the app keeps the latest
-// copy per kind, serves it at once, and asks for a re-read through the claim reply (consentSnap.ask) only to a rev 19 console.
+// copy per kind, serves it at once, and asks for a re-read through the claim reply (consentSnap {ask, askedAt}; every console since C2-2).
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -79,27 +79,24 @@ describe('the app keeps the latest copy per kind', () => {
   });
 });
 
-describe('Refresh asks a rev 19 console through the claim reply', () => {
-  it('ask is true after Refresh until a newer copy of every kind lands; a rev 18 claim gets no key', async () => {
+describe('Refresh asks the console through the claim reply', () => {
+  it('C2-2: every rev (12, 19, 21) gets consentSnap while the hub is on; askedAt whenever ask is true; no reply has consentLink', async () => {
     const h = await setup();
-    expect((await claim(h, 19)).consentSnap).toEqual({ ask: false });
+    const REVS = [12, 19, 21];
+    for (const rev of REVS) {
+      const r = await claim(h, rev);
+      expect(r.consentSnap, `rev ${rev}`).toEqual({ ask: false });
+      expect(r).not.toHaveProperty('consentLink');
+    }
     expect(await h.svc.consentSnapshotRefresh(ADMIN)).toEqual({ asked: true });
     expect(await h.svc.consentSnapshotRefresh(ADMIN)).toEqual({ asked: false }); // once a minute
-    expect((await claim(h, 19)).consentSnap).toEqual({ ask: true });
-    expect((await claim(h, 18)).consentSnap).toBeUndefined();
+    const { askedAt } = await h.link.consentSnapshotMeta();
+    expect(askedAt).toBeTruthy();
+    for (const rev of REVS) expect((await claim(h, rev)).consentSnap, `rev ${rev}`).toEqual({ ask: true, askedAt });
     h.clock.now = new Date(NOW.getTime() + 60_000);
     for (const kind of ['forms', 'mismatches', 'unlinked', 'other'] as const) {
       await h.sync.push('consentSnapshot', { ...SNAP(), kind, takenAt: h.clock.now.toISOString(), total: 0, rows: [] });
     }
-    expect((await claim(h, 19)).consentSnap).toEqual({ ask: false });
-  });
-  it('rev 21: an open ask carries askedAt (the stored value) only to a rev 21 console; no ask = no askedAt', async () => {
-    const h = await setup({ rev: 21 });
-    expect((await claim(h, 21)).consentSnap).toEqual({ ask: false });
-    await h.svc.consentSnapshotRefresh(ADMIN);
-    const { askedAt } = await h.link.consentSnapshotMeta();
-    expect(askedAt).toBeTruthy();
-    expect((await claim(h, 21)).consentSnap).toEqual({ ask: true, askedAt });
-    expect((await claim(h, 20)).consentSnap).toEqual({ ask: true });
+    for (const rev of REVS) expect((await claim(h, rev)).consentSnap, `rev ${rev}`).toEqual({ ask: false });
   });
 });

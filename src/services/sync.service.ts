@@ -96,13 +96,13 @@ export function makeSyncService(d: SyncDeps) {
   };
 
   // Rev 19: a Refresh asked in the last 10 min that no newer copy of every kind has answered yet.
-  // Rev 21: the open ask also carries askedAt, so the console dedupes each Refresh by its value.
-  const SNAP_REV = 19, ASK_AT_REV = 21, SNAP_ASK_MS = 10 * 60_000;
-  const snapAsk = async (withAt: boolean) => {
+  // Rev 21: the open ask also carries askedAt, so the console dedupes each Refresh by its value. C2-2: sent to every console.
+  const SNAP_ASK_MS = 10 * 60_000;
+  const snapAsk = async () => {
     const { askedAt, taken } = await d.link.consentSnapshotMeta();
     const a = askedAt ? Date.parse(askedAt) : NaN;
     const ask = now().getTime() - a <= SNAP_ASK_MS && (taken.length < CONSENT_LOOKUP_KINDS.length || taken.some((x) => Date.parse(x.takenAt) < a));
-    return { ask, ...(withAt && ask && askedAt ? { askedAt } : {}) };
+    return { ask, ...(ask && askedAt ? { askedAt } : {}) };
   };
   // D3/D6: one Error log row (code + route only; never the id or a value). record() never throws.
   const flag = async (code: string, route: string) => { await d.errorLog?.record({ category: 'link', code, route, role: 'console' }); };
@@ -188,7 +188,6 @@ export function makeSyncService(d: SyncDeps) {
         linkRev: LINK_REV, // T1: the console shows "YS app out of date" when this is lower than its own
         ...(d.intake ? { intake: await d.intake.hint(settings, capabilities, req.inWindow) } : {}), // X19: the intake hint
         progress: true as const, // S5: this app takes POST /sync/push/progress (an older console ignores the key)
-        consentLink: true as const, // L6 review: this app takes the consentLink capability key (an older rev 6 app 400s on it)
         // X1 (rev 14): the location facts; an older console strips the key (z.object default), a rev 14 one compares them.
         site: { timeZone: settings.ministryConfig.structure.timeZone, serviceDay: settings.ministryConfig.structure.serviceDayOfWeek,
           consentCutoff: settings.ministryConfig.structure.consentCutoff, peopleFlowPrefix: settings.ministryConfig.elvanto.peopleFlowPrefix,
@@ -196,7 +195,7 @@ export function makeSyncService(d: SyncDeps) {
         // Rev 17: resolved values only (resolveModules fills the link screens from newYouthForms in the config transform).
         modules: { checkin: m.checkin, lifegroupReport: m.lifegroupReport, flows: m.flows, newYouthForms: m.newYouthForms,
           intakeAdmin: m.intakeAdmin, lifegroups: m.lifegroups, connectionAudit: m.connectionAudit },
-        ...(linkRev >= SNAP_REV && hub ? { consentSnap: await snapAsk(linkRev >= ASK_AT_REV) } : {}), // rev 19; rev 21 askedAt
+        ...(hub ? { consentSnap: await snapAsk() } : {}), // rev 19; rev 21 askedAt; C2-2: no rev gate
       };
     },
 
