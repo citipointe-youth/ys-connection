@@ -1497,7 +1497,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     // Past-nights history: nights before tonight (>= from) with their riders/cars, plus one row per
     // ride for the table + export. Built from batch reads; firstTime looks at ALL history, not the window.
     async history(ctx, from) {
-      const c = await gate(ctx, 'bus:coordinate');
+      const c = await gate(ctx, 'bus:analysis'); // Y3-4: oversight and admin only
       if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) throw new BadRequestError('Bad from date');
       const today = currentRunDate(ctx.localNow, c.structure.serviceDayOfWeek);
       const floor = from || (() => { const d = new Date(`${today}T00:00:00Z`); d.setUTCFullYear(d.getUTCFullYear() - 1); return d.toISOString().slice(0, 10); })();
@@ -1821,7 +1821,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     // Past night popup map: each car's route through its stops in stop order (Routes API computeRoutes).
     // Nothing is stored (Google terms) — only the finished image is cached per run version.
     async pastRunMap(ctx, runId) {
-      const c = await gate(ctx, 'bus:coordinate');
+      const c = await gate(ctx, 'bus:analysis'); // Y3-4
       const run = await bus.getRun(runId);
       if (!run) throw new NotFoundError('Night not found');
       const b = c.busMinistry;

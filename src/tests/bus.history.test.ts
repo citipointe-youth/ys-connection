@@ -126,14 +126,32 @@ describe('history', () => {
     expect(all.rides.filter((r) => r.runId === w1.id)).toHaveLength(3); // incl. the not-riding row
   });
 
-  it('is open to coordinators (read-only, no edit log) but not to grade logins', async () => {
+  // Y3-4: Past nights are oversight and admin only on the server too (the SPA already hid them from coordinators).
+  async function pastNightWorld() {
     const f = await fixture();
-    await f.rider('s1');
-    const q = await f.svc.history(f.at('quad', WK2));
-    expect(q.canEdit).toBe(false);
-    expect(q.nights[0]!.edits).toBeUndefined();
+    const rv = await f.car('Bus', 8, ['L1']);
+    await f.svc.moveRider(f.admin, (await f.rider('s1')).id, { runVehicleId: rv });
+    const cur = (await f.settings.getSettings()).ministryConfig;
+    await f.settings.updateSettings({ ministryConfig: { ...cur, busMinistry: { ...cur.busMinistry, coordinatorLeaderIds: ['L2'] } } });
+    const runId = (await f.svc.history(f.at('admin', WK2))).nights[0]!.id;
+    return { f, runId };
+  }
+  it('is for oversight and admin only: quad, grade and a self-identified coordinator get 403', async () => {
+    const { f } = await pastNightWorld();
+    await expect(f.svc.history(f.at('quad', WK2))).rejects.toMatchObject({ statusCode: 403 });
     await expect(f.svc.history(f.at('grade', WK2))).rejects.toMatchObject({ statusCode: 403 });
+    await expect(f.svc.history(f.at('grade', WK2, 'L2'))).rejects.toMatchObject({ statusCode: 403 });
+    expect((await f.svc.history(f.at('oversight', WK2))).canEdit).toBe(true);
+    const adm = await f.svc.history(f.at('admin', WK2));
+    expect(adm.nights[0]!.edits).toBeDefined();
     await expect(f.svc.history(f.at('admin', WK2), 'yesterday')).rejects.toMatchObject({ statusCode: 400 });
+  });
+  it('pastRunMap: the same four', async () => {
+    const { f, runId } = await pastNightWorld();
+    await expect(f.svc.pastRunMap(f.at('quad', WK2), runId)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(f.svc.pastRunMap(f.at('grade', WK2, 'L2'), runId)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(f.svc.pastRunMap(f.at('oversight', WK2), runId)).resolves.toBeTruthy();
+    await expect(f.svc.pastRunMap(f.at('admin', WK2), runId)).resolves.toBeTruthy();
   });
 });
 
