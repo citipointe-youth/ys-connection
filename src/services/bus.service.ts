@@ -291,6 +291,19 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
   function isRedactedLeader(ctx: BusCtx, c: MinistryConfig): boolean {
     return ctx.actor.role === 'leader' && !allowed(ctx, c, 'bus:coordinate');
   }
+  /** The suburb-only rider a "My car only" login gets (name + suburb; no ids, place or street). */
+  function redactRider(r: BusRiderView): BusRiderView {
+    return { id: r.id, studentId: null, guestId: null, addressId: null,
+      runVehicleId: r.runVehicleId, stopOrder: r.stopOrder, pinned: r.pinned,
+      name: r.name, grade: r.grade, gender: r.gender, address: suburbOnly(r.address), placeId: null,
+      consent: { year: r.consent.year, current: r.consent.current },
+      droppedAt: r.droppedAt, droppedBy: r.droppedBy } as BusRiderView;
+  }
+  /** F4 (review 2026-10-16): a driver's end address is their home. A "My car only" leader gets it blanked
+   *  on every car but its own (grade/quad logins keep it: Car setup is open to them). */
+  function hideEnds<T extends { endsAddress: string | null; endsPlaceId: string | null }>(ctx: BusCtx, c: MinistryConfig, v: T, own = false): T {
+    return isRedactedLeader(ctx, c) && !own ? { ...v, endsAddress: null, endsPlaceId: null } : v;
+  }
   /** The junior leader's own connected students (search, own-car save, draft). */
   async function myStudentIds(ctx: BusCtx): Promise<Set<string>> {
     return new Set(ctx.actor.leaderId && connections ? (await connections.findByLeader(ctx.actor.leaderId)).map((x) => x.studentId) : []);
@@ -516,24 +529,14 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
     // suburb only; this is also what their read-only Assign shows). Leaders + fleet stay:
     // Car setup is open to every Bus login since 2026-10-15 and they hold no student data.
     const redacted = isRedactedLeader(ctx, c);
-    // F4 (review 2026-10-16): a driver's end address is their home. The "My car only" leader gets it blanked on
-    // every car but its own (grade/quad logins keep it: Car setup is open to them).
     const me = selfLeaderId(ctx);
-    const hideEnds = <T extends { endsAddress: string | null; endsPlaceId: string | null }>(v: T, own = false): T =>
-      redacted && !own ? { ...v, endsAddress: null, endsPlaceId: null } : v;
     return {
       run: { id: run.id, serviceDate: run.serviceDate, version: run.version, readOnly: isPast(run, ctx, c),
         lastChangeBy: run.lastChangeBy, lastChangeAt: run.lastChangeAt, lockBy: lockName(run.lockBy), lockUntil: run.lockUntil, undoUntil: run.undoUntil },
-      vehicles: vehicles.map((v) => hideEnds(v, !!me && (v.ownerLeaderId === me || v.leaderIds.includes(me)))),
-      riders: redacted ? riderViews.map((r) => ({
-        id: r.id, studentId: null, guestId: null, addressId: null,
-        runVehicleId: r.runVehicleId, stopOrder: r.stopOrder, pinned: r.pinned,
-        name: r.name, grade: r.grade, gender: r.gender, address: suburbOnly(r.address), placeId: null,
-        consent: { year: r.consent.year, current: r.consent.current },
-        droppedAt: r.droppedAt, droppedBy: r.droppedBy,
-      })) : riderViews,
+      vehicles: vehicles.map((v) => hideEnds(ctx, c, v, !!me && (v.ownerLeaderId === me || v.leaderIds.includes(me)))),
+      riders: redacted ? riderViews.map(redactRider) : riderViews,
       leaders: leaderViews, availablePoolLeaderIds: run.availablePoolLeaderIds,
-      fleet: fleet.filter((v) => !v.archived).map((v) => hideEnds(v)), canCoordinate,
+      fleet: fleet.filter((v) => !v.archived).map((v) => hideEnds(ctx, c, v)), canCoordinate,
       pendingNewPeople: seesPending ? (await pendingGuestList()).length : null,
       pastRiders: isPast(run, ctx, c) ? [] : await pastRidersList(ctx, c, riders, cv),
       onCarLeaders: await onCarLeaderList(run.id),
@@ -1057,7 +1060,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       if (v.requestId && !v.id) { // QA #3 (as Notices): a resend of a new vehicle returns the first one
         const dup = await bus.getVehicle(v.requestId);
         if (dup && dup.name !== v.name) throw new ConflictError('This save id is already used. Save again.');
-        if (dup) return dup;
+        if (dup) return hideEnds(ctx, c, dup);
       }
       assertRealPlaceId(v.endsPlaceId, v.endsAt === 'address'); // Task 2: required only when this save actually picks "ends at an address"
       const prior = v.id ? await bus.getVehicle(v.id) : null;
@@ -1091,7 +1094,7 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
         await syncBusRiders(run);
         await touch(ctx, run);
       }
-      return saved;
+      return hideEnds(ctx, c, saved);
     },
     async updateRunVehicle(ctx, id, input) {
       const c = await gate(ctx, 'bus:use'); // 2026-10-15: Car setup is open to every Bus login
@@ -1114,7 +1117,9 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       }
       if (isBus(rv)) await syncBusRiders(run);
       await touch(ctx, run);
-      return (await vehicleViews(run.id)).find((x) => x.id === id)!;
+      const out = (await vehicleViews(run.id)).find((x) => x.id === id)!;
+      const me = selfLeaderId(ctx);
+      return hideEnds(ctx, c, out, !!me && (out.ownerLeaderId === me || out.leaderIds.includes(me)));
     },
     async setPool(ctx, input) {
       const c = await gate(ctx, 'bus:use'); // 2026-10-15: Car setup is open to every Bus login
@@ -1423,7 +1428,8 @@ export function makeBusService(bus: IBusRepository, students: IStudentRepository
       const saved = await bus.saveRunRider({ ...r, droppedAt: v.dropped ? (v.at ?? nowIso()) : null,
         droppedBy: v.dropped ? await whoLabel(ctx) : null });
       await touch(ctx, run);
-      return riderView(saved, await consentCtx(ctx, c, saved.runId));
+      const view = riderView(saved, await consentCtx(ctx, c, saved.runId));
+      return isRedactedLeader(ctx, c) ? redactRider(view) : view;
     },
     async myCar(ctx) {
       const c = await gate(ctx, 'bus:use');

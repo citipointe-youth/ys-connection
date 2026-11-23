@@ -88,3 +88,61 @@ describe('SY-04: own-car save by a junior leader takes only its own riders', () 
   });
 });
 
+
+// Y3-1: the write routes reply with the same redaction getRun applies.
+describe('Y3-1: a junior login gets no address from the drop-off and vehicle write routes', () => {
+  const ADDR = '12 Driver St, Testville QLD';
+  async function fleetWorld() {
+    const w = await world();
+    const fleet = await w.svc.saveVehicle(w.admin, { name: 'Tom car', seats: 5, endsAt: 'address', endsAddress: ADDR, endsPlaceId: 'fake:drv' });
+    const rv = (await w.svc.getRun(w.admin)).vehicles.find((x) => x.vehicleId === fleet.id)!;
+    await w.svc.updateRunVehicle(w.admin, rv.id, { leaderIds: ['L1'] });
+    await w.svc.moveRider(w.admin, w.a.id, { runVehicleId: rv.id });
+    return { ...w, fleet, rvId: rv.id };
+  }
+  const suburbOnlyShape = (r: { address: string; placeId: string | null; studentId: string | null; guestId: string | null; addressId: string | null }) => {
+    expect(r.address).not.toContain('Test St');
+    expect([r.placeId, r.studentId, r.guestId, r.addressId]).toEqual([null, null, null, null]);
+  };
+
+  it('setDropped on a rider in another car is suburb-only; the call still resolves', async () => {
+    const w = await fleetWorld();
+    suburbOnlyShape(await w.svc.setDropped(jr(), w.a.id, { dropped: true }));
+  });
+  it('updateRunVehicle hides the end address on a car the junior is not on, keeps it on its own', async () => {
+    const w = await fleetWorld();
+    const other = await w.svc.updateRunVehicle(jr(), w.rvId, {});
+    expect([other.endsAddress, other.endsPlaceId]).toEqual([null, null]);
+    await w.svc.updateRunVehicle(w.admin, w.rvId, { leaderIds: ['L1', 'L3'] });
+    const own = await w.svc.updateRunVehicle(jr(), w.rvId, {});
+    expect([own.endsAddress, own.endsPlaceId]).toEqual([ADDR, 'fake:drv']);
+  });
+  it('saveVehicle replies (resend and real save) carry no end address for a junior', async () => {
+    const w = await fleetWorld();
+    const resend = await w.svc.saveVehicle(jr(), { requestId: w.fleet.id, name: w.fleet.name, seats: 5, endsAt: 'church' });
+    expect([resend.endsAddress, resend.endsPlaceId]).toEqual([null, null]);
+    const saved = await w.svc.saveVehicle(jr(), { name: 'New car', seats: 4, endsAt: 'address', endsAddress: '5 Sample Rd, Dummyton QLD', endsPlaceId: 'fake:new' });
+    expect([saved.endsAddress, saved.endsPlaceId]).toEqual([null, null]);
+  });
+  it('pin: a grade login gets the full values from all three', async () => {
+    const w = await fleetWorld();
+    const g = w.ctx('grade', 'L2');
+    const d = await w.svc.setDropped(g, w.a.id, { dropped: true });
+    expect(d.address).toContain('Test St');
+    expect(d.placeId).toBe('fake:s1');
+    expect((await w.svc.updateRunVehicle(g, w.rvId, {})).endsAddress).toBe(ADDR);
+    expect((await w.svc.saveVehicle(g, { requestId: w.fleet.id, name: w.fleet.name, seats: 5, endsAt: 'church' })).endsAddress).toBe(ADDR);
+  });
+  it('a junior who is a coordinator gets full values; a junior\'s own-car rider is still suburb-only on setDropped', async () => {
+    const w = await fleetWorld();
+    await coordinators(w, ['L3']);
+    expect((await w.svc.setDropped(jr(), w.a.id, { dropped: true })).address).toContain('Test St');
+    expect((await w.svc.updateRunVehicle(jr(), w.rvId, {})).endsAddress).toBe(ADDR);
+    expect((await w.svc.saveVehicle(jr(), { requestId: w.fleet.id, name: w.fleet.name, seats: 5, endsAt: 'church' })).endsAddress).toBe(ADDR);
+    // back to a plain junior: its own car's rider is still suburb-only
+    const w2 = await world();
+    const own = await w2.svc.saveOwnCar(jr(), { car, riderIds: [w2.b.id] });
+    expect(own.id).toBeTruthy();
+    suburbOnlyShape(await w2.svc.setDropped(jr(), w2.b.id, { dropped: true }));
+  });
+});
