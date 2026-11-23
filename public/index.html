@@ -5525,10 +5525,15 @@ async function _msNotYou() { if (await _lkSwitchLeader(null)) { _msLeader = null
 async function _msPickLeader(v) { if (await _lkSwitchLeader(v || null)) _msLeader = v; renderMyStudents(); }
 const MYSTUDENTS_PATHS = ['/leaders?pick=1', '/students']; // F-01: the I am picker lists only this login's own leaders
 let _myStudentsRevalidating = false;
+// Y2-9: the picked leader's summary and the prayers are read (and revalidated) with the two lists above.
+function _msPaths() {
+  const l = _msLeader || getMyLeaderId();
+  return l ? [`/connections/leader/${l}/summary`].concat(_prayersOn() ? ['/prayers'] : []) : [];
+}
 function _revalidateMyStudents() {
   if (_myStudentsRevalidating) return;
   _myStudentsRevalidating = true;
-  API.batch(MYSTUDENTS_PATHS)
+  API.batch(MYSTUDENTS_PATHS.concat(_msPaths()))
     .then(() => { if (S.page === 'my-students') return renderMyStudents(); })
     .catch(() => {})
     .finally(() => { _myStudentsRevalidating = false; });
@@ -5586,14 +5591,11 @@ async function renderMyStudents() {
   const msNotYouBtn = _msLeader && !(S.user && S.user.role === 'leader') ? `<button class="btn btn-secondary btn-sm" onclick="_msNotYou()">Not you?</button>` : '';
   body += `<div class="fg"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><label class="fl" style="margin-bottom:0">Who are you?</label>${msNotYouBtn}</div><select class="fs" onchange="_msPickLeader(this.value)"><option value="">— Choose a leader —</option>${opts}</select></div>`;
 
-  if (_msLeader) {
-    // The summary and the prayers load together (r22 U1). Prayers are best-effort: a failed fetch just means no prayer lines.
-    const [summary, prayers] = await Promise.all([
-      API.get(`/connections/leader/${_msLeader}/summary`).catch(() => null),
-      _prayersOn() ? API.get('/prayers').catch(() => []) : [],
-    ]);
-    if (S.page !== _pg) return;
-    const students = (summary?.students || []).slice().sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
+  // The list part, from a summary and the prayers; paints the whole page (the header and picker above are in `body`).
+  const _base = body;
+  const _msFill = (summary, prayers) => {
+    body = _base;
+    const students =(summary?.students || []).slice().sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
     const prayersByStudent = {};
     for (const p of prayers || []) {
       if (!p.student) continue;
@@ -5644,9 +5646,25 @@ async function renderMyStudents() {
       <button type="button" class="drop-head btn btn-ghost btn-sm" onclick="_drop('ms-tpl-drop')"><span class="drop-chev">›</span> Message template</button>
       <div class="drop-body" style="margin-top:6px">${_smsTemplateBoxHtml(msLeaderObj.id, msLeaderObj.smsTemplate, 'ms-sms-tpl')}</div>
     </div>`;
+    setApp(shell(body));
+  };
+  if (!_msLeader) { setApp(shell(body)); return; }
+  // Y2-9: the last-known summary and prayers paint at once and revalidate; with nothing cached the header and picker paint first.
+  // Prayers are best-effort (r22 U1): a failed fetch just means no prayer lines.
+  const sumPath = `/connections/leader/${_msLeader}/summary`, needP = _prayersOn();
+  const lp = [sumPath].concat(needP ? ['/prayers'] : []);
+  if (lp.every((p) => Cache.get(p) !== null) || lp.every((p) => Cache.getStale(p) !== null)) {
+    _msFill(Cache.getStale(sumPath), needP ? Cache.getStale('/prayers') || [] : []);
+    if (!lp.every((p) => Cache.get(p) !== null)) _revalidateMyStudents();
+    return;
   }
-
   setApp(shell(body));
+  const [summary, prayers] = await Promise.all([
+    API.get(sumPath).catch(() => null),
+    needP ? API.get('/prayers').catch(() => []) : [],
+  ]);
+  if (S.page !== _pg) return;
+  _msFill(summary, prayers);
 }
 
 // Builds one row per leader (name/grade/gender only) followed by that leader's

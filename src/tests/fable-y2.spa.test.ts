@@ -277,3 +277,73 @@ describe('Y2-8 Home stops repainting for the Bus tile', () => {
     expect(fns._busNewPeopleCard()).toBe('<div data-home="bus-np"></div>');
   });
 });
+
+// ── Y2-9: My Connections paints at once ──
+describe('Y2-9 My Connections paints from the last-known list first', () => {
+  const cacheSrc = (() => { const i = html.indexOf('const Cache = (() => {'); return html.slice(i, html.indexOf('\n})();', i) + 6); })();
+  const SUM = '/connections/leader/L1/summary';
+  const mk = (seed: { summary?: any; prayers?: any }) => {
+    const Cache = new Function(`${cacheSrc}\nreturn Cache;`)();
+    // the stale copies: set, then let them lapse (Cache.get null, getStale still answers)
+    const gate: Record<string, ReturnType<typeof later>> = {};
+    const paints: string[] = [];
+    const env: Record<string, any> = {
+      Cache, paints, gate, S: { page: 'my-students', user: { role: 'admin' } }, _msLeader: 'L1', _lvF: { year: new Set(), gender: new Set() },
+      API: {
+        get: (p: string) => { const c = Cache.get(p); if (c !== null) return Promise.resolve(c); gate[p] ||= later(); return gate[p]!.p.then((d: any) => { Cache.set(p, d); return d; }); },
+        batch: (ps: string[]) => Promise.all(ps.map((p) => env.API.get(p).catch(() => null))),
+      },
+      setApp: (h: string) => { paints.push(h); }, shell: (h: string) => h, icN: () => '', icS: () => '', icEmpty: () => '', esc: (x: any) => String(x == null ? '' : x), L: (k: string) => k,
+      getMyLeaderId: () => 'L1', _gradeList: () => [7, 8, 9], quadGrades: () => [], _prayersOn: () => true, dncChip: () => '', riskChip: () => '', phoneLink: () => '', termRow: () => '', fmtBday: () => '',
+      _smsTemplateBoxHtml: () => '', _lkSwitchLeader: async () => true, _myStudentsRevalidating: false, MYSTUDENTS_PATHS: ['/leaders?pick=1', '/students'],
+    };
+    const put = (p: string, d: any) => { Cache.set(p, d); };
+    put('/leaders?pick=1', [{ id: 'L1', fullName: 'Sam Example', grades: [9], gender: 'female' }]); put('/students', []);
+    if (seed.summary) put(SUM, seed.summary);
+    if (seed.prayers) put('/prayers', seed.prayers);
+    const real = Date.now; // advance() moves the clock past the 30 s TTL: every seeded entry is then stale (getStale still answers)
+    return { env, fns: withStubs(['renderMyStudents', '_revalidateMyStudents', '_msPaths'], env), Cache, restore: () => { Date.now = real; }, advance: () => { Date.now = () => real() + 120000; } };
+  };
+  const sum = (name: string) => ({ students: [{ id: 's1', fullName: name, firstName: name, grade: 9, gender: 'female', svcAttended: 1, svcTotal: 2, prevSvcAttended: 0, prevSvcTotal: 0, grpAttended: 0, grpTotal: 0, prevGrpAttended: 0, prevGrpTotal: 0 }] });
+  it('stale summary and prayers cached, network held: painted at once with the cached student, repainted with the fresh one', async () => {
+    const h = mk({ summary: sum('Cached Sample'), prayers: [] });
+    h.advance();
+    try {
+      const p = h.fns.renderMyStudents();
+      await tick();
+      expect(h.env.paints.length).toBeGreaterThanOrEqual(1);
+      expect(h.env.paints[0]).toContain('Cached Sample');
+      for (const k of Object.keys(h.env.gate)) h.env.gate[k].go(k === SUM ? sum('Fresh Sample') : k === '/prayers' ? [] : k === '/students' ? [] : [{ id: 'L1', fullName: 'Sam Example', grades: [9], gender: 'female' }]);
+      await p; await tick(); await tick(); await tick();
+      expect(h.env.paints[h.env.paints.length - 1]).toContain('Fresh Sample');
+    } finally { h.restore(); }
+  });
+  it('nothing cached: the header and picker are painted first, then the list', async () => {
+    const h = mk({});
+    const p = h.fns.renderMyStudents();
+    await tick();
+    expect(h.env.paints.length).toBe(1);
+    expect(h.env.paints[0]).toContain('My Connections');
+    expect(h.env.paints[0]).toContain('Who are you?');
+    expect(h.env.paints[0]).not.toContain('Fresh Sample');
+    h.env.gate[SUM].go(sum('Fresh Sample')); h.env.gate['/prayers'].go([]);
+    await p;
+    expect(h.env.paints[h.env.paints.length - 1]).toContain('Fresh Sample');
+  });
+  it('a page change during the await: no later paint', async () => {
+    const h = mk({});
+    const p = h.fns.renderMyStudents();
+    await tick();
+    const before = h.env.paints.length;
+    h.env.S.page = 'home';
+    h.env.gate[SUM].go(sum('Fresh Sample')); h.env.gate['/prayers'].go([]);
+    await p;
+    expect(h.env.paints.length).toBe(before);
+  });
+  it('the revalidate reads the summary and prayers too', async () => {
+    const h = mk({});
+    h.env.S.page = 'home';
+    h.fns._revalidateMyStudents(); await tick();
+    expect(Object.keys(h.env.gate).sort()).toEqual(['/prayers', SUM].sort());
+  });
+});

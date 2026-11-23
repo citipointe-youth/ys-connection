@@ -18,7 +18,7 @@ function trends(sessions: string[], noTerm = false) {
       '/lifegroups/stats': { overall: { current: { uniqueAttenders: 5, avgPerWeek: 4, weeksRan: 1 }, previous: { weeksRan: 0 },
         weekly: [{ weekStart: '2026-10-03', attended: 4 }] }, byQuad: [] },
     };
-    var Cache = { get: (p) => data[p], getStale: (p) => data[p] };
+    var Cache = { get: (p) => (p in data ? data[p] : null), getStale: (p) => (p in data ? data[p] : null) };
     function _revalidateTrends() {} function _allCached() { return true; }
     function setApp(h) { out = h; } function shell(x) { return x; }
     function L(k) { return k; } function esc(x) { return String(x); } function icS() { return ''; }
@@ -117,7 +117,7 @@ describe('My Connections restyle (RV2 C)', () => {
      let _msLeader = ${JSON.stringify(picked)}; let _lvF = { year: new Set(), gender: new Set() };
      const MYSTUDENTS_PATHS = ['/leaders?pick=1', '/students'];
      var data = { '/leaders?pick=1': [{ id: 'l1', fullName: 'Lee <Fictional>', grades: [9], gender: 'male', smsTemplate: 'Hi' }], '/students': [] };
-     var Cache = { get: (p) => data[p], getStale: (p) => data[p] };
+     var Cache = { get: (p) => (p in data ? data[p] : null), getStale: (p) => (p in data ? data[p] : null) };
      var API = { get: (p) => { gets.push(p); return Promise.resolve(p === '/prayers'
        ? [{ student: { id: 's1' }, text: 'Exams <soon>', status: 'open' }]
        : { students: [{ id: 's1', firstName: 'Zed', fullName: 'Zed <b>Fictional</b>', grade: 9, gender: 'male', dateOfBirth: null,
@@ -176,7 +176,8 @@ describe('My Connections restyle (RV2 C)', () => {
 
   it('the summary and prayers load together', async () => {
     const src = extractFn(html, 'renderMyStudents');
-    expect(src).toMatch(/Promise\.all\(\[\s*API\.get\(`\/connections\/leader\/\$\{_msLeader\}\/summary`\)/);
+    expect(src).toMatch(/Promise\.all\(\[\s*API\.get\(sumPath\)/);
+    expect(src).toContain('const sumPath = `/connections/leader/${_msLeader}/summary`');
     const a = ms('l1'); await a.renderMyStudents();
     expect(a.gets).toEqual(['/connections/leader/l1/summary', '/prayers']);
   });
