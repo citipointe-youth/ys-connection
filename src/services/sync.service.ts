@@ -17,7 +17,7 @@ import type { MatchChange } from './link-rules';
 import type { Student } from '../core/entities/student';
 import { computeQuad } from '../core/types/enums';
 import { parseGroupName } from './import.service';
-import { consentsHubOn } from '../core/module-tree';
+import { LINK_FEATURES, consentsHubOn } from '../core/module-tree';
 import type { ErrorLogService } from './error-log.service';
 // 2026-10-24: the console names a missing consent field only in detail (FIX_SHAPE, 11.1 ys-link.js:72-76); a contract reason would need a LINK_REV.
 const NO_DATE = /has no consent date field/;
@@ -127,7 +127,7 @@ export function makeSyncService(d: SyncDeps) {
       // Off is the stop button: heartbeat + sweep still run, nothing is leased while every link screen is off (T10).
       // ponytail: one screen on leases every type; rows of an off screen cannot be queued, only ones from before.
       const m = settings.ministryConfig.modules;
-      const screensOff = (['checkin', 'lifegroupReport', 'flows'] as const).every((f) => (m[f] ?? m.newYouthForms) === 'off');
+      const screensOff = LINK_FEATURES.every((f) => m[f] === 'off');
       // Modular setup: Live Elvanto link off stops every lease too.
       const max = m.liveLink === false || (screensOff && m.intakeAdmin !== 'on' && !m.busMinistry) ? 0 : req.max;
       const hub = consentsHubOn(m); // the Consents hub's types: on with the Public consent form or Intakes
@@ -193,8 +193,8 @@ export function makeSyncService(d: SyncDeps) {
         site: { timeZone: settings.ministryConfig.structure.timeZone, serviceDay: settings.ministryConfig.structure.serviceDayOfWeek,
           consentCutoff: settings.ministryConfig.structure.consentCutoff, peopleFlowPrefix: settings.ministryConfig.elvanto.peopleFlowPrefix,
           consentFlowPrefix: settings.ministryConfig.elvanto.consentFlowPrefix },
-        // Rev 17: resolved values only (checkin/lifegroupReport/flows already inherit newYouthForms in the config transform).
-        modules: { checkin: m.checkin ?? m.newYouthForms, lifegroupReport: m.lifegroupReport ?? m.newYouthForms, flows: m.flows ?? m.newYouthForms, newYouthForms: m.newYouthForms,
+        // Rev 17: resolved values only (resolveModules fills the link screens from newYouthForms in the config transform).
+        modules: { checkin: m.checkin, lifegroupReport: m.lifegroupReport, flows: m.flows, newYouthForms: m.newYouthForms,
           intakeAdmin: m.intakeAdmin, lifegroups: m.lifegroups, connectionAudit: m.connectionAudit },
         ...(linkRev >= SNAP_REV && hub ? { consentSnap: await snapAsk(linkRev >= ASK_AT_REV) } : {}), // rev 19; rev 21 askedAt
       };

@@ -436,11 +436,12 @@ describe('UX batch 2026-10-12 (T1 linkRev, T2 grade 6, T4 flow fields, T6 prune,
     expect(ClaimResponse.parse(await svc.claim(claimReq)).site).toEqual({ timeZone: 'Australia/Sydney', serviceDay: 3, consentCutoff: '17:30',
       peopleFlowPrefix: 'North - Youth - New People', consentFlowPrefix: 'North - Youth - Parent Consent' });
   });
-  it('rev 17: the claim reply carries modules mirroring config (legacy config inherits newYouthForms; connectionAudit false)', async () => {
+  it('rev 17: the claim reply carries modules mirroring config (resolved link screens; connectionAudit false)', async () => {
     const { svc, settings } = await setup();
     const cfg = (await settings.getSettings()).ministryConfig;
-    const { checkin, lifegroupReport, flows, ...legacy } = cfg.modules as any; // a config stored before the T10 split
-    await settings.updateSettings({ ministryConfig: { ...cfg, modules: { ...legacy, newYouthForms: 'admin', intakeAdmin: 'on', lifegroups: false, connectionAudit: false } } } as any);
+    // Y3-5: stored settings are always resolved (resolveModules fills the three link screens), so the fixture carries them.
+    await settings.updateSettings({ ministryConfig: { ...cfg, modules: { ...cfg.modules, checkin: 'admin', lifegroupReport: 'admin', flows: 'admin',
+      newYouthForms: 'admin', intakeAdmin: 'on', lifegroups: false, connectionAudit: false } } } as any);
     expect(ClaimResponse.parse(await svc.claim(claimReq)).modules).toEqual({ checkin: 'admin', lifegroupReport: 'admin', flows: 'admin', newYouthForms: 'admin',
       intakeAdmin: 'on', lifegroups: false, connectionAudit: false });
   });
