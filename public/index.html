@@ -3910,9 +3910,18 @@ async function doLogin() {
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
-async function doLogout() {
-  if (_setupLeaveAsk(doLogout)) return; // QA 27
+let _logoutBusy = false;
+// Y2-4: Sign out asks once ("Sign out?"), unless the Youth Setup guard or the unsent-work guard has already asked. A second tap
+// while the question or the sign-out is running does nothing (one question, one /auth/logout).
+async function doLogout(asked) {
+  if (_logoutBusy) return;
+  if (_setupLeaveAsk(() => doLogout(true))) return; // QA 27: after its Discard the question is not asked again
+  _logoutBusy = true;
+  try {
+  let unsent = 0;
+  try { unsent = _lkQGet().filter((it) => it.kind !== 'identity').length; } catch (e) {}
   if (!(await _lkLogoutGuard())) return; /*LINK*/
+  if (!asked && !unsent && !(await _lkAsk('You will need to type the username and password again.', 'Sign out', 'Stay', 'Sign out?'))) return;
   const lkK = _lkKey(); /*LINK RV-I-m9: captured first: a dead token (401) in _ikQLogout nulls S.user */
   const [ik, ic] = await Promise.all([_ikQLogout(5000), _icLogout(5000)]); // R7 + S-B1: send intake + ID checks once (max 5 s together), then clear
   S.reauth = false; document.getElementById('reauth')?.remove(); // a 401 during the sends opened "Sign in again": signing out anyway
@@ -3936,6 +3945,7 @@ async function doLogout() {
     // yap_leader_id ("I am") stays: T4 says the pick persists across logout.
   } catch (e) {}
   render();
+  } finally { _logoutBusy = false; }
 }
 
 // Y1-10: logout leaves nothing of the Bus screens in memory for the next login on this tab.
@@ -12468,7 +12478,7 @@ function _lkGroupHtml(g) {
   const a = _lkGroupAct(g);
   let btn = '';
   if (a && a.status === 'queued') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkReportUndo()">Undo</button>`;
-  else if (a && a.status === 'pending' && LINK.gres && LINK.gres[g.groupId] === a) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkReportCancel()">Cancel</button>`;
+  else if (a && a.status === 'pending' && LINK.gres && LINK.gres[g.groupId] === a) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkReportCancel()">Cancel report</button>`;
   const line = a ? `<div class="rc-foot"><div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>${btn}</div>` : '';
   const k = Math.max(0, Math.min(7, LINK.gwk || 0)), w = _lkWeeks(_lkToday())[k];
   const when = k === 0 ? 'This week' : k === 1 ? 'Last week' : k + ' weeks ago';
@@ -12756,9 +12766,13 @@ function _lkReportUndo() {
   }
   _lkRefreshView();
 }
-function _lkReportCancel() {
+async function _lkReportCancel() {
   const g = _lkGroup(), a = g && LINK.gres && LINK.gres[g.groupId];
   if (!a || !a.id) return;
+  // Y2-2: one tap used to delete a just-sent report; ask first. It must still be the same pending report when answered.
+  if (!(await _lkAsk('It has not reached Elvanto yet. Cancel it and lose the ticks and note?', 'Cancel report', 'Keep report', 'Cancel report?'))) return;
+  const b = LINK.gres && LINK.gres[g.groupId];
+  if (!b || b.id !== a.id || b.status !== 'pending') return;
   _lkPush({ kind: 'cancel', id: a.id, leaderId: getMyLeaderId() || null, _g: g.groupId }, true);
 }
 // ── Lifegroup members (T5/T6, 2026-10-13; moved into the report form 2026-11-18). Read on open from GET

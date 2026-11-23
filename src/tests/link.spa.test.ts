@@ -1494,7 +1494,8 @@ describe('F2 lifegroup report', () => {
     k.fns._lkQSet([{ kind: 'action', id: P(71), type: 'submitReport', payload: { groupId: G(1) }, note: null, leaderId: 'L1' }]);
     await k.fns._lkFlush();
     expect(k.fns._lkGroupHtml(k.get().LINK.groups[0])).toContain('_lkReportCancel()');
-    k.fns._lkReportCancel();
+    k.answers.push(true); // Y2-2: Cancel report asks first
+    await k.fns._lkReportCancel();
     expect(k.fns._lkQGet()[0]).toMatchObject({ kind: 'cancel', id: P(71), leaderId: 'L1', _g: G(1) });
   });
   it('T6: member changes go through the queue; the answer shows on the row; an unsent opposite is just dropped', async () => {

@@ -45,3 +45,121 @@ describe('Y2-1 the pill is not in #lk-top', () => {
     expect(els['lk-top']!.innerHTML).not.toContain('lk-pill');
   });
 });
+
+// ── Y2-2: Cancel report asks first ──
+describe('Y2-2 Cancel report asks first', () => {
+  const groupEnv = (extra: Record<string, any> = {}) => {
+    const pushed: any[] = [], asked: any[][] = [];
+    const g = { groupId: 'g1', name: 'Grade 9 Girls', meets: 'Mon 7:00 PM' };
+    const act: any = { id: 'a1', status: 'pending', type: 'submitReport' };
+    const env: Record<string, any> = {
+      pushed, asked, act, g,
+      LINK: { gres: { g1: act }, gwk: 0 },
+      esc: (x: any) => String(x), getMyLeaderId: () => 'L1',
+      _lkGroup: () => g, _lkGroupAct: () => act, _lkPush: (it: any) => { pushed.push(it); },
+      _lkAsk: (...a: any[]) => { asked.push(a); return Promise.resolve(env.answer); },
+      answer: true,
+      _lkWeeks: () => [{ start: '2026-11-23', end: '2026-11-29' }], _lkToday: () => '2026-11-24', _lkWeekReports: () => [], _lkReportDateFor: () => ({ state: 'later' }),
+      lgDisplayName: (n: string) => n, _lkTint: () => '', _lkDay: (d: string) => d, _lkLastSeen: () => 0, _lkStatusTone: () => '', _lkStatusHtml: () => '', icS: () => '',
+      ...extra,
+    };
+    return { env, fns: withStubs(['_lkGroupHtml', '_lkReportCancel'], env) };
+  };
+  it('the button reads Cancel report', () => {
+    const { fns } = groupEnv();
+    expect(fns._lkGroupHtml({ groupId: 'g1', name: 'Grade 9 Girls', meets: 'Mon' })).toMatch(/onclick="_lkReportCancel\(\)">Cancel report<\/button>/);
+  });
+  it('asks with its own title; No sends nothing', async () => {
+    const { fns, env } = groupEnv(); env.answer = false;
+    await fns._lkReportCancel();
+    expect(env.asked).toEqual([['It has not reached Elvanto yet. Cancel it and lose the ticks and note?', 'Cancel report', 'Keep report', 'Cancel report?']]);
+    expect(env.pushed).toEqual([]);
+  });
+  it('Yes queues one cancel item for that report', async () => {
+    const { fns, env } = groupEnv(); env.answer = true;
+    await fns._lkReportCancel();
+    expect(env.pushed).toEqual([{ kind: 'cancel', id: 'a1', leaderId: 'L1', _g: 'g1' }]);
+  });
+  it('Yes after the report moved on (no longer pending) sends nothing', async () => {
+    const { fns, env } = groupEnv();
+    env.asked.length = 0;
+    const p = fns._lkReportCancel();
+    env.act.status = 'claimed';
+    await p;
+    expect(env.pushed).toEqual([]);
+  });
+});
+
+// ── Y2-4: Sign out asks first ──
+describe('Y2-4 Sign out asks first', () => {
+  const outEnv = (o: { dirty?: boolean; queue?: any[]; answers?: Record<string, boolean>; logoutFails?: boolean } = {}) => {
+    const asked: string[] = [], posts: string[] = [], held: Record<string, ReturnType<typeof later>> = {};
+    let queue = o.queue || [];
+    const env: Record<string, any> = {
+      asked, posts, S: { user: { id: 'u1' }, page: 'home' }, _logoutBusy: false, rendered: 0,
+      _setupDirty: () => !!o.dirty && env._setupDraft !== null, _setupDraft: 1, _setupClean: 1,
+      _lkAsk: (text: string, _y: string, _n: string, title?: string) => { asked.push(title || text.slice(0, 20)); if (!held[title || '']) held[title || ''] = later(); return (o.answers && (title || '') in o.answers) ? Promise.resolve(o.answers[title || '']) : held[title || ''].p; },
+      _lkQGet: () => queue, _lkSay: (a: string) => a, _lkActions: () => 'x', _lkUnsaved: () => 'y', _lkDrain: async () => { queue = []; }, _lkFlush: async () => {},
+      _lkKey: () => 'k', _ikQLogout: async () => 0, _icLogout: async () => 0, _logoutLostText: () => '', _lkClear: () => {}, navReset: () => {},
+      API: { token: 't', post: async (p: string) => { posts.push(p); if (o.logoutFails) throw new Error('dead token'); }, setToken: () => {} },
+      document: { getElementById: () => null }, render: () => { env.rendered++; }, localStorage: { removeItem: () => {} }, sessionStorage: { removeItem: () => {} },
+      _busLogoutReset: () => {}, nyReset: () => {}, _icClearLocal: () => {}, toast: () => {}, _vgReset: () => {},
+      _arFilter: {}, _bdayFilter: {}, _prayerFilter: {},
+    };
+    return { env, held, fns: withStubs(['doLogout', '_setupLeaveAsk', '_lkLogoutGuard'], env) };
+  };
+  it('nothing queued: asks "Sign out?"; Stay never posts /auth/logout', async () => {
+    const { env, held, fns } = outEnv();
+    const p = fns.doLogout(); await tick();
+    expect(env.asked).toEqual(['Sign out?']);
+    held['Sign out?']!.go(false); await p;
+    expect(env.posts).toEqual([]);
+    expect(env.S.user).not.toBeNull();
+  });
+  it('Sign out proceeds and posts once', async () => {
+    const { env, held, fns } = outEnv();
+    const p = fns.doLogout(); await tick();
+    held['Sign out?']!.go(true); await p;
+    expect(env.posts).toEqual(['/auth/logout']);
+    expect(env.S.user).toBeNull();
+  });
+  it('the question has its own title, text and buttons', async () => {
+    const seen: any[] = [];
+    const { env, held, fns } = outEnv();
+    const orig = env._lkAsk; env._lkAsk = (...a: any[]) => { seen.push(a); return orig(...a); };
+    const p = fns.doLogout(); await tick();
+    expect(seen[0]).toEqual(['You will need to type the username and password again.', 'Sign out', 'Stay', 'Sign out?']);
+    held['Sign out?']!.go(false); await p;
+  });
+  it('with unsent items only the existing unsent question is asked, never a second', async () => {
+    const { env, fns } = outEnv({ queue: [{ kind: 'action' }], answers: { '': true } });
+    await fns.doLogout();
+    expect(env.asked.filter((t) => t === 'Sign out?')).toEqual([]);
+    expect(env.posts).toEqual(['/auth/logout']);
+  });
+  it('after the Youth Setup guard\'s Discard there is no second question', async () => {
+    const { env, fns } = outEnv({ dirty: true, answers: { 'Discard changes?': true } });
+    fns.doLogout(); await tick(); await tick(); await tick();
+    expect(env.asked).toEqual(['Discard changes?']);
+    expect(env.posts).toEqual(['/auth/logout']);
+  });
+  it('Review Focus 2: two taps before an answer -> one question and one /auth/logout', async () => {
+    const { env, held, fns } = outEnv();
+    const a = fns.doLogout(), b = fns.doLogout(); await tick();
+    expect(env.asked).toEqual(['Sign out?']);
+    held['Sign out?']!.go(true); await Promise.all([a, b]);
+    expect(env.posts).toEqual(['/auth/logout']);
+  });
+  it('Review Focus 2: a dead token still ends on the sign-in page', async () => {
+    const { env, held, fns } = outEnv({ logoutFails: true });
+    const p = fns.doLogout(); await tick();
+    held['Sign out?']!.go(true); await p;
+    expect(env.S.user).toBeNull();
+    expect(env.rendered).toBe(1);
+    // and the next sign-out is not stuck behind a flag
+    env.S.user = { id: 'u2' };
+    const q = fns.doLogout(); await tick();
+    expect(env.asked.length).toBe(2);
+    held['Sign out?']!.go(false); await q;
+  });
+});

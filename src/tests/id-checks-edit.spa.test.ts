@@ -482,7 +482,7 @@ describe('Y1 fix round 1', () => {
     const noop: any = () => {};
     const known: Record<string, any> = {
       S: { user: { id: 'u1' }, reauth: false },
-      _lkLogoutGuard: () => Promise.resolve(true), _ikQLogout: () => Promise.resolve(0),
+      _lkLogoutGuard: () => Promise.resolve(true), _lkQGet: () => [], _lkAsk: () => Promise.resolve(true), _logoutBusy: false, _ikQLogout: () => Promise.resolve(0),
       _icLogout: () => { known.S.reauth = true; return Promise.resolve(1); }, // a 401 opened the sheet (_reauthOpen)
       _logoutLostText: () => '', toast: noop,
       API: { token: null, post: () => Promise.resolve(), setToken: noop },
