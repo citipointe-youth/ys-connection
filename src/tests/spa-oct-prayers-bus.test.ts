@@ -23,11 +23,12 @@ function _prayersOn() { return ${p}; } function _busOn() { return true; } functi
   it('_prefetch drops /prayers when off', () => {
     const calls: string[][] = [];
     (globalThis as any).__c = calls;
-    const mk = (on: boolean) => loadFns(['_prefetch'], `const S = { user: { role: 'admin' } }; const API = { batch: (a) => { globalThis.__c.push(a); } }; function _prayersOn() { return ${on}; }`);
+    const mk = (on: boolean) => loadFns(['_prefetch'], `const S = { user: { role: 'admin' } }; const API = { batch: (a) => { globalThis.__c.push(a); return Promise.resolve(); } }; let _prefetchP = null; function _noticesOn() { return false; } function _prayersOn() { return ${on}; }`);
     mk(true)._prefetch();
+    const on = calls.flat(); calls.length = 0;
     mk(false)._prefetch();
-    expect(calls[0]).toContain('/prayers');
-    expect(calls[1]).not.toContain('/prayers');
+    expect(on).toContain('/prayers');
+    expect(calls.flat()).not.toContain('/prayers');
   });
   it('the MODULE_DISABLED handler refetches /settings, rebuilds the shell when the nav changed, then leaves the prayers page', async () => {
     const log: string[] = [];
@@ -67,7 +68,8 @@ function _setupSet(p, v) { globalThis.__k.push('set ' + p + '=' + v); } function
   it('the Modules card has the toggle; My Connections and the profile hide prayer controls', () => {
     const html = loadIndexHtml();
     expect(html).toContain('_setupPrayersToggle(this)');
-    expect(html).toContain("_prayersOn() ? API.get('/prayers').catch(() => []) : []"); // r22 U1: My Connections fetches it beside the summary
+    expect(html).toContain("needP ? API.get('/prayers').catch(() => []) : []");
+    expect(html).toContain('needP = _prayersOn()'); // r22 U1: My Connections fetches it beside the summary
     expect(html).toContain("const pray = _prayersOn() ? `<button class=\"btn btn-ghost btn-sm\" onclick=\"openPrayerModal");
     expect(html).toMatch(/\$\{_prayersOn\(\) \? `<button class="btn btn-secondary btn-sm" onclick="openPrayerModal/);
   });
@@ -186,7 +188,8 @@ function __b() { return BUS; }`;
     expect(calls).not.toContain('/bus/run/cars');
   });
   it('doLogout clears BUS.cars', () => {
-    expect(extractFn(loadIndexHtml(), 'doLogout')).toMatch(/BUS\.cars = null/);
+    expect(extractFn(loadIndexHtml(), 'doLogout')).toContain('_busLogoutReset()');
+    expect(extractFn(loadIndexHtml(), '_busLogoutReset')).toMatch(/BUS\.cars = null/);
   });
   it('the cars view code never touches phones, streets or addresses', () => {
     expect(extractFn(loadIndexHtml(), '_busAllCarsHtml')).not.toMatch(/phone|mobile|street|address|unit/i);

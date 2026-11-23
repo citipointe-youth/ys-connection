@@ -143,10 +143,11 @@ describe('T10 Youth Setup modules: the draft keeps all four switches', () => {
        function esc(s) { return String(s); }`, ['_setupModuleMode', '_setupSetModule', '_setupElvantoModulesHtml']);
     return { f };
   };
-  it('missing keys read as the stored New person value', () => {
+  it('each screen reads its own mode (the server resolves all three; a missing key is off, no fallback)', () => {
     const { f } = load({ newYouthForms: 'admin' });
-    for (const k of ['checkin', 'lifegroupReport', 'flows']) expect(f._setupModuleMode({ newYouthForms: 'admin' }, k)).toBe('admin');
+    for (const k of ['checkin', 'lifegroupReport', 'flows']) expect(f._setupModuleMode({ newYouthForms: 'admin', checkin: 'admin', lifegroupReport: 'admin', flows: 'admin' }, k)).toBe('admin');
     expect(f._setupModuleMode({ newYouthForms: 'on', flows: 'off' }, 'flows')).toBe('off');
+    expect(f._setupModuleMode({ newYouthForms: 'on' }, 'flows')).toBe('off');
     expect(f._setupModuleMode({}, 'checkin')).toBe('off');
   });
   it('shows four selects with plain labels, admin marked Admin only', () => {
@@ -168,8 +169,8 @@ describe('T10 Youth Setup modules: the draft keeps all four switches', () => {
       let _setupDraft = { modules: ${JSON.stringify(md)} }; function _setupRerender() {}
       ${body}
       _setupSetModule(${JSON.stringify(key)}, ${JSON.stringify(val)}); return _setupDraft.modules;`)();
-    expect(run({ newYouthForms: 'admin' }, 'newYouthForms', 'on')).toMatchObject({ newYouthForms: 'on', checkin: 'admin', lifegroupReport: 'admin', flows: 'admin' });
-    expect(run({ newYouthForms: 'on' }, 'flows', 'off')).toMatchObject({ newYouthForms: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'off' });
+    expect(run({ newYouthForms: 'admin', checkin: 'admin', lifegroupReport: 'admin', flows: 'admin' }, 'newYouthForms', 'on')).toMatchObject({ newYouthForms: 'on', checkin: 'admin', lifegroupReport: 'admin', flows: 'admin' });
+    expect(run({ newYouthForms: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'on' }, 'flows', 'off')).toMatchObject({ newYouthForms: 'on', checkin: 'on', lifegroupReport: 'on', flows: 'off' });
   });
   // Y4 (SPEC Y4) supersedes T10 here: the settings file never carries the four Elvanto switches (settings-file.spa.test.ts).
   it('the settings file download leaves the four values out', () => {

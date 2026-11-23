@@ -12,7 +12,7 @@ describe('leader names render inert', () => {
        const S = { user: { role: 'admin' } };
        const API = { get: async (p) => p.startsWith('/students/') ? { id: 's1', firstName: 'Jess', lastName: 'Tran', grade: 9, gender: 'female', grpTotal: 0 }
          : p.startsWith('/connections/student/') ? [{ leaderId: 'L1', leaderName: ${JSON.stringify(HOSTILE)} }] : [] };
-       function modal(h) { html = h; } function toast() {}
+       function modal(h) { html = h; } function toast() {} function _here() { return {}; } function _still() { return true; }
        function svcPct() { return null; } function quadChip() { return ''; } function qualChips() { return ''; }
        function fmtBday() { return ''; } function pBar() { return ''; } function L(k) { return k; }
        function phoneLink() { return ''; } function termRow() { return ''; } function icS() { return ''; } function icN() { return ''; }

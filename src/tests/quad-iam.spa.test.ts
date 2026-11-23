@@ -79,7 +79,7 @@ describe('R5 leader switch / login snaps the grade filter to the leader\'s own g
       const localStorage = { getItem(k) { return store[k] ?? null; }, setItem(k, v) { store[k] = v; }, removeItem(k) { delete store[k]; } };
       const S = { user: { role: 'quad', quad: 'g79' } };
       const _previewStash = null;
-      let _vgLocal = ${JSON.stringify(local)};
+      const _vgBusy = {}; let _vgLocal = ${JSON.stringify(local)};
       const Cache = { getStale() { return ${JSON.stringify(stale)}; } };
       const calls = globalThis.__calls; const API = { patch(u, b) { calls.push(u + JSON.stringify(b)); return Promise.resolve(); }, get() { calls.push('GET'); return Promise.resolve([]); } };
       function _linkOn() { return false; } function _vgRepaint() {} function toast() {}

@@ -148,6 +148,8 @@ const HANDLER_ALLOW = new Set([
   // A nested template is one value to this scan: these were read by hand (ids only)
   "mine ? `_icEdit(${_icJs(mine.id)})` : \"_icNew('check')\"", "warn ? `busMoveArm(this,'${riderId}','${x.id}')` : `busMove('${riderId}','${x.id}')`",
   "vehicleId ? `'${vehicleId}'` : 'null'",
+  // Fable Y2: a fixed call chosen by the line's own key, and an index into d.kept (a number); no data in either
+  "key === 'needsYou' ? '_ikOpenNeed();' : ''", "fi < 0 ? `_ikUnkeepAt(${ii})` : `_ikUnkeep(${fi},${ii})`",
 ]);
 const safeHandlerValue = (e: string, concat: boolean) => /^(_icJs|Number)\(/.test(e) || /^esc\(JSON\.stringify\(/.test(e) || HANDLER_ALLOW.has(e)
   || (!concat && isIdExpr(e.replace(/^esc\((.*)\)$/, '$1')));

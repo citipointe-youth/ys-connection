@@ -7,7 +7,7 @@ const FNS = ['esc', 'progBar', '_nyModeOf', '_nyMode', '_nyOn', '_linkModeOf', '
   '_lkFresh', '_lkTime', '_lkDay', 'fmtDay', '_lkSvcLabel', '_lkStatusText', '_lkStatusTone', '_lkCap', '_lkCapOff', '_lkLastSeen', '_lkSeen', '_lkOutsideWindow',
   '_lkBanner', '_lkKey', '_lkQGet', '_lkQSet', '_lkUuid', '_lkPush', '_lkSchedule', '_lkTakeBack', '_lkQueuedIdx', '_lkSending', '_lkMerge', '_lkApply',
   '_lkBoot', '_lkDrain', '_lkActions', '_lkFlush', '_lkSwitchedOff', '_lkFailed', '_lkRetry', '_lkResults', '_lkPill', '_lkLogoutGuard', '_lkClear', '_lkSoftReset', '_lkOnPage',
-  '_lkRefreshView', '_lkTop', '_lkSvc', '_lkFilter', '_lkLists', '_lkListHtml', '_lkDoneRowsHtml', '_lkDoneToggle', '_lkSetSearch', '_lkRowHtml', '_lkCheck', '_lkUndo',
+  '_lkRefreshView', '_lkTop', '_lkPh', '_lkSvc', '_lkFilter', '_lkLists', '_lkListHtml', '_lkDoneRowsHtml', '_lkDoneToggle', '_lkSetSearch', '_lkRowHtml', '_lkCheck', '_lkUndo',
   '_lkLeadersView', '_lkLeaderState', '_lkTickedCount', '_lkLeadersHtml', '_lkLeadersFoot', '_lkLeadersDraw',
   '_lkTickLeader', '_lkTickAll', '_lkLeadersSubmit', '_lkOpenLeaders', '_lkTickStop', '_lkStatusHtml',
   '_lkSwitchGuard', '_lkSwitchLeader', '_lkIamPick', '_lkIamListHtml', '_lkIamFilter', '_lkLoadLeaders', '_lkIamUse', '_lkMyName', '_lkAddDays',
@@ -53,7 +53,7 @@ function makeEnv(e: Partial<Env> = {}) {
     const _LK_RC = {}; // L7
     const navPush = () => {};
     const S = { user: { id: 'u1', role: ${JSON.stringify(env.role ?? 'grade')} }, page: 'home',
-      settings: { ministryConfig: { modules: Object.assign({ newYouthForms: ${JSON.stringify(env.mode ?? 'on')} }, ${JSON.stringify(env.modules ?? {})}) } } };
+      settings: { ministryConfig: { modules: Object.assign({ newYouthForms: ${JSON.stringify(env.mode ?? 'on')}, checkin: ${JSON.stringify(env.mode ?? 'on')}, lifegroupReport: ${JSON.stringify(env.mode ?? 'on')}, flows: ${JSON.stringify(env.mode ?? 'on')} }, ${JSON.stringify(env.modules ?? {})}) } } }; // the server resolves all three screens from the New person mode (Y3-5): the SPA no longer falls back
     let LINK = _lkFresh();
     ${LK_DOOR_TYPES_SRC}
     const localStorage = __ls;
@@ -1494,7 +1494,8 @@ describe('F2 lifegroup report', () => {
     k.fns._lkQSet([{ kind: 'action', id: P(71), type: 'submitReport', payload: { groupId: G(1) }, note: null, leaderId: 'L1' }]);
     await k.fns._lkFlush();
     expect(k.fns._lkGroupHtml(k.get().LINK.groups[0])).toContain('_lkReportCancel()');
-    k.fns._lkReportCancel();
+    k.answers.push(true); // Y2-2: Cancel report asks first
+    await k.fns._lkReportCancel();
     expect(k.fns._lkQGet()[0]).toMatchObject({ kind: 'cancel', id: P(71), leaderId: 'L1', _g: G(1) });
   });
   it('T6: member changes go through the queue; the answer shows on the row; an unsent opposite is just dropped', async () => {

@@ -68,7 +68,7 @@ describe('busRefresh concurrency (review fix round 1, finding 1)', () => {
       }
       function toast(m) { calls.push('toast:' + m); }
       function renderBus() { calls.push('renderBus'); }
-      function renderHome() { calls.push('renderHome'); }
+      function renderHome() { calls.push('renderHome'); } function _busHomeUpdate() { return false; }
       function _busEditing() { return false; }
       function __state() { return { fetchCalls: __fetchCalls, calls, BUS }; }
     `;
@@ -121,7 +121,7 @@ describe('busRefresh ignores stale results after logout (review fix round 2, fin
       }
       function toast(m) { calls.push('toast:' + m); }
       function renderBus() { calls.push('renderBus'); }
-      function renderHome() { calls.push('renderHome'); }
+      function renderHome() { calls.push('renderHome'); } function _busHomeUpdate() { return false; }
       function __resolveAll() { const rs = __resolvers; __resolvers = []; rs.forEach((r) => r()); }
       // Mirrors the real doLogout()'s Bus-related lines: bump gen, reset state, log the user out.
       function __logout() { BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.loading = null; BUS.failed = false; S.user = null; S.page = 'home'; }
@@ -181,7 +181,7 @@ describe('busRefresh starts a fresh load when the identity changes mid-flight (T
       }
       function toast(m) { calls.push('toast:' + m); }
       function renderBus() { calls.push('renderBus'); }
-      function renderHome() { calls.push('renderHome'); }
+      function renderHome() { calls.push('renderHome'); } function _busHomeUpdate() { return false; }
       function _busEditing() { return false; }
       function __setAs(id) { __as = id; }
       function __resolveAll() { const rs = __resolvers; __resolvers = []; rs.forEach((r) => r()); }
@@ -282,7 +282,7 @@ describe('busRefresh skips the repaint while a field inside the page is focused 
       async function _busGet(path) { return path === '/bus/run' ? { run: { version: 7 } } : { ok: true }; }
       function toast(m) {}
       function renderBus() { calls.push('renderBus'); }
-      function renderHome() { calls.push('renderHome'); }
+      function renderHome() { calls.push('renderHome'); } function _busHomeUpdate() { return false; }
       function __setActive(tag, type) { __active = tag ? { tagName: tag, type: type || '' } : null; }
       function __state() { return { calls, BUS }; }
     `;

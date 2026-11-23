@@ -1,4 +1,4 @@
-const CACHE = 'ysc-v184';
+const CACHE = 'ysc-v185';
 const SHELL_WAIT_MS = 3000; // impeccable 2026-10-24 #10: then the cached shell, if any
 const APP_SHELL = ['/'];
 
@@ -47,7 +47,7 @@ self.addEventListener('fetch', (e) => {
       let done = false;
       const send = (r) => { if (!done) { done = true; resolve(r); } };
       const t = setTimeout(() => cached().then((c) => { if (c) send(c); }), SHELL_WAIT_MS);
-      net.then((res) => { clearTimeout(t); send(res); }, () => { clearTimeout(t); cached().then(send); });
+      net.then((res) => { clearTimeout(t); if (res.ok) send(res); else cached().then((c) => send(c || res)); }, () => { clearTimeout(t); cached().then(send); });
     }));
     return;
   }

@@ -91,7 +91,7 @@ describe('BRK-24 CSV rows', () => {
   it('the preview counts students as the server will', async () => {
     let shown = '';
     (globalThis as any).__m = (h: string) => { shown = h; };
-    const { previewServiceImport } = loadFns(['previewServiceImport'], `function modal(h) { globalThis.__m(h); } function esc(s) { return s; }
+    const { previewServiceImport } = loadFns(['previewServiceImport'], `function modal(h) { globalThis.__m(h); } function esc(s) { return s; } function _here() { return {}; } function _still() { return true; }
       const Cache = { get: () => [{ firstName: 'Old', lastName: 'One' }] }; function _gradeList() { return [7, 8, 9]; } function _gradeWord() { return 'Grade'; } const window = {};`);
     await previewServiceImport('f.csv', [
       { first_name: 'Old', last_name: 'One', gender: 'f', grade: 8 },
@@ -134,7 +134,7 @@ describe('BRK-24 CSV rows', () => {
       let shown = '';
       (globalThis as any).__m = (h: string) => { shown = h; };
       (globalThis as any).__saved = saved;
-      const { previewServiceImport } = loadFns(['previewServiceImport'], `function modal(h) { globalThis.__m(h); } function esc(s) { return s; }
+      const { previewServiceImport } = loadFns(['previewServiceImport'], `function modal(h) { globalThis.__m(h); } function esc(s) { return s; } function _here() { return {}; } function _still() { return true; }
         const Cache = { get: () => null, getStale: () => null }; const API = { get: async () => { if (!globalThis.__saved) throw new Error('offline'); return globalThis.__saved; } };
         function _gradeList() { return [7, 8, 9]; } function _gradeWord() { return 'Grade'; } const window = {};`);
       await previewServiceImport('f.csv', Array.from({ length: count }, (_, i) => ({ first_name: 'S' + i, last_name: 'Dummyton', gender: 'f', grade: 8 })));

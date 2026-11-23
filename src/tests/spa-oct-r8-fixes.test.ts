@@ -222,7 +222,7 @@ describe('T7/T8 grade filter repaints from the cache', () => {
     expect(body).not.toMatch(/\brender\(\)/);
   });
   it('a failed save reverts the filter, repaints and says why', async () => {
-    const f = loadFns(['_vgSave'], `let _vgLocal = { L1: [8] }; const msgs = []; let reps = 0;
+    const f = loadFns(['_vgSave'], `const _vgBusy = {}; let _vgLocal = { L1: [8] }; const msgs = []; let reps = 0;
       const API = { patch: async () => { throw new Error('No connection'); } };
       function _vgLeader() { return null; } function toast(m) { msgs.push(m); } function _vgRepaint() { reps++; }
       function __s() { return { _vgLocal, msgs, reps }; }`, ['_vgSave', '__s']);

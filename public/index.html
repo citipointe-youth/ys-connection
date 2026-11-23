@@ -167,6 +167,7 @@ input,select,textarea{font-family:inherit;font-size:inherit}
    .btn-ghost is for icon-only buttons; a worded action is primary or secondary. */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;min-height:44px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;border:none;white-space:nowrap}
 .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+a.btn{text-decoration:none}
 .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-dark);transform:translateY(-1px)}.btn-primary:active{transform:translateY(0)}
 .btn-secondary{background:var(--paper-dark);color:var(--ink)}.btn-secondary:hover{background:#d1d5db}
 .btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:#dc2626}
@@ -323,7 +324,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .al-warn{background:var(--warn-light);color:#92400e}
 
 /* Login */
-.login-pg{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:linear-gradient(150deg,var(--accent) 0%,var(--navy) 130%)}
+.login-pg{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:linear-gradient(150deg,var(--accent) 0%,var(--navy) 130%)}
 .login-card{background:#fff;border-radius:var(--radius);padding:28px;width:100%;max-width:380px;box-shadow:0 20px 40px rgba(0,0,0,.2)}
 .login-logo{text-align:center;margin-bottom:20px}
 .login-logo .icon{display:flex;justify-content:center;margin-bottom:8px;color:var(--navy)}
@@ -769,6 +770,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-pill.ok{background:var(--success-light);color:#047857}
 .lk-pill.bad{background:var(--danger-light);color:#b91c1c;cursor:pointer;min-height:40px;padding:8px 14px}
 .lk-pill.fade{animation:lkfade 3s forwards}
+.lk-ph{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px}.lk-ph h1{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lk-ph .lk-pill{margin:0;flex:none}
 @keyframes lkfade{0%,60%{opacity:1}100%{opacity:0}}
 .lk-alert{padding:10px 12px;border-radius:var(--radius-sm);font-size:13px;margin-bottom:10px;display:flex;gap:8px;align-items:flex-start;line-height:1.35}
 .lk-alert.practice{background:var(--paper-dark);color:#334155}
@@ -790,11 +792,17 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-grow{flex:1;min-width:0}
 .lk-nm{font-weight:600;font-size:15px;flex:1;min-width:0}
 .lk-st{font-size:12px;margin-top:2px;font-weight:500}
+/* Y2-1, door rows only (#lk-list): the name may take two lines when idle; a status line stays one line unless it is an error, and then the name drops to one line so a tap never changes the row height */
+#lk-list .lk-row .lk-nm{white-space:normal;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
+#lk-list .lk-row .lk-st:not(.bad){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lk-list .lk-row:has(.lk-st) .lk-nm{display:block;white-space:nowrap;text-overflow:ellipsis}
+#lk-list .lk-row:has(.btn+.btn) .lk-chip{display:none}
 .lk-st .ic-s{width:12px;height:12px;vertical-align:-2px}
 .lk-st.grey{color:var(--ink-faint)}.lk-st.wait{color:#92400e}.lk-st.ok{color:#047857}.lk-st.bad{color:#b91c1c}.lk-st.prac{color:var(--ink-mid)}
 .lk-done{margin-top:6px}
 .lk-done summary{list-style:none;cursor:pointer;background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;min-height:40px;box-sizing:border-box}
 .lk-done summary::-webkit-details-marker{display:none}
+.lk-done summary .ic-s:last-child{transition:transform .15s}.lk-done[open]>summary .ic-s:last-child{transform:rotate(180deg)}
 .lk-done-h{background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;font-size:13px;color:var(--ink-mid);font-weight:600;display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between;align-items:center;margin-bottom:6px;min-height:40px;box-sizing:border-box}
 .lk-asof{font-weight:400;font-size:12px}.lk-done-h .chip{gap:4px}
 .lk-hint{font-size:12px;color:var(--ink-mid);text-align:center;margin:12px 4px}
@@ -817,7 +825,7 @@ details.el-grp>summary.el-h{cursor:pointer;min-height:44px;display:flex;align-it
 .lk-tag{color:var(--accent);background:#fff;border:1px solid #c7c7f5;padding:1px 7px;flex:none}
 .lk-toast{position:fixed;bottom:calc(var(--nav-h) + var(--s3) + var(--safe-b));left:50%;transform:translateX(-50%);background:rgba(17,24,39,.92);color:#fff;padding:6px 6px 6px 16px;border-radius:20px;font-size:14px;font-weight:500;display:none;align-items:center;gap:10px;z-index:301;max-width:calc(100vw - 32px)}
 .lk-toast.show{display:flex}.lk-toast span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lk-toast .btn{background:#fff;color:#111827;flex:none}
+.lk-toast{pointer-events:none}.lk-toast .btn{background:#fff;color:#111827;flex:none;pointer-events:auto}
 @media(min-width:768px){.lk-toast{bottom:24px}}
 body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} /* F-26: an error stays readable above the Undo toast */
 .lk-tag.amber{color:#92400e;background:var(--warn-light);border-color:var(--warn);margin-left:6px}
@@ -838,13 +846,13 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .lk-mt{margin-top:10px}
 .lk-right{text-align:right;margin-top:4px}
 .lk-chk{display:flex;align-items:center;gap:8px;font-size:15px;margin:4px 0 14px;cursor:pointer;min-height:40px}
-.lk-chk input{width:20px;height:20px}
+.lk-chk input{width:20px;height:20px;flex:none}
 .lk-hlg{margin-bottom:var(--s2);border-left:5px solid var(--accent)}.lk-hlg.done{border-left-color:var(--success);background:var(--success-light)}
 .lk-sentc{border-left:5px solid var(--success);background:var(--success-light)}
 .lk-rh{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-bottom:var(--s3)}
 .lk-rg{font-family:var(--font-display);font-weight:700;font-size:var(--t-h2);min-width:0}
 .lk-wkc{display:flex;align-items:center;gap:var(--s1);flex:none}
-.lk-ar{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--paper-card);color:var(--ink);padding:0;display:inline-flex;align-items:center;justify-content:center}
+.lk-ar{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--paper-card);color:var(--ink);padding:0;display:inline-flex;align-items:center;justify-content:center}
 .lk-ar:disabled{opacity:.35}.lk-ar .ic-s{width:14px;height:14px}
 .lk-dchip{position:relative;display:inline-flex;align-items:center;min-height:32px;background:var(--chip);color:var(--accent-dark);font-weight:700;font-size:var(--t-sm);border-radius:999px;padding:0 var(--s3);overflow:hidden;white-space:nowrap}
 .lk-dchip input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
@@ -882,6 +890,7 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .fc.lk-ff-mix.on{background:var(--mix-dark);border-color:var(--mix-dark);color:#fff}
 .fc.lk-ff-boy.on{background:var(--boy-dark);border-color:var(--boy-dark);color:#fff}.fc.lk-ff-girl.on{background:var(--girl-dark);border-color:var(--girl-dark);color:#fff}
 .lk-ff2{display:flex;gap:8px;margin-bottom:10px;align-items:center}.lk-ff2 .fs{flex:2 1 0;min-width:0;min-height:44px}.lk-ff2 .fi{flex:4.5 1 0;min-width:0;min-height:44px}.lk-ff2 .lk-mine{flex:0 0 auto;display:flex;align-items:center;gap:4px;min-height:44px;font-size:13px;cursor:pointer}.lk-ff2 .lk-mine input{width:20px;height:20px}
+@media(max-width:479px){.lk-ff2{flex-wrap:wrap}.lk-ff2 .fs{flex:1 1 140px}.lk-ff2 .fi{flex:1 0 100%}}
 .lk-ff{flex-wrap:nowrap}.lk-ff .fc{min-height:36px;flex:1 1 0;padding:6px 2px;font-size:13px;white-space:nowrap;text-align:center}
 .lk-cf{gap:4px}.lk-cf .fc{font-size:12px;padding:6px 0;min-width:0} /* six chips fit a 375px phone */
 @media(pointer:coarse){.lk-ff .fc{min-height:44px}} /* impeccable 2026-10-24 #7: back to the I1 44px chip ruling (36px above won on order) */
@@ -922,9 +931,9 @@ body:has(.lk-toast.show) #toast{z-index:302;bottom:calc(130px + var(--safe-b))} 
 .ik-warn .ic-s,.ik-line .ic-s{width:12px;height:12px;vertical-align:-2px}
 .lk-tag.ik-ok{color:#047857;border-color:#a7f3d0}.lk-tag.ik-bad{color:#b91c1c;border-color:#fecaca}.lk-tag.ik-wait{color:#b45309;border-color:#fde68a}.lk-tag.ik-prac{color:var(--ink-mid);border-color:var(--line)}
 /* Consents run 2026-10-17 (R1): a smaller page title, the status line with its Refresh link */
-.ik-ph{margin-bottom:8px}.ik-ph h1{font-size:18px}
+.ik-ph{margin-bottom:8px}.ik-ph h1{font-size:22px}
 .ik-stl{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:-8px 0 10px}
-.ik-lnk{background:none;border:0;padding:0 4px;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer;min-height:32px}
+.ik-lnk{background:none;border:0;padding:0 4px;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer;min-height:44px}
 .ik-chg-dnc{color:#b91c1c;font-weight:700}.ik-ict{font-size:11px;font-weight:700;color:#b91c1c}
 /* UI standard (E): a Mismatches field as two columns, Form | Profile; an empty side reads "blank" in muted italics. */
 .ik-mis{font-size:13px;margin-top:var(--s2)}.ik-mis b{display:block;font-weight:600;margin-bottom:2px}
@@ -1701,6 +1710,7 @@ function modal(html, onClose, opts) {
   // screen readers stay in the sheet), Esc closes (keydown below), and closeModal gives focus back to the opener.
   // A sheet replaced by another sheet keeps the first opener.
   if (!r.innerHTML) { const a = document.activeElement; r._opener = a && a !== document.body ? a : null; }
+  if (r._ask) { r._ask = false; const p = typeof LINK !== 'undefined' && LINK ? LINK.ask : null; if (p) { LINK.ask = null; p(false); } } // a _lkAsk question replaced by another sheet is answered No: its caller (doLogout) must not hang
   r.innerHTML = `<div class="mo ${opts.overlayClass||''}" id="mo-overlay"><div class="mo-box ${opts.boxClass||''}" role="dialog" aria-modal="true" tabindex="-1"><div class="mo-handle"></div>${html}</div></div>`;
   r._onClose = onClose;
   r._typed = false; r._armed = 0;
@@ -1738,7 +1748,7 @@ function _moFitViewport() {
 }
 if (window.visualViewport) { window.visualViewport.addEventListener('resize', _moFitViewport); window.visualViewport.addEventListener('scroll', _moFitViewport); }
 function closeModal() {
-  const r = document.getElementById('modal-root'); if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null;
+  const r = document.getElementById('modal-root'); r._ask = false; if (r._onClose) r._onClose(); r.innerHTML = ''; r._onClose = null;
   // F-52: the tap that closed the sheet must not land on the page underneath (iOS ghost click).
   const app = document.getElementById('app');
   if (app) app.inert = false;
@@ -1873,8 +1883,14 @@ function _prefetch() {
   // to a single request is the core of the 2026-07-05 incident fix (see CLAUDE.md).
   // QA 1: only the logins with import:run may read /import/history; anyone else got a 403 on every sign-in.
   const canImport = !!S.user && ['admin', 'oversight'].includes(S.user.role);
-  API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats'].concat(canImport ? ['/import/history'] : [], _prayersOn() ? ['/prayers'] : []));
+  // Y1-3: the /batch promise is kept, so a cold Home that opens while it is out waits for it instead of sending a second /batch.
+  // Only the /batch job: the own-GET paths (import history, prayers, notices) never hold Home's first paint.
+  const p = API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats']).catch(() => {});
+  API.batch([].concat(canImport ? ['/import/history'] : [], _prayersOn() ? ['/prayers'] : [], _noticesOn() ? ['/notices'] : [])).catch(() => {});
+  _prefetchP = p;
+  p.finally(() => { if (_prefetchP === p) _prefetchP = null; });
 }
+let _prefetchP = null;
 // Prayers module switch (ministryConfig.modules.prayers, default on).
 function _prayersOn() {
   const mc = (S.settings && S.settings.ministryConfig) || {};
@@ -2975,8 +2991,12 @@ function _vgSet(grades) {
   clearTimeout(_vgTimer);
   _vgTimer = setTimeout(() => _vgSave(id), 600);
 }
+// Y2-11: one save per leader at a time (1 = running, 2 = a pick landed meanwhile): the older PATCH can never land after the newer.
+const _vgBusy = {};
 async function _vgSave(id) {
+  if (_vgBusy[id]) { _vgBusy[id] = 2; return; }
   if (!Object.prototype.hasOwnProperty.call(_vgLocal, id)) return;
+  _vgBusy[id] = 1;
   const grades = _vgLocal[id];
   try {
     await API.patch(`/leaders/${id}/view-grades`, { grades });
@@ -2989,6 +3009,9 @@ async function _vgSave(id) {
     // Not saved: drop the tap so the screen shows the real saved filter again, and say why.
     if (_vgLocal[id] === grades) { delete _vgLocal[id]; _vgRepaint(); }
     toast(e.message);
+  } finally {
+    const again = _vgBusy[id] === 2; delete _vgBusy[id];
+    if (again) _vgSave(id);
   }
 }
 // Repaint the current screen from the cache only (T7). A chip tap must not re-run the page
@@ -3002,7 +3025,7 @@ function _vgRepaint() {
   if (p === 'home') return _renderHomeInner(true, true);
   return render();
 }
-function _vgReset() { clearTimeout(_vgTimer); _vgTimer = null; _vgLocal = {}; }
+function _vgReset() { clearTimeout(_vgTimer); _vgTimer = null; _vgLocal = {}; Object.keys(_vgBusy).forEach((k) => { delete _vgBusy[k]; }); }
 // Pure per-screen rules (vg = _vgGrades(); null = no filter).
 function _vgStudents(list, vg) { return vg ? (list || []).filter(s => vg.includes(s.grade)) : (list || []); }
 // Connect Setup leader cards: grades overlap the filter, or the leader has no grades yet.
@@ -3902,9 +3925,18 @@ async function doLogin() {
   } catch (e) { errEl.innerHTML = `<div class="alert al-err">${esc(e.message)}</div>`; }
 }
 
-async function doLogout() {
-  if (_setupLeaveAsk(doLogout)) return; // QA 27
+let _logoutBusy = false;
+// Y2-4: Sign out asks once ("Sign out?"), unless the Youth Setup guard or the unsent-work guard has already asked. A second tap
+// while the question or the sign-out is running does nothing (one question, one /auth/logout).
+async function doLogout(asked) {
+  if (_logoutBusy) return;
+  if (_setupLeaveAsk(() => doLogout(true))) return; // QA 27: after its Discard the question is not asked again
+  _logoutBusy = true;
+  try {
+  let unsent = 0;
+  try { unsent = _lkQGet().filter((it) => it.kind !== 'identity').length; } catch (e) {}
   if (!(await _lkLogoutGuard())) return; /*LINK*/
+  if (!asked && !unsent && !(await _lkAsk('You will need to type the username and password again.', 'Sign out', 'Stay', 'Sign out?'))) return;
   const lkK = _lkKey(); /*LINK RV-I-m9: captured first: a dead token (401) in _ikQLogout nulls S.user */
   const [ik, ic] = await Promise.all([_ikQLogout(5000), _icLogout(5000)]); // R7 + S-B1: send intake + ID checks once (max 5 s together), then clear
   S.reauth = false; document.getElementById('reauth')?.remove(); // a 401 during the sends opened "Sign in again": signing out anyway
@@ -3916,7 +3948,7 @@ async function doLogout() {
   _arFilter = { grade: null, gender: null };
   _bdayFilter = { grade: null, gender: null };
   _prayerFilter = { grade: null, gender: null };
-  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.cars = null; BUS.carsOpen = false; BUS.carsErr = false; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; BUS.tripDate = null; _busStopPoll();
+  _busLogoutReset();
   _previewStash = null;
   nyReset(); /*NEW-YOUTH*/
   _icClearLocal();
@@ -3928,6 +3960,13 @@ async function doLogout() {
     // yap_leader_id ("I am") stays: T4 says the pick persists across logout.
   } catch (e) {}
   render();
+  } finally { _logoutBusy = false; }
+}
+
+// Y1-10: logout leaves nothing of the Bus screens in memory for the next login on this tab.
+function _busLogoutReset() {
+  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.cars = null; BUS.carsOpen = false; BUS.carsErr = false; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; BUS.tripDate = null; _busStopPoll();
+  BUS.hist = null; BUS.histPeople = null; BUS.analysis = null; BUS.forms = null; BUS.ocDraft = null; BUS.mapUrl = null; BUS.hits = []; BUS.search = '';
 }
 
 // Full-page gate for accounts flagged mustChangePassword (seeded/admin-set
@@ -4118,7 +4157,9 @@ async function renderHome() {
   // per-path API.get calls all hit the cache instead of fanning out into 4-5 separate
   // requests. That login-time fan-out (multiplied across many simultaneous logins) is
   // what overwhelmed the free-tier Supavisor pooler — see CLAUDE.md 2026-07-05.
-  await API.batch(_hp).catch(() => {});
+  const _pg = S.page, _u = S.user;
+  await (_prefetchP || API.batch(_hp)).catch(() => {});
+  if (S.page !== _pg || S.user !== _u) return; // Y1-1: the user moved on (or signed out) while the batch was out
   try { await _renderHomeInner(false); } catch (err) { _homeError(err); }
   // Cold load self-heal: if any endpoint failed this round (e.g. a slow
   // /lifegroups/stats timed out during the serverless cold start), Home would
@@ -4238,11 +4279,13 @@ function _attnDismiss(key, n) {
   try { const m = _attnSeen(); m[key] = n; localStorage.setItem('ys-attn-dismissed', JSON.stringify(m)); } catch (e) { /* no storage: the line stays */ }
   const el = document.getElementById('home-attn'); if (el) el.innerHTML = _attnHtml(_attnMine());
 }
+// Y2-7: the Home "needs you" line lands on Needs action already open (the default from More stays collapsed).
+function _ikOpenNeed() { const I = _ik(); I.hubOpen = I.hubOpen || {}; I.hubOpen.need = true; }
 function _attnHtml(a) {
   const seen = _attnSeen(), L = _attnLines(a).filter((l) => !(l[2] && Number(seen[l[2]]) >= l[3]));
   if (!L.length) return '';
   return `<div class="card" style="padding:10px 12px;margin-bottom:10px;border-left:4px solid var(--warn)"><div style="font-weight:700;display:flex;align-items:center;gap:6px;margin-bottom:4px">${icS('info')} Needs attention</div>`
-    + L.map(([t, on, key, n]) => `<div style="display:flex;align-items:center;gap:8px">` + (on ? `<div role="button" tabindex="0" onclick="${on}" style="flex:1;padding:5px 0;cursor:pointer;color:var(--accent-dark)">${esc(t)} ›</div>` : `<div style="flex:1;padding:5px 0">${esc(t)}</div>`)
+    + L.map(([t, on, key, n]) => `<div style="display:flex;align-items:center;gap:8px">` + (on ? `<div role="button" tabindex="0" onclick="${key === 'needsYou' ? '_ikOpenNeed();' : ''}${on}" style="flex:1;padding:5px 0;cursor:pointer;color:var(--accent-dark)">${esc(t)} ›</div>` : `<div style="flex:1;padding:5px 0">${esc(t)}</div>`)
       + (key ? `<button type="button" class="btn btn-secondary" style="padding:2px 8px;font-size:12px" onclick="_attnDismiss('${key}',${Number(n)})">Dismiss</button>` : '') + '</div>').join('') + '</div>';
 }
 function _attnBadges(a) { return a ? { problems: a.errors + a.unsent + a.fix.length, link: a.unclear + a.waiting } : {}; }
@@ -4404,7 +4447,7 @@ async function _renderHomeInner(stale, fromCache) {
     // here — leaving just Birthdays, which then gets the full-width single column.
     const qa = _homeTiles(u);
     if (qa.length) {
-      body += `<div class="qa-grid" style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : '1fr 1fr'};gap:6px;margin-bottom:10px">`;
+      body += `<div class="qa-grid" style="display:grid;grid-template-columns:${u.role === 'grade' ? '1fr' : 'repeat(2,minmax(0,1fr))'};gap:6px;margin-bottom:10px">`;
       for (const x of qa) {
         const warn = x.id === 'at-risk' && stats.atRiskTotal > 0;
         const wide = x.wide ? ';grid-column:1/-1' : '';
@@ -4547,7 +4590,7 @@ async function renderLeaderHome() {
   // The base list, so Prayers stays a plain button here even when the nav shows More.
   const acts = _navItemsBase().filter(i => i.id !== 'home' && (i.id !== 'prayers' || _prayersOn()));
   if (acts.length) {
-    body += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">`;
+    body += `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:16px">`;
     for (const a of acts) body += `<button class="btn btn-secondary" style="justify-content:flex-start" onclick="go('${a.id}')">${icS(a.ic)} ${esc(a.label)}</button>`;
     body += `</div>`;
   }
@@ -4630,7 +4673,7 @@ async function _saveSmsTemplate(leaderId, elId) {
   const val = el ? el.value.trim() : '';
   try {
     await API.patch(`/leaders/${leaderId}/sms-template`, { smsTemplate: val || null });
-    Cache.del('/leaders');
+    Cache.del('/leaders', '/connections/leader/' + leaderId); // Y1-8: Home refills its box from the cached follow-up too
     await API.get('/leaders'); // refetch now so _myCustomSmsTemplate()'s synchronous Cache.getStale read sees the new template immediately, not just after the next natural /leaders fetch
     toast('✓ Template saved');
   } catch (e) { toast(e.message); }
@@ -5494,10 +5537,15 @@ async function _msNotYou() { if (await _lkSwitchLeader(null)) { _msLeader = null
 async function _msPickLeader(v) { if (await _lkSwitchLeader(v || null)) _msLeader = v; renderMyStudents(); }
 const MYSTUDENTS_PATHS = ['/leaders?pick=1', '/students']; // F-01: the I am picker lists only this login's own leaders
 let _myStudentsRevalidating = false;
+// Y2-9: the picked leader's summary and the prayers are read (and revalidated) with the two lists above.
+function _msPaths() {
+  const l = _msLeader || getMyLeaderId();
+  return l ? [`/connections/leader/${l}/summary`].concat(_prayersOn() ? ['/prayers'] : []) : [];
+}
 function _revalidateMyStudents() {
   if (_myStudentsRevalidating) return;
   _myStudentsRevalidating = true;
-  API.batch(MYSTUDENTS_PATHS)
+  API.batch(MYSTUDENTS_PATHS.concat(_msPaths()))
     .then(() => { if (S.page === 'my-students') return renderMyStudents(); })
     .catch(() => {})
     .finally(() => { _myStudentsRevalidating = false; });
@@ -5555,14 +5603,11 @@ async function renderMyStudents() {
   const msNotYouBtn = _msLeader && !(S.user && S.user.role === 'leader') ? `<button class="btn btn-secondary btn-sm" onclick="_msNotYou()">Not you?</button>` : '';
   body += `<div class="fg"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><label class="fl" style="margin-bottom:0">Who are you?</label>${msNotYouBtn}</div><select class="fs" onchange="_msPickLeader(this.value)"><option value="">— Choose a leader —</option>${opts}</select></div>`;
 
-  if (_msLeader) {
-    // The summary and the prayers load together (r22 U1). Prayers are best-effort: a failed fetch just means no prayer lines.
-    const [summary, prayers] = await Promise.all([
-      API.get(`/connections/leader/${_msLeader}/summary`).catch(() => null),
-      _prayersOn() ? API.get('/prayers').catch(() => []) : [],
-    ]);
-    if (S.page !== _pg) return;
-    const students = (summary?.students || []).slice().sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
+  // The list part, from a summary and the prayers; paints the whole page (the header and picker above are in `body`).
+  const _base = body;
+  const _msFill = (summary, prayers) => {
+    body = _base;
+    const students =(summary?.students || []).slice().sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
     const prayersByStudent = {};
     for (const p of prayers || []) {
       if (!p.student) continue;
@@ -5613,9 +5658,25 @@ async function renderMyStudents() {
       <button type="button" class="drop-head btn btn-ghost btn-sm" onclick="_drop('ms-tpl-drop')"><span class="drop-chev">›</span> Message template</button>
       <div class="drop-body" style="margin-top:6px">${_smsTemplateBoxHtml(msLeaderObj.id, msLeaderObj.smsTemplate, 'ms-sms-tpl')}</div>
     </div>`;
+    setApp(shell(body));
+  };
+  if (!_msLeader) { setApp(shell(body)); return; }
+  // Y2-9: the last-known summary and prayers paint at once and revalidate; with nothing cached the header and picker paint first.
+  // Prayers are best-effort (r22 U1): a failed fetch just means no prayer lines.
+  const sumPath = `/connections/leader/${_msLeader}/summary`, needP = _prayersOn();
+  const lp = [sumPath].concat(needP ? ['/prayers'] : []);
+  if (lp.every((p) => Cache.get(p) !== null) || lp.every((p) => Cache.getStale(p) !== null)) {
+    _msFill(Cache.getStale(sumPath), needP ? Cache.getStale('/prayers') || [] : []);
+    if (!lp.every((p) => Cache.get(p) !== null)) _revalidateMyStudents();
+    return;
   }
-
   setApp(shell(body));
+  const [summary, prayers] = await Promise.all([
+    API.get(sumPath).catch(() => null),
+    needP ? API.get('/prayers').catch(() => []) : [],
+  ]);
+  if (S.page !== _pg) return;
+  _msFill(summary, prayers);
 }
 
 // Builds one row per leader (name/grade/gender only) followed by that leader's
@@ -5926,7 +5987,7 @@ function _prayersHtml(list) {
     <button class="pfab" onclick="openPrayerModal()">${icS('plus')} Add Prayer</button>`;
 }
 async function _markPrayerAnswered(id) {
-  await API.patch('/prayers/' + id + '/status', { status: 'answered' });
+  try { await API.patch('/prayers/' + id + '/status', { status: 'answered' }); } catch (e) { toast(e.message || 'Could not save'); return; }
   Cache.del('/prayers');
   renderPrayers();
 }
@@ -6078,7 +6139,7 @@ async function _deletePrayer(id) {
   Cache.del('/prayers'); closeModal(); renderPrayers();
 }
 async function _markPrayerOpen(id) {
-  await API.patch('/prayers/' + id + '/status', { status: 'open' });
+  try { await API.patch('/prayers/' + id + '/status', { status: 'open' }); } catch (e) { toast(e.message || 'Could not save'); return; }
   Cache.del('/prayers');
   renderPrayers();
 }
@@ -6422,6 +6483,7 @@ async function unassignSD(sid, lid) {
 // T5 (2026-10-13): opts.two = the 2-column layout (attendance | leaders + phones) used from the lifegroup members list.
 async function showStudentDetail(id, opts) {
   const two = !!(opts && opts.two);
+  const h = _here(), n = (showStudentDetail.n = (showStudentDetail.n || 0) + 1); // Y1-9: only the latest call on this screen opens its sheet
   let s, myAllocs, allLeaders = [];
   try {
     [s, myAllocs, allLeaders] = await Promise.all([
@@ -6430,6 +6492,7 @@ async function showStudentDetail(id, opts) {
       API.get('/leaders').catch(() => []),
     ]);
   } catch { toast('Failed to load'); return; }
+  if (n !== showStudentDetail.n || !_still(h)) return;
   _sdStudent = s; _sdLeaders = allLeaders; _sdAssigned = new Set(myAllocs.map(a => a.leaderId));
   const canEdit = ['grade', 'quad', 'oversight', 'admin'].includes(S.user.role);
   const pct = svcPct(s);
@@ -7268,11 +7331,13 @@ async function previewServiceImport(filename, rows) {
   // (Cache.get) returns null once expired AND is wiped by Cache.clear() after every
   // import, so relying on it made a re-upload show everyone as "new" with 0 updates.
   // Fetch fresh (falling back to the last-known list, then empty) before counting.
+  const h = _here(), n = (previewServiceImport.n = (previewServiceImport.n || 0) + 1); // Y1-9
   let studentList = Cache.get('/students');
   if (!studentList) {
     try { studentList = await API.get('/students'); }
     catch { studentList = Cache.getStale('/students'); }
   }
+  if (n !== previewServiceImport.n || !_still(h)) return;
   const existing = new Set((studentList || []).map(s => `${(s.firstName||'').trim().toLowerCase()} ${(s.lastName||'').trim().toLowerCase()}`));
   // BRK-24: count what the server will do: same-name rows are one student, and it skips a row with no last name, no gender column or a grade out of range.
   let nu = 0; const grades = new Set(); let unknownGrade = 0, skipped = 0; const seen = new Set();
@@ -8494,7 +8559,7 @@ function _setupNoticesHtml(md, style) {
   if (style !== 'junior-senior') return '';
   md = md || {};
   // Leader alerts (2026-11-06): two more switches under Notices, greyed with a reason while what they need is off (the server resolves them off too).
-  const lgr = md.lifegroupReport != null ? md.lifegroupReport : md.newYouthForms, lgrOn = lgr === 'on' || lgr === 'admin' || lgr === true;
+  const lgr = md.lifegroupReport, lgrOn = lgr === 'on' || lgr === 'admin' || lgr === true;
   const alertSwitch = (k, label, tip, why) => `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:${why ? 'default' : 'pointer'}"><input type="checkbox" id="setup-${k}" ${!why && md[k] === 'on' ? 'checked' : ''} ${why ? 'disabled' : ''} onchange="_setupSet('modules.${k}', this.checked ? 'on' : 'off')"> <span>${label} ${helpTip(tip)}${why ? `<span class="help-text" style="display:block;margin:0">${why}</span>` : ''}</span></label>`;
   return `<label class="fg" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="setup-notices" ${md.notices === 'on' ? 'checked' : ''} onchange="_setupSet('modules.notices', this.checked ? 'on' : 'off')"> <span>Notices ${helpTip("Admin and oversight send a message to the four Junior/Senior logins (Junior or Senior, Guys or Girls). Shows under More and on Home for 24 hours. Off by default. Notices already sent are kept.")}</span></label>`
     + alertSwitch('birthdayAlerts', 'Birthday alerts', "A phone alert at 8 am when a student a leader is connected to has a birthday. Each leader picks it on their phone under More, Notices. Off by default.", md.notices === 'on' ? '' : 'Needs Notices. Turn Notices on first.')
@@ -8754,7 +8819,7 @@ const _SETUP_ELVANTO = [
   ['lifegroupReport', 'Lifegroup report', 'Send the weekly lifegroup attendance report to Elvanto.'],
   ['flows', 'Flow steps', 'See and complete the Elvanto flow steps for students.'],
 ];
-function _setupModuleMode(md, k) { return _nyModeOf(md[k] != null ? md[k] : md.newYouthForms); }
+function _setupModuleMode(md, k) { return _nyModeOf(md[k]); } // the server always sends each screen's own mode (resolveModules); no fallback
 // Modular setup: the switchboard keys (default on). The server refuses a save that leaves a module on without what it needs.
 const _SETUP_SWITCHES = [
   ['liveLink', 'Live Elvanto link', 'The console reads and writes Elvanto for the app. Flows, Lifegroups, Check-in, New person and the Public consent form need it.'],
@@ -10794,7 +10859,7 @@ async function busRefresh() {
       // I5: skip the repaint while a field inside the page is focused — the data (BUS.view)
       // is already fresh, only the paint is deferred — and let the next poll tick catch up.
       if (S.page === 'bus') { if (_busEditing()) BUS.pendingRepaint = true; else { BUS.pendingRepaint = false; renderBus(); } }
-      else if (S.page === 'home') renderHome();
+      else if (S.page === 'home' && !_busHomeUpdate()) renderHome(); // Y2-8: the tile and the New people card update in place
     }
   })();
   return BUS.loading;
@@ -11181,7 +11246,7 @@ const LK_GROUP_TYPES = ['submitReport', 'editReport', 'addGroupMember', 'removeG
 // A stored config without the key inherits the New person value (same rule as the server).
 function _linkModeOf(feature) {
   const m = ((S.settings && S.settings.ministryConfig) || {}).modules || {};
-  return _nyModeOf(m[feature] != null ? m[feature] : m.newYouthForms);
+  return _nyModeOf(m[feature]); // each screen's own mode (the server resolves all three); no newYouthForms fallback
 }
 // _linkOn('checkin' | 'lifegroupReport' | 'flows'): that feature is usable by this login (admin = admin login only).
 // No argument: any of the three is usable. The admin page is separate: _linkAdminOn.
@@ -11253,6 +11318,7 @@ function _lkStatusText(row, lastSeen) {
     'stale': 'Someone else changed this after your tap. Reload.',
     'group-unknown': "This group isn't in Elvanto any more. Reload.",
     'leader-member': 'Remove a leader in Elvanto.',
+    'saved-before': 'Saved before but not showing in Elvanto. Check in Elvanto.',
   };
   switch (row.status) {
     case 'queued': return 'Waiting to send.';
@@ -11681,11 +11747,14 @@ async function _lkLogoutGuard() {
 }
 function _lkAsk(text, yes, no, title) {
   return new Promise((res) => {
+    if (LINK.ask) { const p = LINK.ask; LINK.ask = null; p(false); } // a question replaced by another counts as No
     LINK.ask = res;
+    const root = document.getElementById('modal-root'); root._ask = false;
     modal(`<div class="mo-title">${esc(title || 'Not sent yet')}</div><p style="margin-bottom:14px">${esc(text)}</p>
       <button type="button" class="btn btn-primary btn-full" onclick="_lkAnswer(true)">${esc(yes)}</button>
       <button type="button" class="btn btn-secondary btn-full" style="margin-top:8px" onclick="_lkAnswer(false)">${esc(no)}</button>`,
     () => { const f = LINK.ask; LINK.ask = null; if (f) f(false); });
+    root._ask = true; // modal() answers No for this question if another sheet replaces it (modal never calls the old onClose)
   });
 }
 function _lkAnswer(v) { const f = LINK.ask; LINK.ask = null; closeModal(); if (f) f(v); }
@@ -11771,8 +11840,9 @@ try {
 function _lkRefreshView() {
   try {
     if (!_lkOnPage()) return;
-    const top = document.getElementById('lk-top');
-    if (top) top.innerHTML = _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : S.page === 'link-groups' ? LK_GROUP_TYPES : S.page === 'link-flows' ? _lkFlowTypes() : []);
+    const top = document.getElementById('lk-top'), ph = document.getElementById('lk-pill'); // Y2-1: the pill lives at the right of the title row, out of the flow
+    if (ph) ph.innerHTML = _lkPill();
+    if (top) top.innerHTML = (S.page === 'link-admin' ? _lkPill() : '') + _lkTop(S.page === 'link-checkin' ? LK_DOOR_TYPES : S.page === 'link-groups' ? LK_GROUP_TYPES : S.page === 'link-flows' ? _lkFlowTypes() : []);
     const list = document.getElementById('lk-list');
     if (list && S.page === 'link-checkin') { list.innerHTML = _lkListHtml(); }
     const gl = document.getElementById('lk-glist');
@@ -11790,7 +11860,9 @@ function _lkRefreshView() {
     if (S.page === 'link-checkin') _lkCiPoll(); // Plan F: every door repaint (re)arms the result poll
   } catch (e) {}
 }
-function _lkTop(types) { return _lkPill() + _lkBanner(types); }
+function _lkTop(types) { return _lkBanner(types); }
+// Y2-1: the three link screens' title row; the pill is drawn in its host so a first tap never moves the list below.
+function _lkPh(title) { return `<div class="ph lk-ph"><h1>${esc(title)}</h1><span id="lk-pill">${_lkPill()}</span></div>`; }
 // ── Pages ──
 async function renderLink(p) {
   const role = S.user.role;
@@ -11895,7 +11967,7 @@ function _lkCiPoll() {
 async function renderLinkCheckin() {
   _lkDayCheck();
   if (!LINK.services) {
-    setApp(shell(`<div class="ph"><h1>Check-in</h1></div><div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>`));
+    setApp(shell(`${_lkPh('Check-in')}<div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>`));
     try { _lkTakeServices(await API.fresh('/link/checkin')); LINK.loadErr = null; } catch (e) { LINK.loadErr = _lkSay(e.message || 'Could not load the services.', "Couldn't load. Try again."); }
     if (S.page !== 'link-checkin') return;
     if (!LINK.services) {
@@ -11918,12 +11990,12 @@ async function renderLinkCheckin() {
 function _lkPaintDoor() {
   const s = _lkSvc();
   // T7: the search bar is the screen. Nothing is listed until someone types; the leaders button sits at the bottom.
-  setApp(shell(`<div class="ph"><h1>Check-in</h1></div>
+  setApp(shell(`${_lkPh('Check-in')}
     <div id="lk-top">${_lkTop(LK_DOOR_TYPES)}</div>
     ${s || (LINK.services || []).length ? `<div class="card lk-svc"><div class="lk-svc-t">${s ? esc(_lkSvcLabel(s)) : 'Pick a service'}${s ? _lkNotToday(s) : ''}</div>
       <button type="button" class="btn btn-secondary btn-sm" onclick="_lkPickService()">${s ? 'Change' : 'Pick'}</button></div>` : ''}
     ${_lkNoTonight()}
-    ${s ? `<div class="lk-sticky"><div class="sbar"><input class="lk-big" id="lk-search" type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)"></div></div>
+    ${s ? `<div class="lk-sticky"><div class="sbar"><input class="lk-big" id="lk-search" type="search" placeholder="Search a name" aria-label="Search a name" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(LINK.q.search)}" oninput="_lkSetSearch(this.value)" onfocus="this.setSelectionRange(0,this.value.length)"></div></div>
       <div id="lk-list">${_lkListHtml()}</div>
       ${!_lkCapOff('checkIn') ? `<button type="button" class="btn btn-secondary btn-full lk-mb" onclick="_lkOpenLeaders()">${icS('check')} Check in leaders</button>` : ''}` : ''}`));
 }
@@ -12036,7 +12108,13 @@ function _lkCheck(pid, type) {
     const id = _lkUuid();
     _lkPush({ kind: 'action', id, type, payload, note: null, leaderId: getMyLeaderId() || null }, true);
     _lkTapToast(svc, pid, type, id);
+    _lkSelSearch();
   } catch (e) {}
+}
+// Y2-3: the typed name is selected after a tap, so the next key replaces it. Only while the box still has focus: never focused by code (no keyboard pop).
+function _lkSelSearch() {
+  const el = document.getElementById('lk-search');
+  if (el && document.activeElement === el) { try { el.setSelectionRange(0, el.value.length); } catch (e) {} }
 }
 // B10 / T-33: every check-in tap shows who was ticked for 5 s, with an Undo (a quick second tap on the next row is
 // easy to miss). The toast's Undo goes through _lkUndo, so a queued item is removed here. Impeccable review
@@ -12445,7 +12523,7 @@ function _lkGroupHtml(g) {
   const a = _lkGroupAct(g);
   let btn = '';
   if (a && a.status === 'queued') btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkReportUndo()">Undo</button>`;
-  else if (a && a.status === 'pending' && LINK.gres && LINK.gres[g.groupId] === a) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkReportCancel()">Cancel</button>`;
+  else if (a && a.status === 'pending' && LINK.gres && LINK.gres[g.groupId] === a) btn = `<button type="button" class="btn btn-secondary btn-sm" onclick="_lkReportCancel()">Cancel report</button>`;
   const line = a ? `<div class="rc-foot"><div class="lk-st ${_lkStatusTone(a)}">${_lkStatusHtml(a, _lkLastSeen())}</div>${btn}</div>` : '';
   const k = Math.max(0, Math.min(7, LINK.gwk || 0)), w = _lkWeeks(_lkToday())[k];
   const when = k === 0 ? 'This week' : k === 1 ? 'Last week' : k + ' weeks ago';
@@ -12564,7 +12642,7 @@ function _lkPaintGroups() {
   const body = !g ? `<div id="lk-glist">${_lkGroupsHtml()}</div>`
     : ''
       + (LINK.rf ? _lkFormHtml() : `<div id="lk-gpage">${_lkGroupHtml(g)}</div>`);
-  setApp(shell(`<div class="ph"><h1>Lifegroup report</h1></div><div id="lk-top">${_lkTop(LK_GROUP_TYPES)}</div>${body}`));
+  setApp(shell(`${_lkPh('Lifegroup report')}<div id="lk-top">${_lkTop(LK_GROUP_TYPES)}</div>${body}`));
 }
 async function _lkLoadGroups(quiet) {
   try {
@@ -12733,9 +12811,13 @@ function _lkReportUndo() {
   }
   _lkRefreshView();
 }
-function _lkReportCancel() {
+async function _lkReportCancel() {
   const g = _lkGroup(), a = g && LINK.gres && LINK.gres[g.groupId];
   if (!a || !a.id) return;
+  // Y2-2: one tap used to delete a just-sent report; ask first. It must still be the same pending report when answered.
+  if (!(await _lkAsk('It has not reached Elvanto yet. Cancel it and lose the ticks and note?', 'Cancel report', 'Keep report', 'Cancel report?'))) return;
+  const b = LINK.gres && LINK.gres[g.groupId];
+  if (!b || b.id !== a.id || b.status !== 'pending') return;
   _lkPush({ kind: 'cancel', id: a.id, leaderId: getMyLeaderId() || null, _g: g.groupId }, true);
 }
 // ── Lifegroup members (T5/T6, 2026-10-13; moved into the report form 2026-11-18). Read on open from GET
@@ -13524,7 +13606,7 @@ async function _lkFlowsReload() {
   LINK.fRel = 0; _lkRefreshView();
 }
 function _lkPaintFlows() {
-  setApp(shell(`<div class="ph"><h1>Flow steps</h1></div>${_lkFlowsStl()}<div id="lk-top">${_lkTop(_lkFlowTypes())}</div><div id="lk-flist">${_lkFlowsHtml()}</div>`));
+  setApp(shell(`${_lkPh('Flow steps')}${_lkFlowsStl()}<div id="lk-top">${_lkTop(_lkFlowTypes())}</div><div id="lk-flist">${_lkFlowsHtml()}</div>`));
 }
 function _lkFlowTypes() { return _lkBoss() ? LK_FLOW_TYPES : ['completeStep']; }
 async function _lkLoadFlows(quiet) {
@@ -13883,7 +13965,7 @@ async function _lkAdmLoadLog() {
 async function renderLinkAdmin() {
   if (!LINK.adm) LINK.adm = _lkAdmFresh();
   LINK.adm.lErr = null; // Y1: LINK.adm survives navigation; Activity opens collapsed, and a failed load is retried on the next open
-  setApp(shell(`<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>${_adminTabsHtml('link')}<div id="lk-top">${_lkTop([])}</div>${_lkAdminHtml()}`));
+  setApp(shell(`<div class="ph"><div class="ph-title" style="display:flex;align-items:center;gap:7px">${icN('settings')} Admin</div></div>${_adminTabsHtml('link')}<div id="lk-top">${_lkPill()}${_lkTop([])}</div>${_lkAdminHtml()}`));
   _lkAdmLoadActs(); _lkAdmLoadRoster();
   _attnLoad();
 }
@@ -14540,9 +14622,17 @@ function _ikKeep(fi, ii) {
 function _ikUnkeep(fi, ii) {
   const I = _ik(), f = _ikForm(fi), is = f && (f.issues || [])[ii], sk = _ikStudentSub();
   if (!is || !is.keep || !sk) return;
-  const a = _ikAns(), key = I.det.row.key;
-  if (a.keeps[sk]) delete a.keeps[sk][is.keep.field];
-  if (I.keepMem[key]) delete I.keepMem[key][is.keep.field];
+  _ikUnkeepField(sk, is.keep.field);
+}
+// Y2-10: a keep is cleared by sending the field as '' (the console keeps the earlier answers; deleting it from the set did nothing).
+function _ikUnkeepAt(ki) {
+  const d = _ik().det && _ik().det.detail, sk = _ikStudentSub(), f = d && (d.kept || [])[ki];
+  if (f && sk) _ikUnkeepField(sk, f);
+}
+function _ikUnkeepField(sk, field) {
+  const I = _ik(), a = _ikAns(), key = I.det.row.key;
+  a.keeps[sk] = a.keeps[sk] || {}; a.keeps[sk][field] = '';
+  I.keepMem[key] = I.keepMem[key] || {}; I.keepMem[key][field] = '';
   _ikAnswerSend(false);
 }
 function _ikFieldLabel(k) {
@@ -14727,11 +14817,14 @@ function _ikCompareHtml(d, a, keepsOut) {
     }).join('');
     return `<tr${diff ? ' class="ik-diff"' : ''}><th scope="row">${esc(_ikFieldLabel(k))}${diff ? '<span class="ik-dflag">Differs</span>' : ''}</th>${td}</tr>`;
   }).join('');
+  // Y2-10: once the console holds a field as kept, the push no longer carries the issue, so its row (and its Undo) comes from d.kept
+  // itself, label only (fi -1, ii = the index in d.kept). A field this phone has just un-kept ('') has no row until the push says so.
+  keptAll.forEach((f, ki) => { if (!seen[f] && mine[f] !== '') { seen[f] = 1; keepRows.push([{ keep: { field: f, value: '' } }, -1, ki]); } });
   const keeps = keepRows.map(([x, fi, ii]) => {
-    const phone = x.keep.field === 'parentPhone', kept = mine[x.keep.field] === x.keep.value || keptAll.includes(x.keep.field);
+    const phone = x.keep.field === 'parentPhone', kept = mine[x.keep.field] !== '' && (mine[x.keep.field] === x.keep.value || keptAll.includes(x.keep.field));
     const inner = kept
       ? `<div class="ik-line">${phone ? "Kept as is. The parent text goes to the parent form's mobile." : 'Kept as is.'}</div>`
-        + (mine[x.keep.field] === x.keep.value ? `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikUnkeep(${fi},${ii})">Undo keep</button>` : '')
+        + `<button type="button" class="btn btn-secondary btn-sm" onclick="${fi < 0 ? `_ikUnkeepAt(${ii})` : `_ikUnkeep(${fi},${ii})`}">Undo keep</button>`
       : `<button type="button" class="btn btn-secondary btn-sm" onclick="_ikKeep(${fi},${ii})">Keep as is</button>` // F-41: short, so it fits at 360 px
         + (phone ? `<div class="ik-line">The text goes to the parent form's mobile.</div>` : '');
     if (keepsOut) { keepsOut.push(inner); return ''; }
@@ -15099,7 +15192,8 @@ async function _hubMarkRow(mode, date, key, mark) {
   const item = { kind: 'action', id: _lkUuid(), type: 'intakeMark', payload: { mode, date, row: key, mark }, note: null, leaderId: null }, back = I.decl[k];
   I.decl[k] = mark === 'decline'; _ikDraw(); // shown at once
   const undo = () => { if (back === undefined) delete I.decl[k]; else I.decl[k] = back; };
-  let say = mark === 'decline' ? 'Declined. Undo is under the Declined chip.' : 'Back on the list.';
+  const DECLINED_SAY = 'Declined. Undo is under the Declined chip.';
+  let say = mark === 'decline' ? DECLINED_SAY : 'Back on the list.';
   try {
     const r = _ikOutcome(await _ikPost([item]), item.id);
     if (!(r && ['saved', 'replay', 'duplicate'].includes(r.outcome))) { undo(); say = (r && r.message) || 'Not saved. Try again.'; }
@@ -15108,7 +15202,7 @@ async function _hubMarkRow(mode, date, key, mark) {
   }
   delete I.mk[k];
   if (_ik() !== I) return;
-  toast(say); _ikDraw(); _hubLoad(true);
+  toast(say, say === DECLINED_SAY ? 5000 : undefined); _ikDraw(); _hubLoad(true); // Y2-7: the decline message stays 5 s (Undo is under the chip)
 }
 function _hubDeclToggle() { const I = _ik(); I.hubDeclView = !I.hubDeclView; _ikDraw(); }
 // Fix round 24 Oct (Task 5): after Save all / Text all, how many of the batch the console has finished (sent, refused, cancelled, unclear).
@@ -16116,15 +16210,24 @@ function _busHomeTile() {
   // attempt (module off / 404 / network) — busRefresh() clears the flag on its next success,
   // and doLogout() clears it so a fresh login always gets a clean retry.
   if (!v && !BUS.failed) busRefresh();
-  return `<div class="bus-tile" onclick="go('bus')" role="button" tabindex="0">
+  return `<div data-home="bus"><div class="bus-tile" onclick="go('bus')" role="button" tabindex="0">
     <div class="bt-ic">${icN('bus')}</div><div class="bt-label">${esc(L('busMinistry'))}</div>
-    <div class="bt-count">${esc(count)}</div></div>`;
+    <div class="bt-count">${esc(count)}</div></div></div>`;
+}
+// Y2-8: the Bus tile and the New people card have a host each, so a landed busRefresh / _busLoadPending fills them in place
+// instead of repainting all of Home (which closed whatever the user had open). False = no host on the page: the caller repaints.
+function _busHomeUpdate() {
+  const t = document.querySelector('[data-home=bus]'), c = document.querySelector('[data-home=bus-np]');
+  if (!t && !c) return false;
+  if (t) t.outerHTML = _busHomeTile();
+  if (c) c.outerHTML = _busNewPeopleCard();
+  return true;
 }
 // New-people admin card is defined in the Car setup / Routes / My car section below
 // (it needs BUS.pending, populated lazily) but is called from the Home hooks above.
 function _busNewPeopleCard() {
-  if (!BUS.view || BUS.view.pendingNewPeople == null || BUS.view.pendingNewPeople === 0) return '';
-  if (!BUS.pending) { _busLoadPending(); return ''; }
+  if (!BUS.view || BUS.view.pendingNewPeople == null || BUS.view.pendingNewPeople === 0) return '<div data-home="bus-np"></div>';
+  if (!BUS.pending) { _busLoadPending(); return '<div data-home="bus-np"></div>'; }
   const rows = BUS.pending.map((p) => {
     const sugg = p.suggestions[0];
     const added = fmtDay(p.createdAt);
@@ -16142,7 +16245,7 @@ function _busNewPeopleCard() {
       <div class="newperson-added">added ${esc(added)}</div></div>
       ${box}</div>`;
   }).join('');
-  return `<div class="card"><div class="card-title" style="margin-bottom:4px">New people from ${esc(L('busMinistry'))} <span class="chip c-warn">${BUS.view.pendingNewPeople}</span></div>${rows}</div>`;
+  return `<div data-home="bus-np"><div class="card"><div class="card-title" style="margin-bottom:4px">New people from ${esc(L('busMinistry'))} <span class="chip c-warn">${BUS.view.pendingNewPeople}</span></div>${rows}</div></div>`;
 }
 // Same in-flight-promise sharing as busRefresh() — concurrent callers (e.g. the New people
 // card re-rendering mid-fetch) get the one pending request instead of each firing their own.
@@ -16157,7 +16260,7 @@ async function _busLoadPending() {
     try { const pending = await _busGet('/bus/guests/pending'); if (gen === BUS.gen) BUS.pending = pending; }
     catch { if (gen === BUS.gen) BUS.pending = []; }
     if (gen === BUS.gen) BUS.pendingLoading = null;
-    if (gen === BUS.gen && S.user && S.page === 'home') renderHome();
+    if (gen === BUS.gen && S.user && S.page === 'home' && !_busHomeUpdate()) renderHome(); // Y2-8: in place; a full repaint only when no host is on the page
   })();
   return BUS.pendingLoading;
 }
@@ -18107,6 +18210,7 @@ function _onSignalBack() {
 window.addEventListener('online', _onSignalBack);
 document.addEventListener('visibilitychange', _onSignalBack);
 async function boot() {
+  _reloadViewportFix(); // Y1-4: first, so the nav correction is never seen
   let token = null;
   try { token = localStorage.getItem('yap_token'); } catch (e) {} // F-33
   let meDown = false;
@@ -18133,7 +18237,6 @@ async function boot() {
   let nav = null;
   try { const q = new URLSearchParams(location.search); if (S.user && q.has('nav')) nav = q; } catch {}
   render();
-  _reloadViewportFix();
   if (typeof _quadIamPrompt === 'function') _quadIamPrompt();
   if (nav) _navRoute(nav);
   if (S.user) _pushLeaderSync(); // once per boot: a pick changed while offline (or before alerts carried it) reaches the server
@@ -18145,6 +18248,19 @@ boot();
 // Busy = a New person send, an open sheet, a half-typed New person form, an open/unsent intake answer
 // or taps still in the link queue. Busy -> one "Update ready" button, and a reload on the next hide once idle.
 let _swReloading = false, _swWaiting = false;
+// Y1-2: this page's build; the same value as public/sw.js CACHE (a test fails the ship when they differ).
+const BUILD = 'ysc-v185';
+// A higher cache number than BUILD means a newer build took over, so this page is old. No ysc- name (storage cleared) = not stale: never a reload loop.
+function _swStale(keys) {
+  const n = (k) => { const m = /^ysc-v(\d+)$/.exec(k); return m ? Number(m[1]) : 0; };
+  return Math.max(0, ...(keys || []).map(n)) > n(BUILD);
+}
+const _swHadController = 'serviceWorker' in navigator && !!navigator.serviceWorker.controller;
+// controllerchange also fires when a new worker claims a page that was already loaded from the new build: that page asks nothing.
+function _swControllerChange() {
+  if (!_swHadController) return;
+  caches.keys().then((ks) => { if (_swStale(ks)) _swOnUpdate(); }, _swOnUpdate);
+}
 // F1 (round 2026-10-22, CY-E2): unsaved typing on ANY screen holds the reload until it is saved or left: a lifegroup report or
 // kept draft with changes (its ticks redraw, so only LINK.rf knows), or a field that differs from what the screen drew (searches aside).
 function _swTyped() {
@@ -18190,15 +18306,11 @@ function _swOnUpdate() {
 }
 function _swOnHidden() { if (_swWaiting && document.visibilityState === 'hidden' && _swIdle()) _swReload(); }
 if ('serviceWorker' in navigator) {
-  const _swHadController = !!navigator.serviceWorker.controller;
   // Tapped alert with the app already open (sw.js notificationclick posts {type: 'push-nav', screen, ...params}).
   navigator.serviceWorker.addEventListener('message', (e) => {
     if (e.data && e.data.type === 'push-nav' && S.user) _navRoute(e.data);
   });
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!_swHadController) return;
-    _swOnUpdate();
-  });
+  navigator.serviceWorker.addEventListener('controllerchange', _swControllerChange);
   document.addEventListener('visibilitychange', _swOnHidden);
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then(reg => {

@@ -100,7 +100,7 @@ describe('S1.3 grade filter core', () => {
     let _previewStash = ${opts.preview ? '{ token: 1 }' : 'null'};
     const __patches = []; const API = { patch: async (p, b) => { __patches.push([p, b]); return {}; } };
     let __renders = 0; function _vgRepaint() { __renders++; }
-    let _vgLocal = {}, _vgTimer = null;
+    const _vgBusy = {}; let _vgLocal = {}, _vgTimer = null;
     function toast() {}
     function __p() { return __patches; }
   `;
