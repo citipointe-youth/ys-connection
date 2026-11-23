@@ -1,0 +1,19 @@
+{
+  "contractVersion": 1,
+  "consoleId": "8f5a1c2e-0000-4000-8000-000000000001",
+  "consoleLabel": "laptop",
+  "consoleVersion": "11.1@185d8d6",
+  "inWindow": false,
+  "pollSeconds": 60,
+  "capabilities": {
+    "checkIn": "off",
+    "checkOut": "off",
+    "firstTimerCheckIn": "off",
+    "submitReport": "live",
+    "editReport": "live",
+    "futureType": "live"
+  },
+  "max": 6,
+  "leaseSeconds": 180,
+  "linkRev": 26
+}
