@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 
 // Fable review round, lane A, batch Y2. Runs the REAL functions from public/index.html with stubbed globals.
@@ -385,5 +385,61 @@ describe('Y2-10 Undo keep for every kept field', () => {
     const e = mk(['parentPhone']);
     e.fns._ikUnkeepAt(0);
     expect(e.fns._ikCompareHtml(e.detail, e.fns._ikAns())).not.toContain('Undo keep');
+  });
+});
+
+// ── Y2-11: one grade-filter save at a time ──
+describe('Y2-11 grade filter saves are chained per leader', () => {
+  const mk = () => {
+    const patches: any[] = [], gates: Array<ReturnType<typeof later>> = [];
+    const env: Record<string, any> = {
+      patches, _vgLocal: {}, _vgBusy: {}, _vgTimer: null, _previewStash: null, getMyLeaderId: () => 'L1', _vgLeader: () => null, _vgRepaint: () => {}, toast: () => {},
+      API: { patch: (p: string, b: any) => { patches.push([p, b]); const g = later(); gates.push(g); return g.p; } },
+    };
+    return { env, gates, fns: withStubs(['_vgSet', '_vgSave', '_vgReset'], env) };
+  };
+  it('a pick made during a save waits, then goes out once with the newest pick', async () => {
+    vi.useFakeTimers();
+    try {
+      const { env, gates, fns } = mk();
+      fns._vgSet([8]); await vi.advanceTimersByTimeAsync(600);
+      expect(env.patches).toEqual([['/leaders/L1/view-grades', { grades: [8] }]]);
+      fns._vgSet([9]); await vi.advanceTimersByTimeAsync(600);
+      expect(env.patches).toHaveLength(1); // the first is still out
+      fns._vgSet([9, 10]); await vi.advanceTimersByTimeAsync(600);
+      expect(env.patches).toHaveLength(1);
+      gates[0]!.go({}); await vi.advanceTimersByTimeAsync(0);
+      expect(env.patches).toHaveLength(2);
+      expect(env.patches[1]).toEqual(['/leaders/L1/view-grades', { grades: [9, 10] }]);
+      gates[1]!.go({}); await vi.advanceTimersByTimeAsync(0);
+      expect(env.patches).toHaveLength(2);
+      expect(env._vgBusy).toEqual({});
+    } finally { vi.useRealTimers(); }
+  });
+  it('the first save failing still lets the newest pick go out', async () => {
+    vi.useFakeTimers();
+    try {
+      const patches: any[] = [], rejects: Array<(e: Error) => void> = [], toasts: string[] = [];
+      const env: Record<string, any> = {
+        _vgLocal: {}, _vgBusy: {}, _vgTimer: null, _previewStash: null, getMyLeaderId: () => 'L1', _vgLeader: () => null, _vgRepaint: () => {}, toast: (m: string) => toasts.push(m),
+        API: { patch: (_p: string, b: any) => { patches.push(b); return new Promise((res, rej) => { rejects.push(rej); void res; }); } },
+      };
+      const fns = withStubs(['_vgSet', '_vgSave', '_vgReset'], env);
+      fns._vgSet([8]); await vi.advanceTimersByTimeAsync(600);
+      fns._vgSet([9]); await vi.advanceTimersByTimeAsync(600);
+      rejects[0]!(new Error('offline')); await vi.advanceTimersByTimeAsync(0);
+      expect(toasts).toEqual(['offline']);
+      expect(patches).toEqual([{ grades: [8] }, { grades: [9] }]);
+    } finally { vi.useRealTimers(); }
+  });
+  it('_vgReset empties the busy state', async () => {
+    vi.useFakeTimers();
+    try {
+      const { env, fns } = mk();
+      fns._vgSet([8]); await vi.advanceTimersByTimeAsync(600);
+      expect(Object.keys(env._vgBusy)).toEqual(['L1']);
+      fns._vgReset();
+      expect(env._vgBusy).toEqual({});
+    } finally { vi.useRealTimers(); }
   });
 });
