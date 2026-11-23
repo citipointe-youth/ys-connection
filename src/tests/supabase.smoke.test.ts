@@ -21,6 +21,7 @@ describe.skipIf(!URL_)('real-database smoke (CI Postgres only, never prod)', () 
 
   beforeAll(async () => {
     if (!/@(localhost|127\.0\.0\.1)[:/]/.test(URL_!)) throw new Error('smoke test: LINK_TEST_DATABASE_URL must be a local Postgres');
+    process.env['FIELD_ENCRYPTION_KEY'] ??= Buffer.alloc(32, 7).toString('base64'); // required under PERSISTENCE=supabase
     process.env['PERSISTENCE'] = 'supabase';
     process.env['DATABASE_URL'] = URL_;
     vi.resetModules(); // src/config/env.ts reads both at import
@@ -38,7 +39,8 @@ describe.skipIf(!URL_)('real-database smoke (CI Postgres only, never prod)', () 
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const r = await fetch(base + '/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'admin', password: pw }) });
-    token = ((await r.json()) as { token: string }).token;
+    token = ((await r.json()) as { token?: string }).token ?? '';
+    if (!token) throw new Error('smoke test: login failed (a run of 401s would pass as "below 500")');
     // Same route loop as phone-scope-sweep.test.ts: every GET, each :param tried with one student id, one leader id, 2026.
     const ids = [(await c.repos.students.findAll())[0]!.id, (await c.repos.leaders.findAll())[0]!.id];
     const out = new Set<string>();
@@ -54,16 +56,18 @@ describe.skipIf(!URL_)('real-database smoke (CI Postgres only, never prod)', () 
 
   it('every GET answers below 500', async () => {
     expect(getPaths.length).toBeGreaterThan(50);
-    const bad: string[] = [];
-    for (const p of getPaths) { const st = await call('GET', p); if (st >= 500) bad.push(`${st} ${p}`); }
+    const bad: string[] = []; let ok = 0;
+    for (const p of getPaths) { const st = await call('GET', p); if (st >= 500) bad.push(`${st} ${p}`); if (st === 200) ok++; }
     expect(bad).toEqual([]);
+    expect(ok).toBeGreaterThan(getPaths.length / 2); // a run of 401s or 404s is not a smoke test
   }, 120_000);
 
-  it('three writes answer below 500: bus rider, notice, attendance import', async () => {
+  it('three writes answer 2xx: bus rider, notice, attendance import', async () => {
     const rider = await call('POST', '/bus/riders', { studentId, newAddress: { label: 'Home', address: '1 Sample St, Dummyton', placeId: 'fake:smoke' } });
     const notice = await call('POST', '/notices', { title: 'Smoke', body: 'Smoke test notice', recipients: ['b79'] });
     const imp = await call('POST', '/import/csv', { filename: 'smoke.csv',
       rows: [{ first_name: 'Sample', last_name: 'Codeman', gender: 'male', grade: 9, '2026-02-06': 'Y' }] });
-    for (const st of [rider, notice, imp]) expect(st).toBeLessThan(500);
+    // 2xx, not just below 500: a 4xx means the write SQL never ran. If one 4xxs for a real reason, fix the payload.
+    for (const st of [rider, notice, imp]) { expect(st).toBeGreaterThanOrEqual(200); expect(st).toBeLessThan(300); }
   }, 60_000);
 });
