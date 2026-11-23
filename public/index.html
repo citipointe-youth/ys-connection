@@ -1873,8 +1873,12 @@ function _prefetch() {
   // to a single request is the core of the 2026-07-05 incident fix (see CLAUDE.md).
   // QA 1: only the logins with import:run may read /import/history; anyone else got a 403 on every sign-in.
   const canImport = !!S.user && ['admin', 'oversight'].includes(S.user.role);
-  API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats'].concat(canImport ? ['/import/history'] : [], _prayersOn() ? ['/prayers'] : []));
+  // Y1-3: the promise is kept, so a cold Home that opens while this is out waits for it instead of sending a second /batch.
+  const p = API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats'].concat(canImport ? ['/import/history'] : [], _prayersOn() ? ['/prayers'] : [], _noticesOn() ? ['/notices'] : [])).catch(() => {});
+  _prefetchP = p;
+  p.finally(() => { if (_prefetchP === p) _prefetchP = null; });
 }
+let _prefetchP = null;
 // Prayers module switch (ministryConfig.modules.prayers, default on).
 function _prayersOn() {
   const mc = (S.settings && S.settings.ministryConfig) || {};
@@ -4118,7 +4122,9 @@ async function renderHome() {
   // per-path API.get calls all hit the cache instead of fanning out into 4-5 separate
   // requests. That login-time fan-out (multiplied across many simultaneous logins) is
   // what overwhelmed the free-tier Supavisor pooler — see CLAUDE.md 2026-07-05.
-  await API.batch(_hp).catch(() => {});
+  const _pg = S.page, _u = S.user;
+  await (_prefetchP || API.batch(_hp)).catch(() => {});
+  if (S.page !== _pg || S.user !== _u) return; // Y1-1: the user moved on (or signed out) while the batch was out
   try { await _renderHomeInner(false); } catch (err) { _homeError(err); }
   // Cold load self-heal: if any endpoint failed this round (e.g. a slow
   // /lifegroups/stats timed out during the serverless cold start), Home would
