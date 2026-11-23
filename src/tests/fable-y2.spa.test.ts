@@ -227,3 +227,53 @@ describe('Y2-7 decline message and the Home line', () => {
     expect(f._hubBodyHtml()).toContain('<details class="lk-done" open ontoggle="_hubToggle(\'need\'');
   });
 });
+
+// ── Y2-8: Home updates the Bus tile and the New people card in place ──
+describe('Y2-8 Home stops repainting for the Bus tile', () => {
+  const mk = (withHosts = true) => {
+    const calls = { renderHome: 0, setApp: 0 }, hosts: Record<string, { outerHTML: string }> = withHosts ? { 'bus': { outerHTML: '' }, 'bus-np': { outerHTML: '' } } : {};
+    const BUS: any = { loading: null, loadingAs: null, gen: 0, view: null, failed: false, pending: null, pendingLoading: null, routeMin: {}, tab: 'roster' };
+    const env: Record<string, any> = {
+      BUS, calls, hosts, S: { user: { id: 'u1' }, page: 'home' }, getMyLeaderId: () => 'L1', _busTripQs: () => '', _modOn: () => false, _busOn: () => true,
+      _busGet: async (p: string) => (p === '/bus/run' ? { run: { id: 'r1', version: 3 }, vehicles: [{ running: true }], riders: [1, 2], pendingNewPeople: 1 }
+        : p === '/bus/guests/pending' ? [{ id: 'g1', name: 'Sample Guest', suggestions: [], createdAt: '2026-11-20', grade: 9, phone: null }] : {}),
+      renderHome: () => { calls.renderHome++; }, setApp: () => { calls.setApp++; }, toast: () => {}, esc: (x: any) => String(x), L: (k: string) => k, icN: () => '', icS: () => '', fmtDay: (d: string) => d,
+      document: { querySelector: (sel: string) => hosts[sel.replace('[data-home=', '').replace(']', '')] || null },
+    };
+    const fns = withStubs(['busRefresh', '_busLoadPending', '_busHomeUpdate', '_busHomeTile', '_busNewPeopleCard'], env);
+    return { fns, calls, hosts, BUS };
+  };
+  it('a landed busRefresh calls neither renderHome nor setApp, and fills the tile host', async () => {
+    const { fns, calls, hosts } = mk();
+    await fns.busRefresh();
+    expect(calls.renderHome).toBe(0);
+    expect(calls.setApp).toBe(0);
+    expect(hosts['bus']!.outerHTML).toContain('2 riders');
+    expect(hosts['bus']!.outerHTML).toContain('data-home="bus"');
+  });
+  it('a landed _busLoadPending calls neither, and fills the New people host', async () => {
+    const { fns, calls, hosts, BUS } = mk();
+    BUS.view = { run: { id: 'r1' }, vehicles: [], riders: [], pendingNewPeople: 1 };
+    await fns._busLoadPending();
+    expect(calls.renderHome).toBe(0);
+    expect(calls.setApp).toBe(0);
+    expect(hosts['bus-np']!.outerHTML).toContain('Sample Guest');
+    expect(hosts['bus-np']!.outerHTML).toContain('data-home="bus-np"');
+  });
+  it('busRefresh brings the New people list (the card asks for it once the count lands)', async () => {
+    const { fns, hosts } = mk();
+    await fns.busRefresh(); await tick(); await tick();
+    expect(hosts['bus-np']!.outerHTML).toContain('Sample Guest');
+  });
+  it('with no host on the page (Home not painted yet) it still repaints Home, as before', async () => {
+    const { fns, calls } = mk(false);
+    await fns.busRefresh();
+    expect(calls.renderHome).toBe(1);
+  });
+  it('the paint carries both hosts', () => {
+    const { fns, BUS } = mk();
+    BUS.view = { run: { id: 'r1' }, vehicles: [], riders: [], pendingNewPeople: 0 };
+    expect(fns._busHomeTile()).toContain('data-home="bus"');
+    expect(fns._busNewPeopleCard()).toBe('<div data-home="bus-np"></div>');
+  });
+});

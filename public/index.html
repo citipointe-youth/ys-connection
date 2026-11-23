@@ -10829,7 +10829,7 @@ async function busRefresh() {
       // I5: skip the repaint while a field inside the page is focused — the data (BUS.view)
       // is already fresh, only the paint is deferred — and let the next poll tick catch up.
       if (S.page === 'bus') { if (_busEditing()) BUS.pendingRepaint = true; else { BUS.pendingRepaint = false; renderBus(); } }
-      else if (S.page === 'home') renderHome();
+      else if (S.page === 'home' && !_busHomeUpdate()) renderHome(); // Y2-8: the tile and the New people card update in place
     }
   })();
   return BUS.loading;
@@ -16165,15 +16165,24 @@ function _busHomeTile() {
   // attempt (module off / 404 / network) — busRefresh() clears the flag on its next success,
   // and doLogout() clears it so a fresh login always gets a clean retry.
   if (!v && !BUS.failed) busRefresh();
-  return `<div class="bus-tile" onclick="go('bus')" role="button" tabindex="0">
+  return `<div data-home="bus"><div class="bus-tile" onclick="go('bus')" role="button" tabindex="0">
     <div class="bt-ic">${icN('bus')}</div><div class="bt-label">${esc(L('busMinistry'))}</div>
-    <div class="bt-count">${esc(count)}</div></div>`;
+    <div class="bt-count">${esc(count)}</div></div></div>`;
+}
+// Y2-8: the Bus tile and the New people card have a host each, so a landed busRefresh / _busLoadPending fills them in place
+// instead of repainting all of Home (which closed whatever the user had open). False = no host on the page: the caller repaints.
+function _busHomeUpdate() {
+  const t = document.querySelector('[data-home=bus]'), c = document.querySelector('[data-home=bus-np]');
+  if (!t && !c) return false;
+  if (t) t.outerHTML = _busHomeTile();
+  if (c) c.outerHTML = _busNewPeopleCard();
+  return true;
 }
 // New-people admin card is defined in the Car setup / Routes / My car section below
 // (it needs BUS.pending, populated lazily) but is called from the Home hooks above.
 function _busNewPeopleCard() {
-  if (!BUS.view || BUS.view.pendingNewPeople == null || BUS.view.pendingNewPeople === 0) return '';
-  if (!BUS.pending) { _busLoadPending(); return ''; }
+  if (!BUS.view || BUS.view.pendingNewPeople == null || BUS.view.pendingNewPeople === 0) return '<div data-home="bus-np"></div>';
+  if (!BUS.pending) { _busLoadPending(); return '<div data-home="bus-np"></div>'; }
   const rows = BUS.pending.map((p) => {
     const sugg = p.suggestions[0];
     const added = fmtDay(p.createdAt);
@@ -16191,7 +16200,7 @@ function _busNewPeopleCard() {
       <div class="newperson-added">added ${esc(added)}</div></div>
       ${box}</div>`;
   }).join('');
-  return `<div class="card"><div class="card-title" style="margin-bottom:4px">New people from ${esc(L('busMinistry'))} <span class="chip c-warn">${BUS.view.pendingNewPeople}</span></div>${rows}</div>`;
+  return `<div data-home="bus-np"><div class="card"><div class="card-title" style="margin-bottom:4px">New people from ${esc(L('busMinistry'))} <span class="chip c-warn">${BUS.view.pendingNewPeople}</span></div>${rows}</div></div>`;
 }
 // Same in-flight-promise sharing as busRefresh() — concurrent callers (e.g. the New people
 // card re-rendering mid-fetch) get the one pending request instead of each firing their own.
@@ -16206,7 +16215,7 @@ async function _busLoadPending() {
     try { const pending = await _busGet('/bus/guests/pending'); if (gen === BUS.gen) BUS.pending = pending; }
     catch { if (gen === BUS.gen) BUS.pending = []; }
     if (gen === BUS.gen) BUS.pendingLoading = null;
-    if (gen === BUS.gen && S.user && S.page === 'home') renderHome();
+    if (gen === BUS.gen && S.user && S.page === 'home' && !_busHomeUpdate()) renderHome(); // Y2-8: in place; a full repaint only when no host is on the page
   })();
   return BUS.pendingLoading;
 }
