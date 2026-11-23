@@ -14,7 +14,7 @@ const REAL_CACHE = sliceTo('const Cache = (() => {', '\n})();');
 const SECTION_OF = sliceTo('const SECTION_OF = {', '\n};');
 
 // ── Y1-1 / Y1-3: cold Home ──
-function homeHarness(o: { role?: string; notices?: boolean; realApi?: boolean; batch?: (paths: string[]) => Promise<any> } = {}) {
+function homeHarness(o: { hold?: string[]; role?: string; notices?: boolean; realApi?: boolean; batch?: (paths: string[]) => Promise<any> } = {}) {
   const calls = { setApp: [] as string[], homeError: 0, urls: [] as string[], batchPaths: [] as string[][] };
   const S: any = { user: { role: o.role || 'admin', id: 'u1' }, page: 'home', settings: { ministryConfig: { modules: o.notices ? { notices: 'on' } : {} } } };
   const env: Record<string, any> = {
@@ -25,7 +25,7 @@ function homeHarness(o: { role?: string; notices?: boolean; realApi?: boolean; b
     _renderHomeInner: async () => { calls.setApp.push('home-body'); },
     _revalidateHome: () => {},
     _homeError: () => { calls.homeError++; },
-    fetch: (url: string) => { calls.urls.push(url); return Promise.resolve({ ok: true, json: async () => ({ results: {} }) }); },
+    fetch: (url: string) => { calls.urls.push(url); if ((o.hold || []).some((h) => url.startsWith(h))) return new Promise(() => {}); return Promise.resolve({ ok: true, json: async () => ({ results: {} }) }); },
     localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
     _npStart: () => {}, _npDone: () => {}, _errReport: () => {}, _errRoute: () => '', _plainErr: (_m: any, _s: any, _c: any, said: string) => said,
     _validationText: () => null, _handleAuthExpired: () => {}, _moduleOffHit: () => {}, _moduleDisabledRefresh: () => {},
@@ -81,11 +81,19 @@ describe('Y1-3 login sends one /batch', () => {
     for (const notices of [false, true]) {
       const h = homeHarness({ role, notices, realApi: false });
       h.fns._prefetch();
-      const sent = h.calls.batchPaths[0]!;
+      const sent = h.calls.batchPaths.flat();
       for (const p of h.fns.HOME_PATHS()) expect(sent).toContain(p);
       if (notices && h.fns._noticesOn()) expect(sent).toContain('/notices');
       else expect(sent).not.toContain('/notices');
     }
+  });
+  it('cold Home waits for the /batch only, not for the own-GET paths', async () => {
+    const h = homeHarness({ role: 'admin', notices: true, hold: ['/import/history', '/prayers', '/notices'] });
+    h.fns._prefetch();
+    const done = await Promise.race([h.fns.renderHome().then(() => 'painted'), new Promise((r) => setTimeout(() => r('held'), 300))]);
+    expect(done).toBe('painted');
+    expect(h.calls.setApp).toContain('home-body');
+    expect(h.calls.urls.filter((u) => u.startsWith('/batch')).length).toBe(1);
   });
   it('a rejected prefetch still paints Home', async () => {
     const h = homeHarness({ realApi: false, batch: () => Promise.reject(new Error('down')) });

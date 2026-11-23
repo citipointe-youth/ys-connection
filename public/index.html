@@ -1873,8 +1873,10 @@ function _prefetch() {
   // to a single request is the core of the 2026-07-05 incident fix (see CLAUDE.md).
   // QA 1: only the logins with import:run may read /import/history; anyone else got a 403 on every sign-in.
   const canImport = !!S.user && ['admin', 'oversight'].includes(S.user.role);
-  // Y1-3: the promise is kept, so a cold Home that opens while this is out waits for it instead of sending a second /batch.
-  const p = API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats'].concat(canImport ? ['/import/history'] : [], _prayersOn() ? ['/prayers'] : [], _noticesOn() ? ['/notices'] : [])).catch(() => {});
+  // Y1-3: the /batch promise is kept, so a cold Home that opens while it is out waits for it instead of sending a second /batch.
+  // Only the /batch job: the own-GET paths (import history, prayers, notices) never hold Home's first paint.
+  const p = API.batch(['/overview', '/students', '/leaders', '/connections', '/at-risk', '/trends', '/lifegroups/stats']).catch(() => {});
+  API.batch([].concat(canImport ? ['/import/history'] : [], _prayersOn() ? ['/prayers'] : [], _noticesOn() ? ['/notices'] : [])).catch(() => {});
   _prefetchP = p;
   p.finally(() => { if (_prefetchP === p) _prefetchP = null; });
 }

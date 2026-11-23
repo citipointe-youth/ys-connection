@@ -25,9 +25,10 @@ function _prayersOn() { return ${p}; } function _busOn() { return true; } functi
     (globalThis as any).__c = calls;
     const mk = (on: boolean) => loadFns(['_prefetch'], `const S = { user: { role: 'admin' } }; const API = { batch: (a) => { globalThis.__c.push(a); return Promise.resolve(); } }; let _prefetchP = null; function _noticesOn() { return false; } function _prayersOn() { return ${on}; }`);
     mk(true)._prefetch();
+    const on = calls.flat(); calls.length = 0;
     mk(false)._prefetch();
-    expect(calls[0]).toContain('/prayers');
-    expect(calls[1]).not.toContain('/prayers');
+    expect(on).toContain('/prayers');
+    expect(calls.flat()).not.toContain('/prayers');
   });
   it('the MODULE_DISABLED handler refetches /settings, rebuilds the shell when the nav changed, then leaves the prayers page', async () => {
     const log: string[] = [];
