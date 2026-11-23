@@ -191,3 +191,39 @@ describe('Y2-3 search text selected', () => {
     expect(calls).toEqual([[0, 3]]);
   });
 });
+
+// ── Y2-7: the decline toast lasts 5 s; the Home line opens Needs action ──
+describe('Y2-7 decline message and the Home line', () => {
+  const mark = async (outcome: string, markName = 'decline') => {
+    const toasts: any[][] = [], I: any = {};
+    const env: Record<string, any> = {
+      toasts, _ik: () => I, _lkUuid: () => 'u1', _ikDraw: () => {}, _hubLoad: () => {}, _ikPost: async () => ({}), _ikOutcome: () => ({ outcome }),
+      _ikQFind: () => null, toast: (...a: any[]) => toasts.push(a),
+    };
+    await withStubs(['_hubMarkRow'], env)._hubMarkRow('intake', '2026-11-24', 'k1', markName);
+    return toasts;
+  };
+  it('a successful decline calls toast(..., 5000)', async () => {
+    expect(await mark('saved')).toEqual([['Declined. Undo is under the Declined chip.', 5000]]);
+  });
+  it('the other messages keep the default time', async () => {
+    expect((await mark('saved', 'undo'))[0]![1]).toBeUndefined();
+    expect((await mark('refused'))[0]![1]).toBeUndefined();
+  });
+  it('the Home line\'s action then _hubBodyHtml() shows Needs action open', () => {
+    const I: any = { hubOpen: {}, hubQ: '' };
+    const env: Record<string, any> = {
+      _ik: () => I, esc: (x: any) => String(x), icS: () => '', _ikSt: () => ({}), _hubM: () => ({ fams: [], declined: [], loose: [] }), _hubRows: () => [], _hubWk: () => 'all', _siteDay: () => '2026-11-24',
+      _hubInWeek: () => true, _hubAddDays: () => '2026-10-27', _hubBulkBtn: () => '', _hubBulkHtml: () => '', _hubSendHtml: () => '', HUB_STAGES: [],
+      _seen: {}, _attnSeen: () => ({}), _modOn: () => true,
+    };
+    const f = withStubs(['_ikOpenNeed', '_hubBodyHtml', '_attnHtml', '_attnLines'], env);
+    const a = { role: 'admin', errors: 0, unsent: 0, unclear: 0, waiting: 0, offlineAt: 0, dnc: 0, fix: [], needsYou: 1 };
+    const line = f._attnHtml(a);
+    const m = /onclick="([^"]*link-intake[^"]*)"/.exec(line);
+    expect(m).not.toBeNull();
+    expect(f._hubBodyHtml()).toMatch(/<details class="lk-done" ontoggle="_hubToggle\('need'/); // collapsed by default (consent-hub pin)
+    new Function('_ikOpenNeed', 'go', m![1]!)(f._ikOpenNeed, () => {});
+    expect(f._hubBodyHtml()).toContain('<details class="lk-done" open ontoggle="_hubToggle(\'need\'');
+  });
+});

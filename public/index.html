@@ -4267,11 +4267,13 @@ function _attnDismiss(key, n) {
   try { const m = _attnSeen(); m[key] = n; localStorage.setItem('ys-attn-dismissed', JSON.stringify(m)); } catch (e) { /* no storage: the line stays */ }
   const el = document.getElementById('home-attn'); if (el) el.innerHTML = _attnHtml(_attnMine());
 }
+// Y2-7: the Home "needs you" line lands on Needs action already open (the default from More stays collapsed).
+function _ikOpenNeed() { const I = _ik(); I.hubOpen = I.hubOpen || {}; I.hubOpen.need = true; }
 function _attnHtml(a) {
   const seen = _attnSeen(), L = _attnLines(a).filter((l) => !(l[2] && Number(seen[l[2]]) >= l[3]));
   if (!L.length) return '';
   return `<div class="card" style="padding:10px 12px;margin-bottom:10px;border-left:4px solid var(--warn)"><div style="font-weight:700;display:flex;align-items:center;gap:6px;margin-bottom:4px">${icS('info')} Needs attention</div>`
-    + L.map(([t, on, key, n]) => `<div style="display:flex;align-items:center;gap:8px">` + (on ? `<div role="button" tabindex="0" onclick="${on}" style="flex:1;padding:5px 0;cursor:pointer;color:var(--accent-dark)">${esc(t)} ›</div>` : `<div style="flex:1;padding:5px 0">${esc(t)}</div>`)
+    + L.map(([t, on, key, n]) => `<div style="display:flex;align-items:center;gap:8px">` + (on ? `<div role="button" tabindex="0" onclick="${key === 'needsYou' ? '_ikOpenNeed();' : ''}${on}" style="flex:1;padding:5px 0;cursor:pointer;color:var(--accent-dark)">${esc(t)} ›</div>` : `<div style="flex:1;padding:5px 0">${esc(t)}</div>`)
       + (key ? `<button type="button" class="btn btn-secondary" style="padding:2px 8px;font-size:12px" onclick="_attnDismiss('${key}',${Number(n)})">Dismiss</button>` : '') + '</div>').join('') + '</div>';
 }
 function _attnBadges(a) { return a ? { problems: a.errors + a.unsent + a.fix.length, link: a.unclear + a.waiting } : {}; }
@@ -15145,7 +15147,8 @@ async function _hubMarkRow(mode, date, key, mark) {
   const item = { kind: 'action', id: _lkUuid(), type: 'intakeMark', payload: { mode, date, row: key, mark }, note: null, leaderId: null }, back = I.decl[k];
   I.decl[k] = mark === 'decline'; _ikDraw(); // shown at once
   const undo = () => { if (back === undefined) delete I.decl[k]; else I.decl[k] = back; };
-  let say = mark === 'decline' ? 'Declined. Undo is under the Declined chip.' : 'Back on the list.';
+  const DECLINED_SAY = 'Declined. Undo is under the Declined chip.';
+  let say = mark === 'decline' ? DECLINED_SAY : 'Back on the list.';
   try {
     const r = _ikOutcome(await _ikPost([item]), item.id);
     if (!(r && ['saved', 'replay', 'duplicate'].includes(r.outcome))) { undo(); say = (r && r.message) || 'Not saved. Try again.'; }
@@ -15154,7 +15157,7 @@ async function _hubMarkRow(mode, date, key, mark) {
   }
   delete I.mk[k];
   if (_ik() !== I) return;
-  toast(say); _ikDraw(); _hubLoad(true);
+  toast(say, say === DECLINED_SAY ? 5000 : undefined); _ikDraw(); _hubLoad(true); // Y2-7: the decline message stays 5 s (Undo is under the chip)
 }
 function _hubDeclToggle() { const I = _ik(); I.hubDeclView = !I.hubDeclView; _ikDraw(); }
 // Fix round 24 Oct (Task 5): after Save all / Text all, how many of the batch the console has finished (sent, refused, cancelled, unclear).
