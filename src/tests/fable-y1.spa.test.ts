@@ -279,3 +279,23 @@ describe('Y1-9 a late student profile or import preview', () => {
     expect(modals.length).toBe(0);
   });
 });
+
+// ── Y1-10: logout clears Bus memory ──
+describe('Y1-10 logout clears Past rides, search hits, the map and drafts', () => {
+  it('_busLogoutReset empties the eight fields and keeps the old resets', () => {
+    const BUS: any = { view: { x: 1 }, gen: 3, hist: [1], histPeople: [1], analysis: {}, forms: [1], ocDraft: {}, mapUrl: 'u', hits: [1], search: 'q', tripDate: '2026-11-27' };
+    let polls = 0;
+    const fn = new Function('BUS', '_busStopPoll', `${extractFn(html, '_busLogoutReset')}\nreturn _busLogoutReset;`)(BUS, () => { polls++; });
+    fn();
+    for (const k of ['hist', 'histPeople', 'analysis', 'forms', 'ocDraft', 'mapUrl']) expect(BUS[k]).toBeNull();
+    expect(BUS.hits).toEqual([]);
+    expect(BUS.search).toBe('');
+    expect(BUS.view).toBeNull(); // pin
+    expect(BUS.tripDate).toBeNull(); // pin
+    expect(BUS.gen).toBe(4); // pin
+    expect(polls).toBe(1);
+  });
+  it('doLogout calls it', () => {
+    expect(extractFn(html, 'doLogout')).toContain('_busLogoutReset()');
+  });
+});

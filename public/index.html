@@ -3920,7 +3920,7 @@ async function doLogout() {
   _arFilter = { grade: null, gender: null };
   _bdayFilter = { grade: null, gender: null };
   _prayerFilter = { grade: null, gender: null };
-  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.cars = null; BUS.carsOpen = false; BUS.carsErr = false; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; BUS.tripDate = null; _busStopPoll();
+  _busLogoutReset();
   _previewStash = null;
   nyReset(); /*NEW-YOUTH*/
   _icClearLocal();
@@ -3932,6 +3932,12 @@ async function doLogout() {
     // yap_leader_id ("I am") stays: T4 says the pick persists across logout.
   } catch (e) {}
   render();
+}
+
+// Y1-10: logout leaves nothing of the Bus screens in memory for the next login on this tab.
+function _busLogoutReset() {
+  /*BUS-HOOK*/ BUS.gen++; BUS.view = null; BUS.myCar = null; BUS.cars = null; BUS.carsOpen = false; BUS.carsErr = false; BUS.pending = null; BUS.loading = null; BUS.loadingAs = null; BUS.pendingLoading = null; BUS.failed = false; BUS.tripDate = null; _busStopPoll();
+  BUS.hist = null; BUS.histPeople = null; BUS.analysis = null; BUS.forms = null; BUS.ocDraft = null; BUS.mapUrl = null; BUS.hits = []; BUS.search = '';
 }
 
 // Full-page gate for accounts flagged mustChangePassword (seeded/admin-set
