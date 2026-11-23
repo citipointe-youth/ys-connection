@@ -4636,7 +4636,7 @@ async function _saveSmsTemplate(leaderId, elId) {
   const val = el ? el.value.trim() : '';
   try {
     await API.patch(`/leaders/${leaderId}/sms-template`, { smsTemplate: val || null });
-    Cache.del('/leaders');
+    Cache.del('/leaders', '/connections/leader/' + leaderId); // Y1-8: Home refills its box from the cached follow-up too
     await API.get('/leaders'); // refetch now so _myCustomSmsTemplate()'s synchronous Cache.getStale read sees the new template immediately, not just after the next natural /leaders fetch
     toast('✓ Template saved');
   } catch (e) { toast(e.message); }
@@ -5932,7 +5932,7 @@ function _prayersHtml(list) {
     <button class="pfab" onclick="openPrayerModal()">${icS('plus')} Add Prayer</button>`;
 }
 async function _markPrayerAnswered(id) {
-  await API.patch('/prayers/' + id + '/status', { status: 'answered' });
+  try { await API.patch('/prayers/' + id + '/status', { status: 'answered' }); } catch (e) { toast(e.message || 'Could not save'); return; }
   Cache.del('/prayers');
   renderPrayers();
 }
@@ -6084,7 +6084,7 @@ async function _deletePrayer(id) {
   Cache.del('/prayers'); closeModal(); renderPrayers();
 }
 async function _markPrayerOpen(id) {
-  await API.patch('/prayers/' + id + '/status', { status: 'open' });
+  try { await API.patch('/prayers/' + id + '/status', { status: 'open' }); } catch (e) { toast(e.message || 'Could not save'); return; }
   Cache.del('/prayers');
   renderPrayers();
 }

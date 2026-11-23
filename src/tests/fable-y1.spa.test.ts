@@ -168,3 +168,41 @@ describe('Y1-6 a failed shell fetch falls back to the cached shell', () => {
   it('503 + no cached copy -> the 503', async () => { const r = { ok: false, status: 503 }; expect(await shell(r, undefined)).toBe(r); });
   it('200 -> the 200', async () => { const r = { ok: true, clone: () => 'c' }; expect(await shell(r, 'shell')).toBe(r); });
 });
+
+// ── Y1-7, Y1-8: prayer taps and the message template ──
+describe('Y1-7 prayer status taps say when they fail', () => {
+  it.each(['_markPrayerAnswered', '_markPrayerOpen'])('%s: a failed save toasts once and does not repaint', async (name) => {
+    const calls = { toast: [] as string[], render: 0 };
+    const env = {
+      API: { patch: () => Promise.reject(new Error('x')) },
+      Cache: { del: () => {} },
+      toast: (m: string) => calls.toast.push(m),
+      renderPrayers: () => { calls.render++; },
+    };
+    const fn = new Function(...Object.keys(env), `${extractFn(html, name)}\nreturn ${name};`)(...Object.values(env));
+    await expect(fn('p1')).resolves.toBeUndefined();
+    expect(calls.toast).toEqual(['x']);
+    expect(calls.render).toBe(0);
+  });
+  it('a good save still repaints', async () => {
+    let render = 0;
+    const env = { API: { patch: () => Promise.resolve({}) }, Cache: { del: () => {} }, toast: () => {}, renderPrayers: () => { render++; } };
+    const fn = new Function(...Object.keys(env), `${extractFn(html, '_markPrayerAnswered')}\nreturn _markPrayerAnswered;`)(...Object.values(env));
+    await fn('p1');
+    expect(render).toBe(1);
+  });
+});
+
+describe('Y1-8 saving a message template drops the cached follow-up', () => {
+  it('the /connections/leader/<id>/followup entry is gone', async () => {
+    const env = {
+      API: { patch: () => Promise.resolve({}), get: () => Promise.resolve([]) },
+      document: { getElementById: () => ({ value: ' hi ' }) },
+      toast: () => {},
+    };
+    const fn = new Function(...Object.keys(env), `${REAL_CACHE}\nCache.set('/leaders', [1]); Cache.set('/connections/leader/L1/followup', { t: 1 }); Cache.set('/connections/leader/L2/followup', { t: 2 });\n${extractFn(html, '_saveSmsTemplate')}\nreturn { _saveSmsTemplate, Cache };`)(...Object.values(env));
+    await fn._saveSmsTemplate('L1');
+    expect(fn.Cache.getStale('/connections/leader/L1/followup')).toBeNull();
+    expect(fn.Cache.getStale('/connections/leader/L2/followup')).not.toBeNull(); // only this leader's
+  });
+});
