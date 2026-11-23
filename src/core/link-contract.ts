@@ -49,6 +49,8 @@ export const LINK_CONTRACT_VERSION = 1;
 // Rev 26 (2026-11-24, item 3.6): the claim reads capabilities tolerantly. An unknown type name is dropped before anything is stored
 // or served; every key is optional and a missing type means off; a known key still needs a valid value; at most 64 keys. So a
 // console older or newer than the app can claim and is leased only the types both know. MIN_CONSOLE_REV stays 12.
+// Rev 26 also (C2-2): the claim reply drops consentLink; consentSnap {ask, askedAt} goes to every console while the hub is on.
+// A rev-12 console built before console 2ca7360c (released 18-19 Oct 2026) still reads consentLink: against rev 26 it loses only that type.
 export const LINK_REV = 26;
 /** Rev 25 R3b: the console writers safe to repeat ("Check and save again"); never complete (a second text), note or approveNew.
  *  The SPA's IK_IDEMPOTENT and the console's sent-log IDEMPOTENT are byte-equal copies (spike/verify-ys-link-contract.js). */
@@ -213,7 +215,7 @@ export const IntakeHint = z.object({ mode: z.enum(INTAKE_MODES), hurry: z.boolea
   refresh: z.array(z.object({ mode: z.enum(['intake', 'consent']), date: Ymd })).max(4) });
 export const ClaimResponse = z.object({ contractVersion: Version, serverTime: Iso, rows: z.array(ClaimRow).max(20), linkRev: LinkRev,
   intake: IntakeHint.optional(), progress: z.literal(true).optional(), // S5: this app takes POST /sync/push/progress
-  consentLink: z.literal(true).optional(), // L6 review: this app takes the consentLink capability key
+  consentLink: z.literal(true).optional(), // no longer sent (rev 26); kept optional so older fixtures parse
   // Rev 14 (multisite X1): this app's location facts; the console warns (never refuses) when its own differ.
   site: z.object({ timeZone: z.string(), serviceDay: z.number().int().min(0).max(6), consentCutoff: z.string().regex(/^\d{2}:\d{2}$/), peopleFlowPrefix: z.string(), consentFlowPrefix: z.string() }).optional(),
   // Rev 17: this app's resolved module switches (values only), so the console can mute settings the app does not use.
