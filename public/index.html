@@ -1072,15 +1072,15 @@ document.addEventListener('focusout', e => {
   }, 60);
 });
 
-// iOS home-screen reload gap fix (2026-10-09): after location.reload() (Bus "I am"/"Not you?",
-// SW update) the fixed bottom nav came up exactly the status-bar height (62pt) above the screen
-// bottom until the user dragged. WebKit drops pre-reload viewport updates and fakes the
-// fixed-position rect until a fresh one arrives; a same-position scrollTo at the top is a no-op,
-// but a viewport-meta change forces one. Drop viewport-fit=cover and restore it two frames later
-// (tophatch/swift-pwa#285, verified on iOS 27). Installed app + reloads only.
+// iOS home-screen viewport gap fix (2026-10-09, widened 24 Nov): the app sometimes comes up with
+// the whole layout viewport 62pt short (the status-band height): the fixed nav AND the 100dvh sign-in
+// page end 62pt above the screen bottom until the user drags. First seen after location.reload();
+// 24 Nov the owner's phone showed it on a plain open too (WebKit bug 301994 family). A
+// viewport-meta change forces fresh geometry: drop viewport-fit=cover and restore it two frames
+// later (tophatch/swift-pwa#285). Installed app only, every open (was: reloads only).
 function _reloadViewportFix() {
-  const nav = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
-  if (!navigator.standalone || !nav || nav.type !== 'reload') return;
+  _vpSnap('open'); setTimeout(() => _vpSnap('1s'), 1000);
+  if (!navigator.standalone) return;
   const meta = document.querySelector('meta[name="viewport"]');
   if (!meta) return;
   const content = meta.content;
@@ -1088,6 +1088,20 @@ function _reloadViewportFix() {
     meta.content = content.replace(/,\s*viewport-fit=cover/, '');
     requestAnimationFrame(() => requestAnimationFrame(() => { meta.content = content; }));
   }, 150);
+}
+window.addEventListener('pageshow', (e) => { if (e.persisted) _reloadViewportFix(); }); // back from the page cache: no boot()
+// Admin > System prints these: what the phone reported at open and 1 s later (after the fix above).
+// ponytail: diagnostic only; delete once the gap is understood.
+globalThis._vp = [];
+function _vpSnap(label) {
+  try {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:absolute;visibility:hidden;height:100dvh;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)';
+    document.body.appendChild(d);
+    const cs = getComputedStyle(d), nav = performance.getEntriesByType('navigation')[0];
+    globalThis._vp.push(`${label}: ${nav ? nav.type : '?'} screen ${screen.height} inner ${innerHeight} vv ${window.visualViewport ? Math.round(visualViewport.height) : '?'} doc ${document.documentElement.clientHeight} dvh ${Math.round(parseFloat(cs.height))} safe ${parseFloat(cs.paddingTop)}/${parseFloat(cs.paddingBottom)}`);
+    d.remove();
+  } catch (e) {}
 }
 
 // ============================================================
@@ -3850,7 +3864,8 @@ async function renderSystemCheck() {
   // A 401/403 leaves status and error both null (r22 A7): never pass null to the checklist.
   el.innerHTML = '<div class="lk-sec">System check</div>' + (SETUP.status ? _setupChecklistHtml(SETUP.status, { generate: true, fold: true })
     : `<div class="alert al-warn">${esc(SETUP.error || 'Could not load. Try again.')}</div>`)
-    + `<button class="btn btn-secondary btn-full" onclick="SETUP.status=null;renderSystemCheck()">Check again</button>`;
+    + `<button class="btn btn-secondary btn-full" onclick="SETUP.status=null;renderSystemCheck()">Check again</button>`
+    + `<p style="font-size:11px;color:var(--ink-faint);word-break:break-all;margin-top:10px">Screen: ${esc((globalThis._vp || []).join(' | '))}</p>`;
   // Impeccable review 2026-10-24 quick win: on Problems, System check goes first while it has something to fix,
   // so "No errors in the log" never sits above six fix rows.
   const fix = !!SETUP.status && (SETUP.status.checks || []).some((c) => c.state === 'fix'), log = document.getElementById('err-log');
@@ -18249,7 +18264,7 @@ boot();
 // or taps still in the link queue. Busy -> one "Update ready" button, and a reload on the next hide once idle.
 let _swReloading = false, _swWaiting = false;
 // Y1-2: this page's build; the same value as public/sw.js CACHE (a test fails the ship when they differ).
-const BUILD = 'ysc-v185';
+const BUILD = 'ysc-v186';
 // A higher cache number than BUILD means a newer build took over, so this page is old. No ysc- name (storage cleared) = not stale: never a reload loop.
 function _swStale(keys) {
   const n = (k) => { const m = /^ysc-v(\d+)$/.exec(k); return m ? Number(m[1]) : 0; };

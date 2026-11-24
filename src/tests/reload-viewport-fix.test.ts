@@ -4,7 +4,7 @@ import { loadIndexHtml, extractFn } from './helpers/extract-fn';
 // Runs the REAL _reloadViewportFix body from public/index.html against stubs.
 // It can't prove the iOS layout effect (no WebKit here) — it pins the parts that would
 // break every page if wrong: the viewport meta comes back byte-identical, and the toggle
-// only happens on a reload in the installed home-screen app.
+// only happens in the installed home-screen app.
 
 function run(opts: { standalone: boolean; navType: string | null }) {
   const html = loadIndexHtml();
@@ -17,8 +17,9 @@ function run(opts: { standalone: boolean; navType: string | null }) {
     const navigator = { standalone: ${opts.standalone} };
     const performance = { getEntriesByType: () => ${opts.navType ? `[{ type: '${opts.navType}' }]` : '[]'} };
     const document = { querySelector: () => __meta };
-    const setTimeout = (fn) => { __timers.push(fn); };
+    const setTimeout = (fn, ms) => { if (ms !== 1000) __timers.push(fn); };
     const requestAnimationFrame = (fn) => { __frames.push(fn); };
+    const _vpSnap = () => {};
   `;
   const { _reloadViewportFix } = new Function('__meta', '__timers', '__frames',
     `${prelude}\n${extractFn(html, '_reloadViewportFix')}\nreturn { _reloadViewportFix };`,
@@ -45,9 +46,10 @@ describe('_reloadViewportFix (iOS home-screen reload gap)', () => {
     expect(r.final).toBe(r.original);
   });
 
-  it('does nothing on a normal launch', () => {
-    expect(run({ standalone: true, navType: 'navigate' }).seen).toEqual([]);
-    expect(run({ standalone: true, navType: null }).seen).toEqual([]);
+  it('runs on every launch of the installed app, not only reloads (24 Nov: gap on a plain open)', () => {
+    expect(run({ standalone: true, navType: 'navigate' }).final).toBe(run({ standalone: true, navType: 'navigate' }).original);
+    expect(run({ standalone: true, navType: 'navigate' }).seen.length).toBe(3);
+    expect(run({ standalone: true, navType: null }).seen.length).toBe(3);
   });
 
   it('runs from boot()', () => {

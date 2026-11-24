@@ -257,6 +257,14 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   Expect a one-frame shift. **If it doesn't fix it or the shift is visible**, the WebKit-source
   alternative is toggling `, interactive-widget=resizes-content` the same way. It doesn't touch
   inset behaviour, but may not be enabled in shipping iOS.
+  **24 Nov 2026 (`ysc-v186`):** still seen after the Fable round (`ysc-v185` ran the toggle at the
+  start of `boot()`, reloads only). The owner's screenshots showed it on a plain open, and on the
+  sign-in page too: the 100dvh blue page also ended 62pt short. So the whole layout viewport is short,
+  not only the fixed rect, and taking the nav out of `position:fixed` (held item G4) would not help.
+  The toggle now runs on every installed-app open plus `pageshow` from the page cache. `_vpSnap()`
+  records screen / innerHeight / visualViewport / clientHeight / 100dvh / safe insets at open and 1 s
+  later, printed under Admin > System as "Screen:". Next step if the gap stays: read those two rows
+  (open vs 1s) from a gap open; delete `_vpSnap` once settled.
   Related: in the same screenshots the status-bar strip is light, not our blue header, so
   `env(safe-area-inset-top)` is 0 on that device. That is WebKit bug 301994 ("Status bar
   remains visible in fullscreen", home-screen apps, reopened for iOS 26.5 / 27 beta), not our
