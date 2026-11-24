@@ -41,7 +41,7 @@ Full gate (ship.sh + CI): `npx tsc --noEmit && npx vitest run && node scripts/ch
 
 **Deploy / ship**
 - Pushing `master` IS a release: Vercel auto-promotes every master build and the build applies migrations. Ship only with `/ship` = `bash scripts/ship.sh <branch>` (`--dry-run` = preflight). Never ship Fri 17:30-20:00 or Sun 10:00-12:00 (site time); any other time is fine.
-- Any change under `public/` needs a bumped `public/sw.js` `const CACHE = 'ysc-vN'` (next free number; now `ysc-v186`); ship.sh refuses otherwise.
+- Any change under `public/` needs a bumped `public/sw.js` `const CACHE = 'ysc-vN'` (next free number; now `ysc-v187`); ship.sh refuses otherwise.
 - After a push: build log shows `Database up to date — …`; `/sw.js` line 1 shows the new `ysc-vN`; `/health` `schema.current` matches. Snapshot prod first when a migration adds tables. Roll back = Vercel Instant Rollback (then auto-promote stops until a build is promoted by hand).
 - Link contract (`LINK_REV` 26; capabilities are read tolerantly: unknown types dropped, missing = off, a console may omit types; push rows stay strict): bump `LINK_REV` in `core/link-contract.ts`; ship YS first, then the console; frozen fixtures in `src/tests/fixtures/elvanto-link/` (11.1 keeps byte copies). `MIN_CONSOLE_REV` (12) rises only once every console runs the new rev.
 - New writers ship live: no practice/shadow stage, no operator first-click lock (operator 2026-10-15). Claude still never writes to live Elvanto or the prod DB itself, never applies migrations with the Supabase MCP, and never tests destructive admin actions against prod (use `PERSISTENCE=memory`).

@@ -17,9 +17,9 @@ function run(opts: { standalone: boolean; navType: string | null }) {
     const navigator = { standalone: ${opts.standalone} };
     const performance = { getEntriesByType: () => ${opts.navType ? `[{ type: '${opts.navType}' }]` : '[]'} };
     const document = { querySelector: () => __meta };
-    const setTimeout = (fn, ms) => { if (ms !== 1000) __timers.push(fn); };
+    const setTimeout = (fn) => { if (fn !== _vpCheck) __timers.push(fn); };
     const requestAnimationFrame = (fn) => { __frames.push(fn); };
-    const _vpSnap = () => {};
+    const _vpSnap = () => {}, _vpCheck = () => {};
   `;
   const { _reloadViewportFix } = new Function('__meta', '__timers', '__frames',
     `${prelude}\n${extractFn(html, '_reloadViewportFix')}\nreturn { _reloadViewportFix };`,
@@ -64,3 +64,32 @@ describe('_reloadViewportFix (iOS home-screen reload gap)', () => {
   });
 });
 
+
+// 24 Nov: inner 812 on an 874 screen with safe-top 62 = the stale state; a 1px scroll imitates the healing touch.
+function check(o: { standalone: boolean; inner: number; screen: number; top: number }) {
+  const scrolls: number[] = [];
+  const frames: Array<() => void> = [];
+  const h = { style: { minHeight: '' } };
+  const { _vpCheck } = new Function('__s', '__f', '__h', `
+    const _vpSnap = () => ${o.top};
+    const navigator = { standalone: ${o.standalone} }, innerHeight = ${o.inner}, screen = { height: ${o.screen} };
+    const document = { documentElement: __h };
+    const window = { scrollTo: (x, y) => __s.push(y) };
+    const requestAnimationFrame = (fn) => __f.push(fn), setTimeout = () => {};
+    ${extractFn(loadIndexHtml(), '_vpCheck')}
+    return { _vpCheck };`)(scrolls, frames, h);
+  _vpCheck();
+  while (frames.length) frames.shift()!();
+  return { scrolls, minHeight: h.style.minHeight };
+}
+
+describe('_vpCheck (stale safe-area state)', () => {
+  it('nudges 1px and back, then clears the min-height, in the stale state', () => {
+    expect(check({ standalone: true, inner: 812, screen: 874, top: 62 })).toEqual({ scrolls: [1, 0], minHeight: '' });
+  });
+  it('leaves a healthy phone alone', () => {
+    expect(check({ standalone: true, inner: 874, screen: 874, top: 62 }).scrolls).toEqual([]); // page under the bar, as designed
+    expect(check({ standalone: true, inner: 812, screen: 874, top: 0 }).scrolls).toEqual([]);  // healed: band outside the page
+    expect(check({ standalone: false, inner: 812, screen: 874, top: 62 }).scrolls).toEqual([]);
+  });
+});

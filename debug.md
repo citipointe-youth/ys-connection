@@ -265,6 +265,13 @@ Role decides RBAC scope; screen usually narrows straight to a symptom-router ent
   records screen / innerHeight / visualViewport / clientHeight / 100dvh / safe insets at open and 1 s
   later, printed under Admin > System as "Screen:". Next step if the gap stays: read those two rows
   (open vs 1s) from a gap open; delete `_vpSnap` once settled.
+  **Readout from a gap open (24 Nov 13:26, sign-in page):** open `inner 812 dvh 812 safe 0/0`, 1s
+  `inner 812 dvh 812 safe 62/34` on a 874 screen. The band is outside the page (inner 812) yet the top
+  inset says 62: the page draws under the opaque band and ends 62pt short. A touch or typing heals it;
+  the viewport toggle does not. `ysc-v187`: `_vpCheck()` at 1 s detects that contradiction
+  (standalone, top inset > 0, inner + inset <= screen) and does a 1px scroll and back (html gets
+  `min-height: calc(100dvh + 2px)` for two frames so the sign-in page can scroll); the readout adds a
+  `nudged` row. If the `nudged` row still shows safe 62 with the gap visible, a scroll is not enough.
   Related: in the same screenshots the status-bar strip is light, not our blue header, so
   `env(safe-area-inset-top)` is 0 on that device. That is WebKit bug 301994 ("Status bar
   remains visible in fullscreen", home-screen apps, reopened for iOS 26.5 / 27 beta), not our

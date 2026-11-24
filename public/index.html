@@ -1079,7 +1079,7 @@ document.addEventListener('focusout', e => {
 // viewport-meta change forces fresh geometry: drop viewport-fit=cover and restore it two frames
 // later (tophatch/swift-pwa#285). Installed app only, every open (was: reloads only).
 function _reloadViewportFix() {
-  _vpSnap('open'); setTimeout(() => _vpSnap('1s'), 1000);
+  _vpSnap('open'); setTimeout(_vpCheck, 1000);
   if (!navigator.standalone) return;
   const meta = document.querySelector('meta[name="viewport"]');
   if (!meta) return;
@@ -1101,7 +1101,22 @@ function _vpSnap(label) {
     const cs = getComputedStyle(d), nav = performance.getEntriesByType('navigation')[0];
     globalThis._vp.push(`${label}: ${nav ? nav.type : '?'} screen ${screen.height} inner ${innerHeight} vv ${window.visualViewport ? Math.round(visualViewport.height) : '?'} doc ${document.documentElement.clientHeight} dvh ${Math.round(parseFloat(cs.height))} safe ${parseFloat(cs.paddingTop)}/${parseFloat(cs.paddingBottom)}`);
     d.remove();
-  } catch (e) {}
+    return parseFloat(cs.paddingTop) || 0;
+  } catch (e) { return 0; }
+}
+// 24 Nov readout from a gap open: inner 812 on an 874 screen (the status band is NOT part of the page)
+// yet safe-area-inset-top 62 (WebKit thinks it is): the page draws under the opaque band and ends 62pt
+// short. The same numbers after a touch read safe-top 0. A touch heals it, so imitate one: a 1px scroll.
+function _vpCheck() {
+  const t = _vpSnap('1s');
+  if (!navigator.standalone || !t || innerHeight + t > screen.height + 1) return;
+  const h = document.documentElement;
+  h.style.minHeight = 'calc(100dvh + 2px)'; // the sign-in page cannot scroll otherwise
+  window.scrollTo(0, 1);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    window.scrollTo(0, 0); h.style.minHeight = '';
+    setTimeout(() => _vpSnap('nudged'), 500);
+  }));
 }
 
 // ============================================================
@@ -18264,7 +18279,7 @@ boot();
 // or taps still in the link queue. Busy -> one "Update ready" button, and a reload on the next hide once idle.
 let _swReloading = false, _swWaiting = false;
 // Y1-2: this page's build; the same value as public/sw.js CACHE (a test fails the ship when they differ).
-const BUILD = 'ysc-v186';
+const BUILD = 'ysc-v187';
 // A higher cache number than BUILD means a newer build took over, so this page is old. No ysc- name (storage cleared) = not stale: never a reload loop.
 function _swStale(keys) {
   const n = (k) => { const m = /^ysc-v(\d+)$/.exec(k); return m ? Number(m[1]) : 0; };
